@@ -96,7 +96,7 @@ class TestMutatedClient(unittest.TestCase):
                              replacements=TestUtil.replace_x(f'{mutation_expr()}, "outdir": "new_dir"'),
                              expected="Invalid configuration: 'outdir' should not be set")
 
-    def test_failed_runs(self) -> None:
+    def test_invalid_runs(self) -> None:
         suite = MutantTestSuite(conf_file_template=_p('mutation_conf_top_level.conf'),
                                 test_attribute=Util.TestValue.CHECK_ARGS)
         suite.expect_failure(description="prover_conf", run_flags=["--prover_conf"],
