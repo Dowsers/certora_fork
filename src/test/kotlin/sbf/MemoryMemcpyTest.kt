@@ -23,6 +23,7 @@ import sbf.domains.*
 import sbf.support.UnknownStackContentError
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.*
+import sbf.support.UnknownMemcpyLenError
 
 private val sbfTypesFac = ConstantSbfTypeFactory()
 
@@ -34,7 +35,7 @@ class MemoryMemcpyTest {
         check(base != lhs)
         val inst = SbfInstruction.Mem(Deref(width, base, offset, null), lhs, true, null)
         val locInst = LocatedSbfInstruction(Label.fresh(), 0, inst)
-        g.doLoad(locInst, lhs, base, offset, width, SbfType.top(), newGlobalVariableMap())
+        g.doLoad(locInst, base, SbfType.top(), newGlobalVariableMap())
         val sc = g.getRegCell(lhs)
         return sc?.getNode()
     }
@@ -70,8 +71,8 @@ class MemoryMemcpyTest {
         stackC.getNode().mkLink(4040, 8, n1.createCell(0))
         stackC.getNode().mkLink(4048, 8, n2.createCell(0))
         stackC.getNode().mkLink(4056, 8, n3.createCell(0))
-        g.setRegCell(r2, stackC.getNode().createSymCell(PTASymOffset(4040)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, stackC.getNode().createSymCell(4040))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
@@ -112,8 +113,8 @@ class MemoryMemcpyTest {
         srcNode.mkLink(8, 8, n2.createCell(0))
         srcNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r2, srcNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, srcNode.createSymCell(0))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
@@ -155,8 +156,8 @@ class MemoryMemcpyTest {
         srcNode.mkLink(8, 8, n2.createCell(0))
         srcNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r2, srcNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r1, dstN.createSymCell(PTASymOffset(0)))
+        g.setRegCell(r2, srcNode.createSymCell(0))
+        g.setRegCell(r1, dstN.createSymCell(0))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
@@ -206,8 +207,8 @@ class MemoryMemcpyTest {
         stackC.getNode().mkLink(4040, 8, n1.createCell(0))
         stackC.getNode().mkLink(4048, 8, n2.createCell(0))
         stackC.getNode().mkLink(4056, 8, n3.createCell(0))
-        g.setRegCell(r2, stackC.getNode().createSymCell(PTASymOffset(4040)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, stackC.getNode().createSymCell(4040))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
@@ -261,8 +262,8 @@ class MemoryMemcpyTest {
         srcNode.mkLink(8, 8, n2.createCell(0))
         srcNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r2, srcNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, srcNode.createSymCell(0))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
@@ -318,8 +319,8 @@ class MemoryMemcpyTest {
         srcNode.mkLink(8, 8, n2.createCell(0))
         srcNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r2, srcNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r1, dstN.createSymCell(PTASymOffset(0)))
+        g.setRegCell(r2, srcNode.createSymCell(0))
+        g.setRegCell(r1, dstN.createSymCell(0))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
@@ -374,8 +375,8 @@ class MemoryMemcpyTest {
         srcNode.mkLink(8, 8, n2.createCell(0))
         srcNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r2, srcNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r1, dstN.createSymCell(PTASymOffset(0)))
+        g.setRegCell(r2, srcNode.createSymCell(0))
+        g.setRegCell(r1, dstN.createSymCell(0))
 
         val scalars = ScalarDomain(sbfTypesFac)
         val r3 = Value.Reg(SbfRegister.R3_ARG)
@@ -427,8 +428,8 @@ class MemoryMemcpyTest {
         srcNode.mkLink(8, 8, n2.createCell(0))
         srcNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r2, srcNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, srcNode.createSymCell(0))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         var exception = false
@@ -438,7 +439,7 @@ class MemoryMemcpyTest {
             g.doMemcpy(scalars, newGlobalVariableMap())
             println("After memcpy(r1,r2,r3) with r3=top -> $g")
         }
-        catch (e: PointerDomainError) {
+        catch (e: UnknownMemcpyLenError) {
             println("Test failed as expected because $e")
             exception = true
         }
@@ -494,8 +495,8 @@ class MemoryMemcpyTest {
         srcNode.mkLink(8, 8, n2.createCell(0))
         srcNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r2, srcNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, srcNode.createSymCell(0))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         // memcpy(r1, r2, 24)
@@ -505,10 +506,10 @@ class MemoryMemcpyTest {
         println("After memcpy(r1,r2,24) -> $g")
 
 
-        val c1 = stackC.getNode().getSucc(PTAField(3030, 8))
-        val c2 = stackC.getNode().getSucc(PTAField(3040, 8))
-        val c3 = stackC.getNode().getSucc(PTAField(3048, 8))
-        val c4 = stackC.getNode().getSucc(PTAField(3056, 8))
+        val c1 = stackC.getNode().getSucc(PTAField(PTAOffset(3030), 8))
+        val c2 = stackC.getNode().getSucc(PTAField(PTAOffset(3040), 8))
+        val c3 = stackC.getNode().getSucc(PTAField(PTAOffset(3048), 8))
+        val c4 = stackC.getNode().getSucc(PTAField(PTAOffset(3056), 8))
 
         Assertions.assertEquals(true,  c1 != c2 && c2 == c3 && c3 == c4 && c4 != null)
     }
@@ -562,8 +563,8 @@ class MemoryMemcpyTest {
         dstNode.mkLink(8, 8, n2.createCell(0))
         dstNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r1, dstNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r2, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r1, dstNode.createSymCell(0))
+        g.setRegCell(r2, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         // memcpy(r1, r2, 24)
@@ -572,10 +573,10 @@ class MemoryMemcpyTest {
         g.doMemcpy(scalars, newGlobalVariableMap())
         println("After memcpy(r1,r2,24) -> $g")
 
-        val c1 = stackC.getNode().getSucc(PTAField(3030, 8))
-        val c2 = stackC.getNode().getSucc(PTAField(3040, 8))
-        val c3 = stackC.getNode().getSucc(PTAField(3048, 8))
-        val c4 = stackC.getNode().getSucc(PTAField(3056, 8))
+        val c1 = stackC.getNode().getSucc(PTAField(PTAOffset(3030), 8))
+        val c2 = stackC.getNode().getSucc(PTAField(PTAOffset(3040), 8))
+        val c3 = stackC.getNode().getSucc(PTAField(PTAOffset(3048), 8))
+        val c4 = stackC.getNode().getSucc(PTAField(PTAOffset(3056), 8))
         Assertions.assertEquals(true,  c1 == c2 && c2 == c3 && c3 == c4 && c4 != null)
     }
 
@@ -627,8 +628,8 @@ class MemoryMemcpyTest {
         srcNode.mkLink(8, 8, n2.createCell(0))
         srcNode.mkLink(16, 8, n3.createCell(0))
 
-        g.setRegCell(r2, srcNode.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r1, dstNode.createSymCell(PTASymOffset(0)))
+        g.setRegCell(r2, srcNode.createSymCell(0))
+        g.setRegCell(r1, dstNode.createSymCell(0))
 
         val scalars = ScalarDomain(sbfTypesFac)
         val r3 = Value.Reg(SbfRegister.R3_ARG)
@@ -692,8 +693,8 @@ class MemoryMemcpyTest {
         stackC.getNode().mkLink(4040, 8, n1.createCell(0))
         stackC.getNode().mkLink(4048, 8, n2.createCell(0))
         stackC.getNode().mkLink(4056, 8, n3.createCell(0))
-        g.setRegCell(r2, stackC.getNode().createSymCell(PTASymOffset(4040)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, stackC.getNode().createSymCell(4040))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
@@ -771,8 +772,8 @@ class MemoryMemcpyTest {
         stackC.getNode().mkLink(4040, 8, dstNode.createCell(0))
         dstNode.mkLink(0, 8, n5.createCell(0))
 
-        g.setRegCell(r1, dstNode.createSymCell(PTASymOffset(4)))
-        g.setRegCell(r2, stackC.getNode().createSymCell(PTASymOffset(3896)))
+        g.setRegCell(r1, dstNode.createSymCell(4))
+        g.setRegCell(r2, stackC.getNode().createSymCell(3896))
 
         val scalars = ScalarDomain(sbfTypesFac)
         // memcpy(r1, r2, 24)
@@ -839,8 +840,8 @@ class MemoryMemcpyTest {
         stackC.getNode().mkLink(4056, 8, n3.createCell(0)) /*4*/
         stackC.getNode().mkLink(4060, 8, n6.createCell(0)) /*5*/ // overlap 4 and 5
 
-        g.setRegCell(r2, stackC.getNode().createSymCell(PTASymOffset(4040)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, stackC.getNode().createSymCell(4040))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
@@ -910,8 +911,8 @@ class MemoryMemcpyTest {
         stackC.getNode().mkLink(4048, 8, n2.createCell(0)) /*3*/ // overlap 2 and 3
         stackC.getNode().mkLink(4056, 8, n3.createCell(0)) /*4*/
 
-        g.setRegCell(r2, stackC.getNode().createSymCell(PTASymOffset(4040)))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(3040)))
+        g.setRegCell(r2, stackC.getNode().createSymCell(4040))
+        g.setRegCell(r1, stackC.getNode().createSymCell(3040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))

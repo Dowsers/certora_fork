@@ -48,17 +48,26 @@ interface TACMemSplitter {
     fun getTACMemoryFromSummary(locInst: LocatedSbfInstruction): List<SummaryArgInfo>?
 
 
-    /** class to model in TAC memory load and store instructions
-     *  @param variable: TAC variable that models the de-referenced memory location. It can be a scalar or a byteMap
-     *  @param locationsToHavoc is the list of scalars or byte map indexes to be havoc
+    /** Class to model in TAC memory load and store instructions **/
+    sealed class LoadOrStoreInfo
+    /**
+     *  @param variables: map stack offsets to TAC variables. These offsets are relative to `r10`.
+     *  Therefore, they are always negative offsets.
+     *  @param locationsToHavoc is the scalars or byte map indexes to be havoc
      **/
-    data class LoadOrStoreInfo(val variable: TACVariable,
-                               val locationsToHavoc: HavocMemLocations)
+    data class StackLoadOrStoreInfo(val variables: Map<PTAOffset, TACByteStackVariable>,
+                                    val locationsToHavoc: HavocMemLocations): LoadOrStoreInfo()
+    /**
+     *  @param variable: TAC variable that models the de-referenced memory location.
+     *  @param locationsToHavoc is the scalars or byte map indexes to be havoc
+     **/
+    data class NonStackLoadOrStoreInfo(val variable: TACByteMapVariable,
+                                       val locationsToHavoc: HavocMemLocations): LoadOrStoreInfo()
 
     /**
      * class to model that (*[reg]+[offset]) is mapped to [variable] and has type [type]
      */
-    data class SummaryArgInfo(val reg: SbfRegister, val offset: Long, val width: Byte, val allocatedSpace: ULong,
+    data class SummaryArgInfo(val reg: SbfRegister, val offset: PTAOffset, val width: Byte, val allocatedSpace: ULong,
                               val type: MemSummaryArgumentType, val variable: TACVariable)
     /**
      * class to model in TAC memory instructions: `sol_memcpy_`, `sol_memmove_`, `sol_memcmp_`, or `sol_memset_`
@@ -77,19 +86,29 @@ interface TACMemSplitter {
 
     /** class to keep track which TAC variables should be havoc **/
     sealed class HavocMemLocations
-    data class HavocScalars(val vars: List<TACByteStackVariable>): HavocMemLocations()
-    data class HavocMapBytes(val fields: List<PTAOffset>): HavocMemLocations()
+
+    /**
+     *  This class contains the list of stack variables that should be havoced in case they are used later.
+     *
+     *  However, there is no need to havoc stack locations because the pointer analysis would throw an exception if
+     *  any of these stack locations corresponding to these variables are actually accessed.
+     *
+     *  For now, we still havoc them but the TAC optimizations should remove them since they are dead.
+     */
+    data class HavocScalars(val vars: Map<PTAOffset, List<TACByteStackVariable>>): HavocMemLocations()
+    data class HavocMapBytes(val vars: List<PTAOffset>): HavocMemLocations()
+    data class StackSlice(val lb: Long, val ub: Long)
 
     /**
      *  Transfer memory from stack to stack
      *
-     *  @property sourceRange is a pair of lowest and highest offsets being copied from the stack.
-     *  @property destinationRange is a pair of lowest and highest offsets being copied to the stack.
+     *  @property source is a map from stack offsets to slices copied from the stack.
+     *  @property destination is a map from stack offsets to slices being overwritten.
      *  @property length is the number of bytes being copied.
      **/
     class StackMemTransferInfo(
-        val sourceRange: Pair<Long, Long>,
-        val destinationRange: Pair<Long, Long>,
+        val source: Map<PTAOffset, StackSlice>,
+        val destination: Map<PTAOffset, StackSlice>,
         val length: Long,
         val locationsToHavoc: HavocScalars): MemTransferInfo()
 
@@ -107,7 +126,7 @@ interface TACMemSplitter {
      */
     class MixedRegionsMemTransferInfo (
         val byteMap: TACByteMapVariable,
-        val stackOpRange: Pair<Long, Long>,
+        val stack: Map<PTAOffset, StackSlice>,
         /// To know the direction of the transfer. If true then from non-stack to stack
         val isDestStack: Boolean,
         val length: Long,
@@ -142,8 +161,8 @@ interface TACMemSplitter {
     class StackMemCmpInfo (
         val op1: List<TACByteStackVariable>,
         val op2: List<TACByteStackVariable>,
-        val op1Range: Pair<Long, Long>,  // for generating TAC metadata
-        val op2Range: Pair<Long, Long>,  // for generating TAC metadata
+        val op1Range: StackSlice,  // for generating TAC metadata
+        val op2Range: StackSlice,  // for generating TAC metadata
         val length: Long,
         val wordSize: Byte
     ): MemCmpInfo()  {
@@ -182,7 +201,7 @@ interface TACMemSplitter {
         val byteMap: TACByteMapVariable,
         val scalarsReg: SbfRegister,
         val byteMapReg: SbfRegister,
-        val stackOpRange: Pair<Long, Long>?,  // for generating TAC metadata
+        val stackOpRange: StackSlice?,  // for generating TAC metadata
         val length: Long,
         val wordSize: Byte
     ): MemCmpInfo()  {
@@ -203,7 +222,7 @@ interface TACMemSplitter {
     object UnsupportedMemCmpInfo: MemCmpInfo()
 
     /** Class to represent a memset on the stack **/
-    class StackZeroMemsetInfo(val stackOpRange: Pair<Long, Long>, val length: Long): MemsetInfo()
+    class StackZeroMemsetInfo(val stackOpRange: StackSlice, val length: Long): MemsetInfo()
 
     /** Class to represent a memset on a non-stack memory region **/
     class NonStackMemsetInfo(val byteMap: TACByteMapVariable, val value: Long, val length: Long): MemsetInfo()

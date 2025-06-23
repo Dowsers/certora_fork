@@ -231,11 +231,12 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
             cmds.add(Debug.startFunction("init_${gv.name}"))
             val loadOrStoreInfo = mem.getTACMemory(locInst)
             check(loadOrStoreInfo != null) {"addGlobalInitializers cannot get PTA info from $locInst"}
+            check(loadOrStoreInfo is TACMemSplitter.NonStackLoadOrStoreInfo) {"addGlobalInitializers expects a byte map at $locInst"}
+
             val byteMap = loadOrStoreInfo.variable
-            check(byteMap is TACByteMapVariable) {"addGlobalInitializers expects a byte map at $locInst instead of $byteMap"}
             val locVar = mkFreshIntVar()
             cmds.add(assign(locVar, exprBuilder.mkConst(gv.address).asSym()))
-            val offsets = values.mapIndexed { index, _ -> (index * stride).toLong()  }
+            val offsets = List(values.size) { index -> PTAOffset((index * stride).toLong())  }
             val storedValues = values.map { exprBuilder.mkConst(it)}
             cmds.addAll(mapStores(byteMap, locVar, offsets, storedValues))
             cmds.add(Debug.endFunction("init_${gv.name}"))
@@ -268,10 +269,12 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
 
     /**
      *  Add extra assumptions based on memory layout:
-     *        ----------------------------------------------------------------
-     *       |      CODE    |       STACK        |      HEAP    |  INPUT   |
-     *        ----------------------------------------------------------------
-     *       0x100000000    0x200000000          0x30000000     0x40000000        ?
+     *  ```
+     *        ---------------------------------------------------------------------
+     *       |      CODE    |       STACK        |      HEAP    |  INPUT           |
+     *        ---------------------------------------------------------------------
+     *       0x100000000    0x200000000          0x30000000     0x40000000         ?
+     *  ```
      **/
     fun addMemoryLayoutAssumptions(ptr: TACSymbol.Var, region: SbfType<TNumAdaptiveScalarAnalysis, TOffsetAdaptiveScalarAnalysis>?): List<TACCmd.Simple> {
 
@@ -622,13 +625,13 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
                      *   REVISIT: The use of `z` instead of `z_int` in `b = (z >= 2^64)` is sound because we are using
                      *   256-bit TAC registers. However, once we move to 64-bit TAC registers we will need to use `z_int`
                      **/
-                    newCmds.add(Debug.externalCall("promoted_overflow_check"))
+                    newCmds += Debug.externalCall("promoted_overflow_check")
                     translateCond(overflowCond, bitwidth = 64)
                 }  else {
                     translateCond(inst.cond)
                 }
-                newCmds.add(cmd)
-                newCmds.add(TACCmd.Simple.JumpiCmd(trueTargetNBId, falseTargetNBId, cmd.lhs))
+                newCmds += cmd
+                newCmds += TACCmd.Simple.JumpiCmd(trueTargetNBId, falseTargetNBId, cmd.lhs)
                 return newCmds
             }
         }
@@ -636,44 +639,72 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
 
     /** Emit TAC code for memcpy from non-stack to non-stack **/
     private fun memcpyNonStackToNonStack(info: TACMemSplitter.NonStackMemTransferInfo): List<TACCmd.Simple> {
-        val dstOffsetSym = exprBuilder.mkVar(SbfRegister.R1_ARG)
-        val srcOffsetSym = exprBuilder.mkVar(SbfRegister.R2_ARG)
-        val length = info.length
-        val lengthSym = if (length == null) {
+        val dstReg = exprBuilder.mkVar(SbfRegister.R1_ARG)
+        val srcReg = exprBuilder.mkVar(SbfRegister.R2_ARG)
+        val len = info.length
+        val lenS = if (len == null) {
             exprBuilder.mkVar(SbfRegister.R3_ARG)
         } else {
-            exprBuilder.mkConst(length)
+            exprBuilder.mkConst(len)
         }
-        val src = info.source
-        val dst = info.destination
+        val srcV = info.source
+        val dstV = info.destination
 
-        val cmds = mutableListOf(
-            Debug.startFunction("memcpy","(dst=nonStack, src=nonStack, len=${info.length})")
-        )
-        cmds.addAll(havocByteMapLocation(info.locationsToHavoc.fields, dst, exprBuilder.mkVar(SbfRegister.R1_ARG)))
-        cmds.add(TACCmd.Simple.ByteLongCopy(dstOffsetSym, srcOffsetSym, lengthSym, dst.tacVar, src.tacVar))
-        cmds.add(Debug.endFunction("memcpy"))
+        val cmds = mutableListOf<TACCmd.Simple>()
+        cmds += Debug.startFunction("memcpy","(dst=nonStack, src=nonStack, len=$len)")
+        cmds += havocByteMapLocation(info.locationsToHavoc.vars, dstV, dstReg)
+        cmds += TACCmd.Simple.ByteLongCopy(dstReg, srcReg, lenS, dstV.tacVar, srcV.tacVar)
+        cmds += Debug.endFunction("memcpy")
         return cmds
     }
 
     /** Emit TAC code for memcpy from stack to stack **/
     private fun memcpyStackToStack(info: TACMemSplitter.StackMemTransferInfo): List<TACCmd.Simple> {
         val len = info.length
-        val srcRange = info.sourceRange
-        val dstRange = info.destinationRange
+        val srcRange = info.source
+        val dstRange = info.destination
+        val dstReg = exprBuilder.mkVar(SbfRegister.R1_ARG).asSym()
+        val srcReg = exprBuilder.mkVar(SbfRegister.R2_ARG).asSym()
+        val zeroC = exprBuilder.ZERO.asSym()
 
-        val cmds = mutableListOf(
-            Debug.startFunction("memcpy","(dst=Stack$dstRange, src=Stack$srcRange, len=$len)")
-        )
-        cmds.addAll(havocScalars(info.locationsToHavoc.vars.map{ it.tacVar }))
-        for (i in 0 until len) {
-            val srcOffset = srcRange.first + i
-            val dstOffset = dstRange.first + i
-            val srcBV = vFac.getByteStackVar(srcOffset)
-            val dstBV = vFac.getByteStackVar(dstOffset)
-            cmds.add(assign(dstBV.tacVar, srcBV.tacVar.asSym()))
+        val cmds = mutableListOf<TACCmd.Simple>()
+        cmds += Debug.startFunction("memcpy","(dst=Stack$dstRange, src=Stack$srcRange, len=$len)")
+
+        val havocMap = info.locationsToHavoc.vars
+        when (havocMap.size) {
+            0 -> {}
+            1 -> cmds += havocScalars(havocMap.toList().single().second)
+            else -> cmds += weakHavocScalars(dstReg, zeroC, havocMap)
         }
-        cmds.add(Debug.endFunction("memcpy"))
+
+        if (srcRange.size == 1 && dstRange.size == 1) {
+            // common case
+            val srcSlice = srcRange.toList().single().second
+            val dstSlice = dstRange.toList().single().second
+            for (i in 0 until len) {
+                val srcV = vFac.getByteStackVar(PTAOffset(srcSlice.lb + i)).tacVar
+                val dstV = vFac.getByteStackVar(PTAOffset(dstSlice.lb + i)).tacVar
+                cmds += assign(dstV, srcV.asSym())
+            }
+        } else {
+            for (i in 0 until len) {
+                for ((srcOffset, srcSlice) in srcRange) {
+                    for ((dstOffset, dstSlice) in dstRange) {
+                        val srcV = vFac.getByteStackVar(PTAOffset(srcSlice.lb + i)).tacVar
+                        val dstV = vFac.getByteStackVar(PTAOffset(dstSlice.lb + i)).tacVar
+                        cmds += weakAssign(
+                            dstV,
+                            TACExpr.BinBoolOp.LAnd(
+                                pointsToStack(srcReg, zeroC, srcOffset),
+                                pointsToStack(dstReg, zeroC, dstOffset)
+                            ),
+                            srcV.asSym()
+                        )
+                    }
+                }
+            }
+        }
+        cmds += Debug.endFunction("memcpy")
         return cmds
     }
 
@@ -681,19 +712,31 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
     private fun memcpyNonStackToStack(info: TACMemSplitter.MixedRegionsMemTransferInfo): List<TACCmd.Simple> {
         check(info.isDestStack) {"precondition for memcpyNonStackToStack"}
 
-        val dstRange = info.stackOpRange
+        val dstRange = info.stack
+        val len = info.length
+        val srcReg = exprBuilder.mkVar(SbfRegister.R2_ARG)
+        val dstReg = exprBuilder.mkVar(SbfRegister.R1_ARG).asSym()
+        val zeroC = exprBuilder.ZERO.asSym()
 
-        val cmds = mutableListOf(
-            Debug.startFunction("memcpy", "(dst=Stack${info.stackOpRange}, src=non-stack, len=${info.length})")
-        )
-        cmds.addAll(havocScalars((info.locationsToHavoc as TACMemSplitter.HavocScalars).vars.map{ it.tacVar }))
-        val byteVarsAtSrc = mapLoads(info.byteMap, exprBuilder.mkVar(SbfRegister.R2_ARG), 1, info.length, cmds)
-        byteVarsAtSrc.forEachIndexed { i, srcV ->
-            val dstOffset = dstRange.first + i
-            val dstBV = vFac.getByteStackVar(dstOffset)
-            cmds.add(assign(dstBV.tacVar, srcV.asSym()))
+        val cmds = mutableListOf<TACCmd.Simple>()
+        cmds += Debug.startFunction("memcpy", "(dst=Stack$dstRange, src=non-stack, len=$len)")
+
+        val havocMap = (info.locationsToHavoc as TACMemSplitter.HavocScalars).vars
+        when (havocMap.size) {
+            0 -> {}
+            1 -> cmds += havocScalars(havocMap.toList().single().second)
+            else -> cmds += weakHavocScalars(dstReg, zeroC, havocMap)
         }
-        cmds.add(Debug.endFunction("memcpy"))
+
+        val byteVarsAtSrc = mapLoads(info.byteMap, srcReg, 1, len, cmds)
+        // for each destination byte we create an ite with the old and new value from the source map
+        byteVarsAtSrc.forEachIndexed { i, srcV ->
+            for ( (dstOffset, dstSlice) in dstRange) {
+                val dstV = vFac.getByteStackVar(PTAOffset(dstSlice.lb + i)).tacVar
+                cmds += weakAssign(dstV, pointsToStack(dstReg, zeroC, dstOffset), srcV.asSym())
+            }
+        }
+        cmds += Debug.endFunction("memcpy")
         return cmds
     }
 
@@ -701,19 +744,27 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
     private fun memcpyStackToNonStack(info: TACMemSplitter.MixedRegionsMemTransferInfo): List<TACCmd.Simple> {
         check(!info.isDestStack) {"precondition for memcpyStackToNonStack"}
 
-        val srcRange = info.stackOpRange
+        val srcRange = info.stack
         val len = info.length
+        val srcReg = exprBuilder.mkVar(SbfRegister.R2_ARG).asSym()
+        val dstReg = exprBuilder.mkVar(SbfRegister.R1_ARG)
+        val zeroC = exprBuilder.ZERO.asSym()
 
-        val cmds  = mutableListOf(
-            Debug.startFunction("memcpy", "(dst=non-stack, src=Stack${info.stackOpRange}, len=${info.length})")
-        )
-        cmds.addAll(havocByteMapLocation((info.locationsToHavoc as TACMemSplitter.HavocMapBytes).fields, info.byteMap, exprBuilder.mkVar(SbfRegister.R1_ARG)))
+        val cmds = mutableListOf<TACCmd.Simple>()
+        cmds += Debug.startFunction("memcpy", "(dst=non-stack, src=Stack$srcRange, len=$len)")
+        cmds += havocByteMapLocation((info.locationsToHavoc as TACMemSplitter.HavocMapBytes).vars, info.byteMap, exprBuilder.mkVar(SbfRegister.R1_ARG))
+        // for each source byte we create an ite to resolve the actual byte and stores in the destination map
         for (i in 0 until len) {
-            val srcOffset = srcRange.first + i
-            val srcBV = vFac.getByteStackVar(srcOffset)
-            cmds.addAll(mapStores(info.byteMap, exprBuilder.mkVar(SbfRegister.R1_ARG), i, srcBV.tacVar))
+            // create an ite that accesses to the right byte at the source
+            val stackLocs = srcRange.map {
+                it.key to vFac.getByteStackVar(PTAOffset(it.value.lb + i))
+            }.toMap()
+            val srcBV = mkFreshIntVar()
+            cmds += assign(srcBV, resolveStackAccess(srcReg, zeroC, stackLocs))
+            // store in the destination map
+            cmds += mapStores(info.byteMap, dstReg, PTAOffset(i), srcBV)
         }
-        cmds.add(Debug.endFunction("memcpy"))
+        cmds += Debug.endFunction("memcpy")
         return cmds
     }
 
@@ -878,7 +929,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
             }
         val cmds = mutableListOf<TACCmd.Simple>()
         for (i in 0 until len) {
-            cmds.addAll(mapStores(mapV, exprBuilder.mkVar(SbfRegister.R1_ARG), i, valueS))
+            cmds.addAll(mapStores(mapV, exprBuilder.mkVar(SbfRegister.R1_ARG), PTAOffset(i), valueS))
         }
         return cmds
     }
@@ -909,7 +960,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
 
                     val cmds = mutableListOf(Debug.startFunction("memset", "(Stack($range), 0)"))
                     for (i in 0 until len) {
-                        val offset = range.first + i
+                        val offset = PTAOffset(range.lb + i)
                         val pv = vFac.getByteStackVar(offset)
                         cmds.add(assign(pv.tacVar, exprBuilder.ZERO.asSym()))
                     }
@@ -1396,60 +1447,157 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
         }
     }
 
+    /**
+     * Return TAC expression `base + o == r10 + stackOffset`
+     * Precondition: [stackOffset] is negative because stack grows downward.
+     **/
+    fun pointsToStack(base: TACExpr.Sym.Var,
+                      o: TACExpr.Sym.Const,
+                      stackOffset: PTAOffset): TACExpr {
+        val stackPtr = exprBuilder.mkVar(SbfRegister.R10_STACK_POINTER).asSym()
+        check(stackOffset <= 0) {"Precondition of pointsToStack failed"}
+        return exprBuilder.mkBinRelExp(
+            CondOp.EQ,
+            if (o.s.value == BigInteger.ZERO) { base } else { TACExpr.Vec.Add(listOf(base, o))},
+            TACExpr.BinOp.Sub(stackPtr, exprBuilder.mkConst(-stackOffset.v).asSym())
+        )
+    }
+
+    /**
+     * Assume that [stackLocs] = `[o1->v1, o2->v2, o3->v3]`
+     *
+     * Then, it returns the ITE-expression:
+     * ```
+     * ite(base + o == r10 + o1,
+     *     v1,
+     *     ite(base + o == r10 + o2,
+     *         v2,
+     *         v3
+     *     )
+     * )
+     * ```
+     */
+    private fun resolveStackAccess(base: TACExpr.Sym.Var, o: TACExpr.Sym.Const,
+                                   stackLocs : Map<PTAOffset, TACByteStackVariable>): TACExpr {
+        check(stackLocs.isNotEmpty()) {"resolveStackAccess does not expect an empty map"}
+        val reversedStackLocs = stackLocs.toList().reversed()
+        val initialExpr: TACExpr = reversedStackLocs.first().second.tacVar.asSym()
+        return reversedStackLocs
+            .drop(1)
+            .fold(initialExpr) { acc, (offset, stackVar) ->
+                TACExpr.TernaryExp.Ite(
+                    pointsToStack(base, o, offset),
+                    stackVar.tacVar.asSym(),
+                    acc
+                )
+            }
+    }
+
+    /**
+     * Emit TAC to model the read from ([base] + [o])
+     */
+    private fun stackLoad(base: TACExpr.Sym.Var, o: TACExpr.Sym.Const,
+                          stackLocs : Map<PTAOffset, TACByteStackVariable>,
+                          lhs: TACSymbol.Var): TACCmd.Simple.AssigningCmd =
+        assign(lhs, resolveStackAccess(base, o, stackLocs))
+
+    /**
+     *  Emit TAC to model writing [value] to ([base] + [o])
+     *
+     *  Assume that [stackLocs] = `[o1->v1, o2->v2]`
+     *
+     *  Then, it emits the following TAC:
+     *
+     *  ```
+     *  v1 := ite(base + o == r10 + o1, value, v1)
+     *  v2 := ite(base + o == r10 + o2, value, v2)
+     *  ```
+     */
+    private fun stackStore(base: TACExpr.Sym.Var, o: TACExpr.Sym.Const,
+                           stackLocs : Map<PTAOffset, TACByteStackVariable>,
+                           value: TACExpr): List<TACCmd.Simple> {
+        val cmds = mutableListOf<TACCmd.Simple>()
+        if (stackLocs.size == 1) {
+            val targetVar = stackLocs.toList().single().second.tacVar
+            cmds += assign(targetVar, value)
+        } else {
+            for ((offset, stackVar) in stackLocs) {
+                val targetVar = stackVar.tacVar
+                cmds += weakAssign(targetVar, pointsToStack(base, o, offset), value)
+            }
+        }
+        return cmds
+    }
+
     private fun translateMem(locInst: LocatedSbfInstruction): List<TACCmd.Simple> {
         val inst = locInst.inst
         check(inst is SbfInstruction.Mem) {"TAC translateMem expects memory instruction instead of $inst"}
-       //val locInst = LocatedSbfInstruction(bb.getLabel(), SbfInstructionAsRef(inst))
         val loadOrStore = mem.getTACMemory(locInst)
         return if (loadOrStore == null) {
             /* The instruction is unreachable */
             unreachable(inst)
         } else {
-            val memVar = loadOrStore.variable
-            if (memVar is TACByteStackVariable) {
-                /* scalar variable */
-                if (inst.isLoad) {
-                    val lhs = exprBuilder.mkVar((inst.value as Value.Reg).r)
-                    listOf(
-                        assign(lhs, memVar.tacVar.asSym())
-                    )
-                } else {
+            when (loadOrStore) {
+                is TACMemSplitter.StackLoadOrStoreInfo -> {
                     val newCmds = mutableListOf<TACCmd.Simple>()
-                    if (SolanaConfig.UsePTA.get()) {
-                        // havoc any possible overlaps
-                        val scalarsToHavoc = loadOrStore.locationsToHavoc
-                        check(scalarsToHavoc is TACMemSplitter.HavocScalars) { "TAC translateMem expects HavocScalars" }
-                        newCmds.addAll(havocScalars(scalarsToHavoc.vars.map { it.tacVar }))
+                    val base = exprBuilder.mkVar((inst.access.baseReg).r).asSym()
+                    val offset = exprBuilder.mkConst(inst.access.offset.toLong()).asSym()
+                    if (inst.isLoad) {
+                       newCmds += stackLoad(
+                            base,
+                            offset,
+                            loadOrStore.variables,
+                            exprBuilder.mkVar((inst.value as Value.Reg).r)
+                        )
+                    } else {
+                        if (SolanaConfig.UsePTA.get()) {
+                            // havoc any possible overlaps
+                            val scalarsToHavoc = loadOrStore.locationsToHavoc
+                            check(scalarsToHavoc is TACMemSplitter.HavocScalars) { "TAC translateMem expects HavocScalars" }
+
+                            val havocMap = scalarsToHavoc.vars
+                            when (havocMap.size) {
+                                0 -> {}
+                                1 -> newCmds += havocScalars(havocMap.toList().single().second)
+                                else -> newCmds += weakHavocScalars(base, offset, havocMap)
+                            }
+                        }
+                        newCmds += stackStore(
+                            base,
+                            offset,
+                            loadOrStore.variables,
+                            exprBuilder.mkExprSym(inst.value)
+                        )
                     }
-                    newCmds.add(assign(memVar.tacVar, exprBuilder.mkExprSym(inst.value)))
                     newCmds
                 }
-            } else {
-                /* byte map variable */
-                check(memVar is TACByteMapVariable) {"TAC translateMem expects a byte map variable"}
-                val baseReg = inst.access.baseReg
-                val offset = inst.access.offset
-                val newCmds = mutableListOf<TACCmd.Simple>()
-                val loc = computeTACMapIndex(exprBuilder.mkVar(baseReg), offset.toLong(), newCmds)
-                if (inst.isLoad) {
-                    val lhs = exprBuilder.mkVar((inst.value as Value.Reg).r)
-                    newCmds.add(TACCmd.Simple.AssigningCmd.ByteLoad(lhs, loc, memVar.tacVar))
-                } else {
-                    if (SolanaConfig.UsePTA.get()) {
-                        // havoc any possible overlaps
-                        val mapFieldsToHavoc = loadOrStore.locationsToHavoc
-                        check(mapFieldsToHavoc is TACMemSplitter.HavocMapBytes) { "TAC translateMem expects HavocMapBytes" }
-                        newCmds.addAll(havocByteMapLocation(mapFieldsToHavoc.fields, memVar, loc))
-                    }
-                    val value = when (inst.value) {
+                is TACMemSplitter.NonStackLoadOrStoreInfo -> {
+                    /* byte map variable */
+                    val memVar = loadOrStore.variable
+                    val baseReg = inst.access.baseReg
+                    val offset = inst.access.offset
+                    val newCmds = mutableListOf<TACCmd.Simple>()
+                    val loc = computeTACMapIndex(exprBuilder.mkVar(baseReg), PTAOffset(offset.toLong()), newCmds)
+                    if (inst.isLoad) {
+                        val lhs = exprBuilder.mkVar((inst.value as Value.Reg).r)
+                        newCmds.add(TACCmd.Simple.AssigningCmd.ByteLoad(lhs, loc, memVar.tacVar))
+                    } else {
+                        if (SolanaConfig.UsePTA.get()) {
+                            // havoc any possible overlaps
+                            val mapFieldsToHavoc = loadOrStore.locationsToHavoc
+                            check(mapFieldsToHavoc is TACMemSplitter.HavocMapBytes) { "TAC translateMem expects HavocMapBytes" }
+                            newCmds.addAll(havocByteMapLocation(mapFieldsToHavoc.vars, memVar, loc))
+                        }
+                        val value = when (inst.value) {
                             is Value.Imm -> { exprBuilder.mkConst(inst.value) }
                             is Value.Reg -> { exprBuilder.mkVar(inst.value) }
+                        }
+                        newCmds.add(TACCmd.Simple.AssigningCmd.ByteStore(loc, value, memVar.tacVar))
                     }
-                    newCmds.add(TACCmd.Simple.AssigningCmd.ByteStore(loc, value, memVar.tacVar))
+                    val baseRegType = regTypes.typeAtInstruction(locInst, baseReg.r)
+                    newCmds.addAll(addMemoryLayoutAssumptions(loc, baseRegType))
+                    newCmds
                 }
-                val baseRegType = regTypes.typeAtInstruction(locInst, baseReg.r)
-                newCmds.addAll(addMemoryLayoutAssumptions(loc, baseRegType))
-                newCmds
             }
         }
     }
@@ -1470,7 +1618,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
     private fun translate(locInst: LocatedSbfInstruction): List<TACCmd.Simple> {
         val inst = locInst.inst
         sbfLogger.debug {"\tTAC translation of $inst"}
-        val stmts = when (inst) {
+        val cmds = when (inst) {
             is SbfInstruction.Mem -> translateMem(locInst)
             is SbfInstruction.Bin -> translateBin(inst)
             is SbfInstruction.Un -> translateUn(inst)
@@ -1489,7 +1637,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
                 }
             }
         }
-        return addSbfAddressAsMeta(stmts, locInst)
+        return addSbfAddressAsMeta(cmds, locInst)
     }
 
     private fun translate(bb: SbfBasicBlock): List<TACCmd.Simple> {

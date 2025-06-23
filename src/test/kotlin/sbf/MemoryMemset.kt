@@ -37,7 +37,7 @@ class MemoryMemsetTest {
         check(base != lhs)
         val inst = SbfInstruction.Mem(Deref(width, base, offset, null), lhs, true, null)
         val locInst = LocatedSbfInstruction(Label.fresh(), 0, inst)
-        g.doLoad(locInst, lhs, base, offset, width, SbfType.top(), newGlobalVariableMap())
+        g.doLoad(locInst, base, SbfType.top(), newGlobalVariableMap())
         val sc = g.getRegCell(lhs)
         return sc?.getNode()
     }
@@ -73,9 +73,9 @@ class MemoryMemsetTest {
         stackC.getNode().mkLink(4040, 8, n1.createCell(0))
         stackC.getNode().mkLink(4048, 8, n2.createCell(0))
         stackC.getNode().mkLink(4056, 8, n3.createCell(0))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(4040)))
+        g.setRegCell(r1, stackC.getNode().createSymCell(4040))
 
-        val scalars = ScalarDomain(sbfTypesFac,)
+        val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r2, ScalarValue(sbfTypesFac.toNum(0UL)))
         scalars.setRegister(r3, ScalarValue(sbfTypesFac.toNum(24UL)))
         val locInst = LocatedSbfInstruction(Label.Address(0), 0, SolanaFunction.toCallInst(SolanaFunction.SOL_MEMSET))
@@ -111,7 +111,7 @@ class MemoryMemsetTest {
         stackC.getNode().mkLink(4040, 8, n1.createCell(0))
         stackC.getNode().mkLink(4048, 8, n2.createCell(0))
         stackC.getNode().mkLink(4056, 8, n3.createCell(0))
-        g.setRegCell(r1, stackC.getNode().createSymCell(PTASymOffset(4040)))
+        g.setRegCell(r1, stackC.getNode().createSymCell(4040))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r2, ScalarValue(sbfTypesFac.toNum(0UL)))
@@ -146,7 +146,7 @@ class MemoryMemsetTest {
         heapNode.mkLink(0, 8, n1.createCell(0))
         heapNode.mkLink(8, 8, n2.createCell(0))
         heapNode.mkLink(16, 8, n3.createCell(0))
-        g.setRegCell(r1, heapNode.createSymCell(PTASymOffset(0)))
+        g.setRegCell(r1, heapNode.createSymCell(0))
 
         val scalars = ScalarDomain(sbfTypesFac)
         scalars.setRegister(r2, ScalarValue(sbfTypesFac.toNum(0UL)))

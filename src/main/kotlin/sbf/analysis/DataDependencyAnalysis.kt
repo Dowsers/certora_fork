@@ -493,7 +493,7 @@ class DataDependencyAnalysis(private val target: LocatedSbfInstruction,
                     }
                 }
                 is PtrExprErrStackDeref -> {
-                    val nextState = DataDepsState(inState.flowsTo.put(StackSlotVariable(targetExp.field.offset, targetExp.field.size, vFac) , setOf(cmd)))
+                    val nextState = DataDepsState(inState.flowsTo.put(StackSlotVariable(targetExp.field.offset.v, targetExp.field.size, vFac) , setOf(cmd)))
                     analyzeCmd(nextState, cmd)
                 }
             }

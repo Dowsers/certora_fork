@@ -24,7 +24,6 @@ import sbf.disassembler.*
 import sbf.domains.MemorySummaries
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
-import sbf.domains.ConstantSbfTypeFactory
 
 class RemoveCFGDiamondsTest {
     private fun checkSelect(inst: SbfInstruction.Select, lhs: Value.Reg, cond: Condition, trueVal: Value, falseVal: Value) =

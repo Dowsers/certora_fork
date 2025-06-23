@@ -38,7 +38,6 @@ import org.jetbrains.annotations.TestOnly
 import report.CVTAlertReporter
 import report.CVTAlertSeverity
 import report.CVTAlertType
-import sbf.domains.ConstantSbfTypeFactory
 import utils.Range
 import spec.cvlast.RuleIdentifier
 import spec.rules.EcosystemAgnosticRule
@@ -192,8 +191,7 @@ private fun solanaRuleToTAC(rule: EcosystemAgnosticRule,
             sbfLogger.info { "[$target] Started whole-program memory analysis " }
 
             val start = System.currentTimeMillis()
-            val sbfTypesFac = ConstantSbfTypeFactory()
-            val analysis = WholeProgramMemoryAnalysis(analyzedProg, memSummaries, sbfTypesFac)
+            val analysis = WholeProgramMemoryAnalysis(analyzedProg, memSummaries)
             try {
                 analysis.inferAll()
             } catch (e: PointerAnalysisError) {

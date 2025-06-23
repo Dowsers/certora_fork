@@ -24,6 +24,7 @@ import sbf.disassembler.SbfRegister
 import sbf.disassembler.Label
 import sbf.support.UnknownStackContentError
 import org.junit.jupiter.api.*
+import sbf.testing.SbfTestDSL
 
 class TACMemcpyTest {
     @Test
@@ -984,4 +985,252 @@ class TACMemcpyTest {
         }
 
     }
+
+    /** `memcpy` where `src` and `dst` can be either of two stack offsets
+     *  ```
+     *  if (r4 == 0) {
+     *    r1 := r10 - 500
+     *    r2 := r10 - 100
+     *  } else {
+     *    r1 := r10 - 600
+     *    r2 := r10 - 200
+     *  }
+     *
+     *  *r2 := 42
+     *  *(r2+8) := 42
+     *  r3 := 16
+     *
+     *  memcpy(r1, r2, r3)
+     *
+     *  if (r4 == 0) {
+     *    r1 := r10 - 500
+     *  } else {
+     *    r1 := r10 - 600
+     *  }
+     *  assert(*r1 == 42)
+     *  assert(*(r1+8) == 42)
+     *  ```
+     * **/
+    @Test
+    fun test12() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(1) {
+                r2 = r10
+                r1 = r10
+                br(CondOp.EQ(r4, 0), 2, 3)
+            }
+            bb(2) {
+                BinOp.SUB(r2, 100)
+                BinOp.SUB(r1, 500)
+                goto(4)
+            }
+            bb(3) {
+                BinOp.SUB(r2, 200)
+                BinOp.SUB(r1, 600)
+                goto (4)
+            }
+            bb(4) {
+                r2[0] = 42
+                r2[8] = 42
+                r3 = 16
+                "sol_memcpy_"()
+                goto(5)
+            }
+            bb(5) {
+                br(CondOp.EQ(r4, 0), 6, 7)
+            }
+            bb(6) {
+                r3 = r10
+                BinOp.SUB(r3, 500)
+                goto(8)
+            }
+            bb(7) {
+                r3 = r10
+                BinOp.SUB(r3, 600)
+                goto(8)
+            }
+            bb(8) {
+                r4 = r3[0]
+                assert(CondOp.EQ(r4, 42))
+                r4 = r3[8]
+                assert(CondOp.EQ(r4, 42))
+                exit()
+            }
+        }
+
+        cfg.lowerBranchesIntoAssume()
+        cfg.normalize()
+        cfg.verify(true)
+
+        ConfigScope(SolanaConfig.OptimisticPTAOverlaps, true).use {
+            ConfigScope(SolanaConfig.AddMemLayoutAssumptions, false).use {
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
+        }
+
+    }
+
+    /** `memcpy` from heap to two possible stack offsets
+     *  ```
+     *  r0 := malloc(16)
+     *  r2 := r0
+     *  if (r4 == 0) {
+     *    r1 := r10 - 500
+     *  } else {
+     *    r1 := r10 - 600
+     *  }
+     *
+     *  *r2 := 42
+     *  *(r2+8) := 42
+     *  r3 := 16
+     *
+     *  memcpy(r1, r2, r3)
+     *
+     *  if (r4 == 0) {
+     *    r1 := r10 - 500
+     *  } else {
+     *    r1 := r10 - 600
+     *  }
+     *
+     *  assert(*r1 == 42)
+     *  assert(*(r1+8) == 42)
+     *  ```
+     * **/
+    @Test
+    fun test13() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(1) {
+                r1 = 16
+                "__rust_alloc" ()
+                r2 = r0
+                r1 = r10
+                br(CondOp.EQ(r4, 0), 2, 3)
+            }
+            bb(2) {
+                BinOp.SUB(r1, 500)
+                goto(4)
+            }
+            bb(3) {
+                BinOp.SUB(r1, 600)
+                goto (4)
+            }
+            bb(4) {
+                r2[0] = 42
+                r2[8] = 42
+                r3 = 16
+                "sol_memcpy_"()
+                goto(5)
+            }
+            bb(5) {
+                br(CondOp.EQ(r4, 0), 6, 7)
+            }
+            bb(6) {
+                r3 = r10
+                BinOp.SUB(r3, 500)
+                goto(8)
+            }
+            bb(7) {
+                r3 = r10
+                BinOp.SUB(r3, 600)
+                goto(8)
+            }
+            bb(8) {
+                r4 = r3[0]
+                assert(CondOp.EQ(r4, 42))
+                r4 = r3[8]
+                assert(CondOp.EQ(r4, 42))
+                assert(CondOp.EQ(r4, 42))
+                exit()
+            }
+        }
+
+        cfg.lowerBranchesIntoAssume()
+        cfg.normalize()
+        cfg.verify(true)
+
+        ConfigScope(SolanaConfig.OptimisticPTAOverlaps, true).use {
+            ConfigScope(SolanaConfig.AddMemLayoutAssumptions, false).use {
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
+        }
+    }
+
+
+    /** Pretty similar to test13 but with an overlap **/
+    @Test
+    fun test14() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(1) {
+                r1 = 16
+                "__rust_alloc" ()
+                r2 = r0
+                r1 = r10
+                r1[-504] = 42  /// <--- should be havoc during memcpy
+                br(CondOp.EQ(r4, 0), 2, 3)
+            }
+            bb(2) {
+                BinOp.SUB(r1, 500)
+                goto(4)
+            }
+            bb(3) {
+                BinOp.SUB(r1, 600)
+                goto (4)
+            }
+            bb(4) {
+                r2[0] = 42
+                r2[8] = 42
+                r3 = 16
+                "sol_memcpy_"()
+                goto(5)
+            }
+            bb(5) {
+                br(CondOp.EQ(r4, 0), 6, 7)
+            }
+            bb(6) {
+                r3 = r10
+                BinOp.SUB(r3, 500)
+                goto(8)
+            }
+            bb(7) {
+                r3 = r10
+                BinOp.SUB(r3, 600)
+                goto(8)
+            }
+            bb(8) {
+                r4 = r3[0]
+                assert(CondOp.EQ(r4, 42))
+                r4 = r3[8]
+                assert(CondOp.EQ(r4, 42))
+                r4 = r10[-504] // <--- PTA ERROR
+                assert(CondOp.EQ(r4, 42))
+                exit()
+            }
+        }
+
+        cfg.lowerBranchesIntoAssume()
+        cfg.normalize()
+        cfg.verify(true)
+
+        ConfigScope(SolanaConfig.OptimisticPTAOverlaps, true).use {
+            ConfigScope(SolanaConfig.AddMemLayoutAssumptions, false).use {
+                var exception = false
+                try {
+                    toTAC(cfg)
+                }
+                catch (e: UnknownStackContentError) {
+                    println("Test failed as expected because $e")
+                    exception = true
+                }
+                Assertions.assertEquals(true, exception)
+            }
+        }
+    }
+
+
+
+
 }

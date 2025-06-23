@@ -25,9 +25,21 @@ import datastructures.stdcollections.*
 import sbf.cfg.SbfInstruction
 import sbf.domains.INumValue
 import sbf.domains.IOffset
+import sbf.domains.PTAOffset
 
 fun assign(lhs: TACSymbol.Var, rhs: TACExpr): TACCmd.Simple.AssigningCmd {
     return TACCmd.Simple.AssigningCmd.AssignExpCmd(lhs,rhs)
+}
+
+fun weakAssign(lhs: TACSymbol.Var, cond: TACExpr, rhs: TACExpr):  TACCmd.Simple.AssigningCmd {
+   return assign(
+        lhs,
+        TACExpr.TernaryExp.Ite(
+            cond,
+            rhs,
+            lhs.asSym()
+        )
+    )
 }
 
 context(SbfCFGToTAC<TNum, TOffset>)
@@ -38,11 +50,36 @@ fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>> unreachable(inst: SbfIn
     )
 }
 
-/** Return TAC instructions that havoc [scalars] variables **/
-fun havocScalars(scalars: List<TACSymbol.Var>): List<TACCmd.Simple> {
+/**
+ *  Return TAC instructions that havoc [scalars] variables.
+ *  See comments in [TACMemSplitter.HavocScalars]
+ **/
+fun havocScalars(scalars: List<TACByteStackVariable>): List<TACCmd.Simple> {
     return scalars.map {
-        TACCmd.Simple.AssigningCmd.AssignHavocCmd(it)
+        TACCmd.Simple.AssigningCmd.AssignHavocCmd(it.tacVar)
     }
+}
+
+/**
+ * Return TAC instructions that havoc TAC stack variables if [base] + [offset] points to a particular stack offset.
+ * See comments in [TACMemSplitter.HavocScalars]
+ **/
+context(SbfCFGToTAC<TNum, TOffset>)
+fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>> weakHavocScalars
+        (base: TACExpr.Sym.Var,
+         offset: TACExpr.Sym.Const,
+         stackMap: Map<PTAOffset, List<TACByteStackVariable>>): List<TACCmd.Simple> {
+    val cmds = mutableListOf<TACCmd.Simple>()
+    for ((stackOffset, stackVars) in stackMap) {
+        if (stackVars.isNotEmpty()) {
+            val tmpV = mkFreshIntVar()
+            cmds += TACCmd.Simple.AssigningCmd.AssignHavocCmd(tmpV)
+            for (stackVar in stackVars) {
+                cmds += weakAssign(stackVar.tacVar, pointsToStack(base, offset, stackOffset), tmpV.asSym())
+            }
+        }
+    }
+    return cmds
 }
 
 /**

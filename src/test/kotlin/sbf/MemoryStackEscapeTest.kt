@@ -82,7 +82,7 @@ class MemoryStackEscapeTest {
         println(sb.toString())
 
         val prog = MutableSbfCallGraph(mutableListOf(cfg), setOf("entrypoint"), globals)
-        val memAnalysis = WholeProgramMemoryAnalysis(prog, memSummaries, sbfTypesFac)
+        val memAnalysis = WholeProgramMemoryAnalysis(prog, memSummaries)
         var exception = false
         try {
             memAnalysis.inferAll()
@@ -152,7 +152,7 @@ class MemoryStackEscapeTest {
         println(sb.toString())
 
         val prog = MutableSbfCallGraph(mutableListOf(cfg), setOf("entrypoint"), globals)
-        val memAnalysis = WholeProgramMemoryAnalysis(prog, memSummaries, sbfTypesFac)
+        val memAnalysis = WholeProgramMemoryAnalysis(prog, memSummaries)
         var exception = false
         try {
             memAnalysis.inferAll()

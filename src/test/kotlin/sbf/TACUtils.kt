@@ -22,12 +22,11 @@ import sbf.analysis.WholeProgramMemoryAnalysis
 import sbf.callgraph.CVTFunction
 import sbf.callgraph.MutableSbfCallGraph
 import sbf.cfg.SbfCFG
-import sbf.domains.MemorySummaries
 import sbf.tac.sbfCFGsToTAC
 import kotlinx.coroutines.runBlocking
 import report.DummyLiveStatsReporter
 import sbf.disassembler.*
-import sbf.domains.ConstantSbfTypeFactory
+import sbf.domains.*
 import scene.SceneFactory
 import scene.source.DegenerateContractSource
 import vc.data.CoreTACProgram
@@ -59,19 +58,18 @@ object EmptyGlobalsSymbolTable: IGlobalsSymbolTable {
     ) = SbfConstantStringGlobalVariable("",0,0, "")
 }
 
-fun toTAC(cfg: SbfCFG,
-          summaryFileContents: List<String> = listOf(
-                "#[type((*i64)(r1+0):num)]", "#[type((*i64)(r1+8):num)]", "^__multi3$",
-                "#[type((*i64)(r1+0):num)]", "#[type((*i64)(r1+8):num)]", "^__udivti3$",
-                "#[type((*i64)(r1+0):num)]", "#[type((*i64)(r1+8):num)]", "^__divti3$"),
-          globals: GlobalVariableMap = newGlobalVariableMap(),
-          globalsSymbolTable: IGlobalsSymbolTable = EmptyGlobalsSymbolTable
+fun toTAC (cfg: SbfCFG,
+           summaryFileContents: List<String> = listOf(
+               "#[type((*i64)(r1+0):num)]", "#[type((*i64)(r1+8):num)]", "^__multi3$",
+               "#[type((*i64)(r1+0):num)]", "#[type((*i64)(r1+8):num)]", "^__udivti3$",
+               "#[type((*i64)(r1+0):num)]", "#[type((*i64)(r1+8):num)]", "^__divti3$"),
+           globals: GlobalVariableMap = newGlobalVariableMap(),
+           globalsSymbolTable: IGlobalsSymbolTable = EmptyGlobalsSymbolTable
 ): CoreTACProgram {
     val prog = MutableSbfCallGraph(mutableListOf(cfg), setOf(cfg.getName()), globals)
     val memSummaries = MemorySummaries.readSpecFile(summaryFileContents,"unknown")
     CVTFunction.addSummaries(memSummaries)
-    val sbfTypesFac = ConstantSbfTypeFactory()
-    val memAnalysis = WholeProgramMemoryAnalysis(prog, memSummaries, sbfTypesFac)
+    val memAnalysis = WholeProgramMemoryAnalysis(prog, memSummaries)
     memAnalysis.inferAll()
     return sbfCFGsToTAC(prog, memSummaries, globalsSymbolTable, memAnalysis.getResults())
 }
