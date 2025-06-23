@@ -156,11 +156,14 @@ commands:
             cd publish
             python3 ../scripts/certora_cli_publish.py
       - run:
-          name: Test the just now released version
+          name: Test pypi package
           command: |
             cd publish
-            chmod +x test.sh
-            ./test.sh
+            PACKAGE_NAME=$(cat PACKAGE.txt)
+            PACKAGE_VERSION=$(cat VERSION.txt | sed 's/\+.*//')
+            echo "Testing package $PACKAGE_NAME with version $PACKAGE_VERSION"
+            ../scripts/certora_cli_pypi_test.sh "$PACKAGE_NAME" "$PACKAGE_VERSION"
+
 
 jobs:
   build:
@@ -538,4 +541,3 @@ workflows:
             branches:
               ignore:
                 - *all
-                -
