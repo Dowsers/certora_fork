@@ -442,7 +442,7 @@ class TestClient(unittest.TestCase):
         suite.expect_failure(description='--compiler_map file not found',
                              run_flags=[_p('A.sol'), _p('V.vy'), '--verify', f"A:{_p('spec1.spec')}", '--compiler_map',
                                         f"{_p('A.sol')}=solc6.10"],
-                             expected='cannot match compiler to Test/CITests/test_data/V.vy from compiler_map')
+                             expected="The following files are not matched in compiler_map: ['Test/CITests/test_data/V.vy']")
         suite.expect_failure(description='--compiler_map and --vyper',
                              run_flags=[_p('A.sol'), _p('V.vy'), '--verify', f"A:{_p('spec1.spec')}", '--compiler_map',
                                         f"{_p('A.sol')}=solc6.10",
@@ -502,7 +502,7 @@ class TestClient(unittest.TestCase):
         suite.expect_failure(description="bad --solc_map",
                              run_flags=[_p('A.sol'), '--verify', f"A:{_p('spec1.spec')}",
                                         '--solc_map', f"{_p('B.sol')}=solc6.10"],
-                             expected=f'cannot match compiler to ')
+                             expected="The following files are not matched in compiler_map: ['Test/CITests/test_data/A.sol']")
         suite.expect_failure(description="not a source file",
                              run_flags=[_p('A.sol'), '--verify', f"A:{_p('spec1.spec')}",
                                         '--solc_map', f"{_p('spec1.spec')}=solc6.10,{_p('A.sol')}=solc5.11"],
@@ -518,7 +518,7 @@ class TestClient(unittest.TestCase):
         suite.expect_failure(description="Some source files do not appear in solc_map",
                              run_flags=[_p('A.sol'), _p('B.sol'), '--verify', f"A:{_p('spec1.spec')}",
                                         '--solc_map', f"{_p('A.sol')}=solc5.11"],
-                             expected='cannot match compiler to ')
+                             expected="The following files are not matched in compiler_map: ['Test/CITests/test_data/B.sol']")
         suite.expect_failure(description="A contract named B was declared twice",
                              run_flags=[f"{_p('A.sol')}:B", _p('B.sol'), '--verify', f"A:{_p('spec1.spec')}"],
                              expected='A contract named B was declared twice')
@@ -615,24 +615,24 @@ class TestClient(unittest.TestCase):
         suite.expect_failure(description="Some source files do not appear in 'solc_optimize_map'",
                              run_flags=[f"{_p('A.sol')}", f"{_p('B.sol')}", '--verify', f"A:{_p('spec1.spec')}",
                                          '--solc_optimize_map', 'A=1'],
-                             expected=f"cannot match compiler to")
+                             expected="The following files are not matched in solc_optimize_map: ['Test/CITests/test_data/B.sol']")
         suite.expect_failure(description=f"No matching for {CITests_path}/test_data/A.sol in solc_optimize_map",
                              run_flags=[f"{_p('A.sol')}", '--verify', f"A:{_p('spec1.spec')}", '--solc_optimize_map', 'C=1'],
-                             expected=f"cannot match compiler to")
+                             expected="The following files are not matched in solc_optimize_map: ['Test/CITests/test_data/A.sol']")
         suite.expect_failure(description="both 'solc_optimize' and 'solc_optimize_map'",
                              run_flags=[f"{_p('A.sol')}", '--verify', f"A:{_p('spec1.spec')}", '--solc_optimize_map',
                                         'A=1', '--solc_optimize'],
                              expected="You cannot use both 'solc_optimize' and 'solc_optimize_map' arguments")
         suite.expect_failure(description="illegal contract in solc_map",
                              run_flags=[f"{_p('A.sol')}", '--verify', f"A:{_p('spec1.spec')}", '--solc_map', 'C=solc6.10'],
-                             expected=f"cannot match compiler to")
+                             expected="The following files are not matched in compiler_map: ['Test/CITests/test_data/A.sol']")
         suite.expect_failure(description="'solc' and 'solc_map'",
                              run_flags=[f"{_p('A.sol')}", '--verify', f"A:{_p('spec1.spec')}", '--solc', 'solc6.10', '--solc_map',
                                         'C=solc6.10'],
                              expected="compiler map flags cannot be set with other compiler flags")
         suite.expect_failure(description="missing sources in solc_map",
                              run_flags=[f"{_p('A.sol')}:A", f"{_p('B.sol')}", '--verify', f"A:{_p('spec1.spec')}", '--solc_map',
-                                        'A=solc6.10'], expected=f"cannot match compiler to")
+                                        'A=solc6.10'], expected="The following files are not matched in compiler_map: ['Test/CITests/test_data/B.sol']")
         suite.expect_failure(description="illegal target contract in link",
                              run_flags=[_p('A.sol'), '--verify', f"A:{_p('spec1.spec')}", '--link', 'A:b=BB'],
                              expected="Error in linkage: link `A:b=BB`, contract BB does not exist")
