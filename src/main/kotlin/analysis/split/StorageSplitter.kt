@@ -27,10 +27,7 @@ import log.*
 import report.CVTAlertSeverity
 import report.CVTAlertType
 import report.CVTAlertReporter
-import scene.IContractClass
-import scene.IContractWithSource
-import scene.IMutableStorageInfo
-import scene.ITACMethod
+import scene.*
 import statistics.ANALYSIS_STORAGE_SUBKEY
 import statistics.ANALYSIS_SUCCESS_STATS_KEY
 import statistics.recordSuccess
@@ -42,8 +39,8 @@ import java.util.stream.Collectors
 
 /**
  * Calculates how to split storage vars (but may also split normal vars) into a few vars in order to save in packing and
- * unpacking operations. See the Storage Splitting design document [https://certora.atlassian.net/l/c/xnzCHTuJ] for
- * high level details.
+ * unpacking operations. See the Storage Splitting design document [https://www.notion.so/certora/Storage-Splitting-2-1-432dd60ee7ee44dcadd3f2a158972dd6]
+ * for high level details.
  */
 class StorageSplitter(val contract: IContractClass) {
 
@@ -107,26 +104,39 @@ class StorageSplitter(val contract: IContractClass) {
             if (entries.isEmpty()) {
                 continue
             }
-            val storageVarSet = entries.asIterable().mapToSet {
-                when (it.cmd) {
+            val (storageVars, transientVars) = entries.asIterable().partitionMap {
+                val baseVar = when(it.cmd) {
                     is TACCmd.Simple.WordStore -> it.cmd.base
                     is TACCmd.Simple.AssigningCmd.WordLoad -> it.cmd.base
                     else -> `impossible!`
                 }
+                if(TACMeta.TRANSIENT_STORAGE_KEY in baseVar.meta) { baseVar.toRight() } else { baseVar.toLeft() }
             }
-            val storageVar = storageVarSet.singleOrNull() ?: run {
+            val storageVar = storageVars.uniqueOrNull()
+            if (storageVar == null && storageVars.isNotEmpty()) {
                 recordFailure {
-                    "Multiple storage variables (${storageVarSet}) found in method $method of $contract"
+                    "Multiple storage variables (${storageVars.toSet()}) found in method $method of $contract"
+                }
+                return
+            }
+            val transientVar = transientVars.uniqueOrNull()
+            if ((transientVar == null && transientVars.isNotEmpty()) ||
+                (transientVar != null && storageVar != null && transientVar.meta[TACMeta.TRANSIENT_STORAGE_KEY] != storageVar.meta[TACMeta.STORAGE_KEY])
+            ) {
+                recordFailure {
+                    "Transient storage variables (${transientVars.toSet()}) found not agreeing with normal storage variables (${storageVars.toSet()}) in method $method of $contract"
                 }
                 return
             }
 
-            val address = storageVar.meta.find(TACMeta.STORAGE_KEY) ?: run {
-                recordFailure {
-                    "Didn't find address on variable $storageVar in $method of contract $contract"
+            val address =
+                storageVar?.meta?.find(TACMeta.STORAGE_KEY) ?: transientVar?.meta?.find(TACMeta.TRANSIENT_STORAGE_KEY)
+                ?: run {
+                    recordFailure {
+                        "Didn't find address on variable $storageVar or $transientVar in $method of contract $contract"
+                    }
+                    return
                 }
-                return
-            }
 
             if (storageAddress == null) {
                 storageAddress = address
@@ -224,8 +234,26 @@ class StorageSplitter(val contract: IContractClass) {
                     "but it is actually ${cx.contract::class}"
             }
             cx.contract.setStorageInfo(
-                StorageInfoWithReadTracker((cx.contract.storage as StorageInfoWithReadTracker).storageVariables + newStorageVars.map {
-                    it to null
+                StorageInfoWithReadTracker((cx.contract.storage as StorageInfoWithReadTracker).storageVariables + newStorageVars.mapNotNull {
+                    if(it.meta.containsKey(TACMeta.STORAGE_KEY)) {
+                        it to null
+                    } else {
+                        null
+                    }
+                })
+            )
+
+            check(cx.contract is IMutableTransientStorageInfo) {
+                "Expected the contract ${cx.contract.name} to be [IMutableTransientStorageInfo], " +
+                    "but it is actually ${cx.contract::class}"
+            }
+            cx.contract.setTransientStorageInfo(
+                StorageInfo((cx.contract.transientStorage as StorageInfo).storageVariables + newStorageVars.mapNotNull {
+                    if(it.meta.containsKey(TACMeta.TRANSIENT_STORAGE_KEY)) {
+                        it
+                    } else {
+                        null
+                    }
                 })
             )
             arrayRewriter.finalLog(badArrays)

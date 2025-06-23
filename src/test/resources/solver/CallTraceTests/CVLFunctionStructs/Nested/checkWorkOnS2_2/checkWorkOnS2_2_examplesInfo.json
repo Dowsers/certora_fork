@@ -1994,7 +1994,7 @@
                     "type": "vc.data.state.TACValue.PrimitiveValue.Bool.False"
                 },
                 {
-                    "namePrefix": "i.2367",
+                    "namePrefix": "i.2369",
                     "tag": {
                         "type": "tac.Tag.Bit256"
                     },
@@ -2005,7 +2005,7 @@
                     "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
-                    "namePrefix": "i.2368",
+                    "namePrefix": "i.2370",
                     "tag": {
                         "type": "tac.Tag.Bit256"
                     },
@@ -2349,7 +2349,8 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Const",
@@ -2655,7 +2656,8 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Var.Full",
@@ -2792,7 +2794,7 @@
                     "type": "vc.data.state.TACValue.PrimitiveValue.Bool.False"
                 },
                 {
-                    "namePrefix": "CANON21.2366",
+                    "namePrefix": "CANON21.2367",
                     "tag": {
                         "type": "tac.Tag.Bit256"
                     },
@@ -6582,7 +6584,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "1"
@@ -6635,7 +6638,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "1"
@@ -6672,7 +6676,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "8"
@@ -6724,7 +6729,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "8"
@@ -6761,7 +6767,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "1"
@@ -6814,7 +6821,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "1"
@@ -6851,7 +6859,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "5"
@@ -6903,7 +6912,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "5"
@@ -7715,7 +7725,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "1"
@@ -7767,7 +7778,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "1"
@@ -8057,7 +8069,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "3"
@@ -8109,7 +8122,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "3"
@@ -8146,7 +8160,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "2"
@@ -8195,7 +8210,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "2"
@@ -8232,7 +8248,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "7"
@@ -8284,7 +8301,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "7"
@@ -8321,7 +8339,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "6"
@@ -8370,7 +8389,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "6"
@@ -8524,7 +8544,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "1"
@@ -8576,7 +8597,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "1"
@@ -8613,7 +8635,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "0"
@@ -8662,7 +8685,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "0"
@@ -9376,7 +9400,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "4"
@@ -9425,7 +9450,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "4"
@@ -9573,7 +9599,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "5"
@@ -9626,7 +9653,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "5"
@@ -10125,7 +10153,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "5"
@@ -10177,7 +10206,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "5"
@@ -10493,7 +10523,8 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0"
+                                                "slot": "0",
+                                                "base": "STORAGE"
                                             }
                                         },
                                         "offset": "5"
@@ -10546,7 +10577,8 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 },
                                 "offset": "5"

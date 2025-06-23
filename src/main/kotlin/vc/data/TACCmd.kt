@@ -2108,7 +2108,7 @@ sealed class TACCmd : Serializable, ITACCmd {
         }
 
         // TRANSIENT STORAGE
-        @HookableOpcode("ALL_TLOAD", "AllTload", false)
+        @HookableOpcode("ALL_TLOAD", "AllTload", true)
         data class TloadCmd(
             @OpcodeOutput val lhs: TACSymbol.Var,
             @OpcodeParameter("loc") val loc: TACSymbol,
@@ -2119,7 +2119,7 @@ sealed class TACCmd : Serializable, ITACCmd {
             override fun toString(): String = super.toString() // opt out of generated toString
         }
 
-        @HookableOpcode("ALL_TSTORE", "AllTstore", false)
+        @HookableOpcode("ALL_TSTORE", "AllTstore", true)
         data class TstoreCmd(
             @OpcodeParameter("loc") val loc: TACSymbol,
             @OpcodeParameter("rhs") val rhs: TACSymbol,

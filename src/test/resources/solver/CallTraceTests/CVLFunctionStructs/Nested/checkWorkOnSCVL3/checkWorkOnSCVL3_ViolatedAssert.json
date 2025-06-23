@@ -50,7 +50,7 @@
                     "type": "java.lang.Integer",
                     "erasureStrategy": "Canonical"
                 },
-                "value": 5
+                "value": 3
             },
             {
                 "key": {

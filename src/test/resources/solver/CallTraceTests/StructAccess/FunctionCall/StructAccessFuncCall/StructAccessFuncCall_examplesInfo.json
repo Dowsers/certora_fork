@@ -331,7 +331,8 @@
                                 "storagePaths": [
                                     {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 ]
                             }
@@ -405,7 +406,8 @@
                             },
                             "value": {
                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                "slot": "0"
+                                "slot": "0",
+                                "base": "STORAGE"
                             }
                         },
                         {
@@ -1198,7 +1200,8 @@
                                 "storagePaths": [
                                     {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 ]
                             }
@@ -1260,7 +1263,8 @@
                             },
                             "value": {
                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                "slot": "0"
+                                "slot": "0",
+                                "base": "STORAGE"
                             }
                         },
                         {
@@ -1294,7 +1298,8 @@
                                 "storagePaths": [
                                     {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 ]
                             }
@@ -1356,7 +1361,8 @@
                             },
                             "value": {
                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                "slot": "0"
+                                "slot": "0",
+                                "base": "STORAGE"
                             }
                         },
                         {
@@ -1787,7 +1793,8 @@
                                 "storagePaths": [
                                     {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0"
+                                        "slot": "0",
+                                        "base": "STORAGE"
                                     }
                                 ]
                             }
@@ -1849,7 +1856,8 @@
                             },
                             "value": {
                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                "slot": "0"
+                                "slot": "0",
+                                "base": "STORAGE"
                             }
                         },
                         {
