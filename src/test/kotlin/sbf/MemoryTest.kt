@@ -901,4 +901,51 @@ class MemoryTest {
         }
     }
 
+    @Test
+    fun test19() {
+        println("====== TEST 19: reconstructFromIntegerCells =======")
+
+        val r10 = Value.Reg(SbfRegister.R10_STACK_POINTER)
+        val absVal = MemoryDomain(PTANodeAllocator(), sbfTypesFac, true)
+        val stack = absVal.getRegCell(r10, newGlobalVariableMap())
+        check(stack != null) { "memory domain cannot find the stack node" }
+        stack.getNode().setRead()
+        val g = absVal.getPTAGraph()
+        val n1 = g.mkIntegerNode()
+        n1.setRead()
+        val n2 = g.mkIntegerNode()
+        n2.setWrite()
+        val n3 = g.mkIntegerNode()
+        n3.setWrite()
+        val n4 = g.mkIntegerNode()
+        n4.setWrite()
+        stack.getNode().mkLink(4000, 8, n3.createCell(0))
+        stack.getNode().mkLink(4032, 8, n3.createCell(0))
+        stack.getNode().mkLink(4040, 4, n1.createCell(0))
+        stack.getNode().mkLink(4044, 4, n2.createCell(0))
+        stack.getNode().mkLink(4048, 8, n4.createCell(0))
+        g.setRegCell(r10,stack.getNode().createSymCell(PTAOffset(4096)))
+        sbfLogger.warn{"PTAGraph=$g" }
+        val dummyLocInst = LocatedSbfInstruction(Label.fresh(), 1, SbfInstruction.Exit())
+
+
+        /** We should reconstruct a cell from (4040,4) and (4044,4) **/
+        val c1 = g.reconstructFromIntegerCells(dummyLocInst, stack.getNode().createCell(4040), 8)
+        Assertions.assertEquals(true, c1 != null)
+        sbfLogger.warn{"ReconstructFromIntegerCells(4040,8)=$c1\nPTAGraph=$g" }
+
+        /** We should reconstruct a cell from (4048,8) **/
+        val c2 = g.reconstructFromIntegerCells(dummyLocInst, stack.getNode().createCell(4048), 4)
+        Assertions.assertEquals(true, c2 != null)
+        sbfLogger.warn{"ReconstructFromIntegerCells(4048,4)=$c2\nPTAGraph=$g" }
+
+        /** We cannot reconstruct a cell from (4064,8) **/
+        val c3 = g.reconstructFromIntegerCells(dummyLocInst, stack.getNode().createCell(4064), 8)
+        Assertions.assertEquals(true, c3 == null)
+
+        /** We cannot reconstruct a cell from (4044,8) **/
+        val c4 = g.reconstructFromIntegerCells(dummyLocInst, stack.getNode().createCell(4044), 8)
+        Assertions.assertEquals(true, c4 == null)
+    }
+
 }

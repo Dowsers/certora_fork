@@ -1218,11 +1218,10 @@ open class PTANode constructor(val id: ULong, val nodeAllocator: PTANodeAllocato
      *  Split a field F into a set of subfields F1,...,Fn extracted from other
      *
      *  This is done in five steps:
-     *  1. let Preds and Succ be the set of predecessors and the successor of F in this
+     *  1. let Succ be the set of successor of F in this
      *  2. Remove F from this
      *  3. Add F1,...,Fn in this
      *  4. Add Succ as the successor of F1,...,Fn in this
-     *  5. Add Preds as the predecessors of F1 in this
      */
     fun splitFields(other: PTANode,
                     splitPred: (PTANode, PTAField) -> Boolean,
@@ -2803,7 +2802,7 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
 
         if (isStack) {
             // Read from uninitialized stack is common due to memcpy from the input region
-            val reconstructedSuccC = reconstructIntegerCell(locInst, derefC, field.size)
+            val reconstructedSuccC = reconstructFromIntegerCells(locInst, derefC, field.size)
             when {
                 reconstructedSuccC != null -> {
                     // It's possible that the read field was marked as untracked by a previous store.
@@ -2883,7 +2882,6 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
         val inst = locInst.inst
         check(inst is SbfInstruction.Mem)
         check(inst.isLoad) {"doLoad expects a Load instead of $inst"}
-
         val field = PTAField(derefC.getOffset(), inst.access.width)
         val succC = derefC.getNode().getSucc(field)
         return if (succC == null) {
@@ -2971,24 +2969,49 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
     }
 
 
-    /** Reconstruct a cell from the overlapping cells **/
-    private fun reconstructIntegerCell(locInst: LocatedSbfInstruction, deref: PTACell, width: Short): PTASymCell? {
+    /**
+     *  Create a fresh cell for slice [deref].getOffset()..[deref].getOffset()+[width] from existing cells.
+     **/
+    @TestOnly
+    fun reconstructFromIntegerCells(locInst: LocatedSbfInstruction, deref: PTACell, width: Short): PTASymCell? {
         val derefNode= deref.getNode()
         if (derefNode.getSuccs().isEmpty()) {
             return null
         }
-        val x = FiniteInterval.mkInterval(deref.getOffset().v, width.toLong())
+
+        val slice = FiniteInterval.mkInterval(deref.getOffset().v, width.toLong())
+        val mergedSuccs = mutableListOf<PTACell>()
+        var cover = SetOfFiniteIntervals(listOf())
+
         for ((field, succC) in derefNode.getSuccs()) {
+            if (!succC.getNode().mustBeInteger()) { continue }
+
             val fieldRange =  field.toInterval()
-            if (!fieldRange.includes(x)) {
-                continue
-            }
-            return if (succC.getNode().mustBeInteger()) {
-                integerAlloc.alloc(locInst)
-            } else {
-                null
+            when {
+                fieldRange.lessThan(slice) -> { continue }
+                slice.lessThan(fieldRange) -> { break }
+                slice.includes(fieldRange) -> {
+                    cover = cover.add(fieldRange)
+                    mergedSuccs.add(succC)
+                }
+                fieldRange.includes(slice) -> {
+                    // Found a single field that fully contains the requested slice.
+                    // We could actually return `succC` but we allocate a new symbolic integer cell to
+                    // avoid creating unnecessary aliasing.
+                    return integerAlloc.alloc(locInst)
+                }
+                else -> {}
             }
         }
+
+        /// A bunch of fields together fully covered the requested slice
+        if (cover.getSingleton() == slice) {
+            return mergedSuccs.reduce { acc, cur ->
+                acc.unify(cur)
+                acc
+            }.createSymCell()
+        }
+
         return null
     }
 
