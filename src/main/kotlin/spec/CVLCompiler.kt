@@ -1667,10 +1667,9 @@ class CVLCompiler(
                 ?: error("Failed to find invariant ${cmd.id}")
 
         check(cmd.params.size == inv.params.size){ "The number of parameters of the invariant and the number of parameters of the command don't match." }
-        val havocedInvParams = cmd.params.mapIndexed { i, exp ->
-            val toHavocType = exp.getOrInferPureCVLType();
+        val havocedInvParams = inv.params.mapIndexed { i, p ->
             val havocParameterName = symbolTable.freshName("initiallyHavocedParam_${i}")
-            val (havocedInvParam, _) = allocatedTACSymbols.generateTransientUniqueCVLParam(symbolTable, havocParameterName, toHavocType)
+            val (havocedInvParam, _) = allocatedTACSymbols.generateTransientUniqueCVLParam(symbolTable, havocParameterName, p.type)
             havocedInvParam
         }
 
