@@ -129,7 +129,9 @@ data class LTACCmd(override val ptr: CmdPointer, override val cmd: TACCmd.Simple
 data class LTACSymbol(val ptr: CmdPointer, val symbol: TACSymbol) : Serializable
 
 @Treapable
-data class LTACVar(val ptr: CmdPointer, val v: TACSymbol.Var) : Serializable
+data class LTACVar(val ptr: CmdPointer, val v: TACSymbol.Var) : Serializable {
+    constructor(pair: Pair<CmdPointer, TACSymbol.Var>) : this(pair.first, pair.second)
+}
 
 data class LTACAnnotation<T: Serializable>(
     val annotation: T,
