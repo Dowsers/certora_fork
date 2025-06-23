@@ -47,9 +47,12 @@ private val logger = Logger(LoggerTypes.OVERFLOW_PATTERN_REWRITER)
  * Tries to find a recipe for this [context], looking for the patterns either before or after the operation
  * and either encoded in assume conditions or in jump conditions.
  */
-class Matcher<T : OverflowContext>(val code: CoreTACProgram, val context: T) {
+class Matcher<T : OverflowContext>(
+    val code: CoreTACProgram,
+    val context: T,
+    val useAnalysis: OverApproxUseAnalysis
+) {
     private val g = code.analysisCache.graph
-    private val useAnalysis = OverApproxUseAnalysis(code)
 
     /** Carries the information from the matching of [recipe] needed for the rewrite */
     interface Match<T : OverflowContext> {
