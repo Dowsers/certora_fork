@@ -19,7 +19,6 @@
 package vc.data
 
 import analysis.storage.DisplayPath
-import analysis.storage.StorageAnalysis.Base
 import analysis.storage.StorageAnalysisResult.AccessPaths
 import analysis.storage.singleDisplayPathOrNull
 import com.certora.collect.*
@@ -73,6 +72,7 @@ import utils.AmbiSerializable
 import utils.BigIntegerSerializer
 import utils.KSerializable
 import utils.`impossible!`
+import vc.data.TACMeta.STORAGE_KEY
 import vc.data.tacexprutil.DefaultTACExprTransformer
 import vc.data.tacexprutil.TACExprFreeVarsCollector
 import java.io.Serializable
@@ -181,7 +181,6 @@ sealed class HookMatch {
     }
 }
 
-
 /**
  * A [TACHookPattern] is a pattern that specifies a read or write to storage
  *
@@ -197,23 +196,17 @@ sealed class TACHookPattern : Serializable {
     abstract fun matches(cmd: TACCmd): HookMatch
 
     sealed class StorageHook : TACHookPattern() {
-        companion object {
-            fun CVLHookPattern.StoragePattern.Base.map() = when (this) {
-                CVLHookPattern.StoragePattern.Base.STORAGE -> Base.STORAGE
-                CVLHookPattern.StoragePattern.Base.TRANSIENT_STORAGE -> Base.TRANSIENT_STORAGE
-            }
-        }
 
         abstract val value: VMParam.Named
-        abstract val base: CVLHookPattern.StoragePattern.Base
+        abstract val base: String
         abstract val slot: TACSlotPattern
 
         data class Store(
-            override val base: CVLHookPattern.StoragePattern.Base, override val slot: TACSlotPattern,
+            override val base: String, override val slot: TACSlotPattern,
             override val value: VMParam.Named, val previousValue: VMParam.Named?,
         ) : StorageHook(), Serializable {
-            override fun toString() = "Hook ${base.map().prefixChar}store $slot $value $base"
-            override fun matches(cmd: TACCmd): HookMatch = (if (cmd is TACCmd.Simple.AssigningCmd.AssignExpCmd && cmd.storeAddress(base) == slot.contract) {
+            override fun toString() = "Hook Sstore $slot $value $base"
+            override fun matches(cmd: TACCmd): HookMatch = (if (cmd is TACCmd.Simple.AssigningCmd.AssignExpCmd && cmd.storeAddress() == slot.contract) {
                 // some writes to storage get simplified into normal assignments
                     cmd.lhs.meta.find(TACMeta.SCALARIZATION_SORT)?.let { storageSort ->
                         matchSlotPattern(slot, storageSort).withSubstitution(
@@ -221,9 +214,9 @@ sealed class TACHookPattern : Serializable {
                         )
                     }
                 } else if (cmd is TACCmd.Simple.WordStore &&
-                    cmd.storeAddress(base) == slot.contract
+                    cmd.storeAddress() == slot.contract
                 ) {
-                    cmd.loc.toAccessPath(base.map())?.let { accessPaths ->
+                    cmd.loc.toAccessPath()?.let { accessPaths ->
                         val displayPath = cmd.loc.singleDisplayPathOrNull()
                         matchSlotPattern(slot, accessPaths, displayPath).withSubstitution(
                             value, cmd.value.asSym()
@@ -235,14 +228,14 @@ sealed class TACHookPattern : Serializable {
         }
 
         data class Load(
-            override val base: CVLHookPattern.StoragePattern.Base,
+            override val base: String,
             override val slot: TACSlotPattern,
             override val value: VMParam.Named,
         ) : StorageHook(), Serializable {
-            override fun toString() = "Hook ${base.map().prefixChar}load $value $slot $base"
+            override fun toString() = "Hook Sload $value $slot $base"
             override fun matches(cmd: TACCmd): HookMatch =
                 (if (cmd is TACCmd.Simple.AssigningCmd.AssignExpCmd &&
-                    cmd.rhs is TACExpr.Sym.Var && cmd.rhs.s.meta[base.map().storageKey] == slot.contract
+                    cmd.rhs is TACExpr.Sym.Var && cmd.rhs.s.meta[STORAGE_KEY] == slot.contract
                 ) {
                     // some reads from storage get simplified into normal assignments
                     cmd.rhs.s.meta.find(TACMeta.SCALARIZATION_SORT)?.let { storageSort ->
@@ -251,9 +244,9 @@ sealed class TACHookPattern : Serializable {
                         )
                     }
                 } else if (cmd is TACCmd.Simple.AssigningCmd.WordLoad &&
-                    cmd.storeAddress(base) == slot.contract
+                    cmd.storeAddress() == slot.contract
                 ) {
-                    cmd.loc.toAccessPath(base.map())?.let { accessPaths ->
+                    cmd.loc.toAccessPath()?.let { accessPaths ->
                         val displayPath = cmd.loc.singleDisplayPathOrNull()
                         matchSlotPattern(slot, accessPaths, displayPath).withSubstitution(
                             value, cmd.lhs.asSym()
@@ -267,10 +260,10 @@ sealed class TACHookPattern : Serializable {
         /**
          * Get the address of the contract whose storage is being written to/read from
          */
-        fun TACCmd.Simple.storeAddress(base: CVLHookPattern.StoragePattern.Base) = when (this) {
-            is TACCmd.Simple.WordStore -> this.base.meta.find(base.map().storageKey)
-            is TACCmd.Simple.AssigningCmd.WordLoad -> this.base.meta.find(base.map().storageKey)
-            is TACCmd.Simple.AssigningCmd.AssignExpCmd -> this.lhs.meta.find(base.map().storageKey)
+        fun TACCmd.Simple.storeAddress() = when (this) {
+            is TACCmd.Simple.WordStore -> this.base.meta.find(STORAGE_KEY)
+            is TACCmd.Simple.AssigningCmd.WordLoad -> this.base.meta.find(STORAGE_KEY)
+            is TACCmd.Simple.AssigningCmd.AssignExpCmd -> this.lhs.meta.find(STORAGE_KEY)
             else -> null
         }
 
@@ -292,7 +285,7 @@ sealed class TACHookPattern : Serializable {
                     // slot.offset.value is the slot offset value in bytes
                     slot.offset.value == potentialMatch.offset.bytes && isMatchingSlot(slot.base, potentialMatch.base)
                 slot is TACSlotPattern.Static && potentialMatch is AccessPath.Root ->
-                    slot.index.value == potentialMatch.slot && slot.offsetMatchesBits(BigInteger.ZERO) && potentialMatch.matchesBase(slot.base)
+                    slot.index.value == potentialMatch.slot && slot.offsetMatchesBits(BigInteger.ZERO)
                 slot is TACSlotPattern.ArrayAccess && potentialMatch is AccessPath.StaticArrayAccess ->
                     isMatchingSlot(slot.array, potentialMatch = potentialMatch.base)
                 else -> false
@@ -320,7 +313,7 @@ sealed class TACHookPattern : Serializable {
                     // command which are explicitly part of the command.
                     HookMatch.StorageMatch.AllPaths(
                         expectedSlotPattern = canonSlot,
-                        matchedStorageAccessPaths = setOf(AccessPath.Root(index.value, canonSlot.isBasedOn().map())),
+                        matchedStorageAccessPaths = setOf(AccessPath.Root(index.value)),
                         displayPath = null, // is this right?
                         substitutions = emptyMap(),
                     )
@@ -333,8 +326,6 @@ sealed class TACHookPattern : Serializable {
                 is TACSlotPattern.MapAccess, is TACSlotPattern.ArrayAccess, is TACSlotPattern.StructAccess -> HookMatch.None
             }
         }
-
-        private fun AccessPath.Root.matchesBase(base: CVLHookPattern.StoragePattern.Base) = this.base == base.map()
 
         /**
          * Return the [HookMatch] between [slot] and the set of [accessPaths] as inferred by the storage analysis.
@@ -376,8 +367,7 @@ sealed class TACHookPattern : Serializable {
                             slot.offset.value == accessPath.offset.bytes ->
                         matchPattern(slot.base, accessPath.base, map)
                     slot is TACSlotPattern.Static && accessPath is AccessPath.Root &&
-                            slot.index.value == accessPath.slot && slot.offset.value == BigInteger.ZERO
-                        && accessPath.matchesBase(slot.base) ->
+                            slot.index.value == accessPath.slot && slot.offset.value == BigInteger.ZERO ->
                         map
                     else -> error(
                         "Internal error: this function should not be called if the slot wasn't already " +
@@ -485,13 +475,6 @@ sealed class TACHookPattern : Serializable {
                 }
             }
 
-            fun isBasedOn(): CVLHookPattern.StoragePattern.Base = when(this) {
-                is Static -> this.base
-                is ArrayAccess -> this.array.isBasedOn()
-                is MapAccess -> this.mapping.isBasedOn()
-                is StructAccess -> this.base.isBasedOn()
-            }
-
             /**
              * Represents a storage variable at a static slot offset.
              *
@@ -499,9 +482,9 @@ sealed class TACHookPattern : Serializable {
              * @property index the base slot in bytes (though this value must be a multiple of 32)
              * @property offset the offset into a specific word (due to packing), in bytes
              */
-            data class Static(override val contract: BigInteger, val index: TACSymbol.Const, val offset: TACSymbol.Const, val base: CVLHookPattern.StoragePattern.Base) :
+            data class Static(override val contract: BigInteger, val index: TACSymbol.Const, val offset: TACSymbol.Const) :
                 TACSlotPattern() {
-                override fun toString() = "$index.$offset $base"
+                override fun toString() = "$index.$offset"
 
                 fun offsetMatchesBits(bits: BigInteger) = offset.value.times(BigInteger.valueOf(8)) == bits
             }
@@ -616,7 +599,6 @@ sealed class TACHookPattern : Serializable {
             cvlSlotPattern: CVLSlotPattern,
             scope: CVLScope,
             contracts: List<IContractClass>,
-            base: CVLHookPattern.StoragePattern.Base
         ): StorageHook.TACSlotPattern =
             when (cvlSlotPattern) {
                 is CVLSlotPattern.Static -> {
@@ -624,16 +606,12 @@ sealed class TACHookPattern : Serializable {
                     val contract = contractClass.instanceId
                     when (cvlSlotPattern) {
                         is CVLSlotPattern.Static.Named -> {
-                            val solidityStorage = when (base) {
-                                CVLHookPattern.StoragePattern.Base.STORAGE -> contractClass.getStorageLayout()
-                                CVLHookPattern.StoragePattern.Base.TRANSIENT_STORAGE -> contractClass.getTransientStorageLayout()
-                            }
+                            val solidityStorage = contractClass.getStorageLayout()
                             solidityStorage?.get(cvlSlotPattern.name)?.let { slot ->
                                 StorageHook.TACSlotPattern.Static(
                                     contract,
                                     TACSymbol.Const(slot.slot),
-                                    TACSymbol.Const(slot.offset.toBigInteger()),
-                                    base
+                                    TACSymbol.Const(slot.offset.toBigInteger())
                                 )
                             } ?: error("Requested variable not in storage layout: this should be caught by type checker")
                         }
@@ -641,28 +619,27 @@ sealed class TACHookPattern : Serializable {
                         is CVLSlotPattern.Static.Indexed ->
                             StorageHook.TACSlotPattern.Static(
                                 contract, TACSymbol.Const(cvlSlotPattern.index),
-                                TACSymbol.Const(cvlSlotPattern.offset),
-                                base
+                                TACSymbol.Const(cvlSlotPattern.offset)
                             )
                     }
                 }
 
                 is CVLSlotPattern.MapAccess -> {
                     StorageHook.TACSlotPattern.MapAccess(
-                        handleSlotPattern(cvlSlotPattern.base, scope, contracts, base),
+                        handleSlotPattern(cvlSlotPattern.base, scope, contracts),
                         cvlSlotPattern.key
                     )
                 }
 
                 is CVLSlotPattern.StructAccess ->
                     StorageHook.TACSlotPattern.StructAccess(
-                        handleSlotPattern(cvlSlotPattern.base, scope, contracts, base),
+                        handleSlotPattern(cvlSlotPattern.base, scope, contracts),
                         TACSymbol.Const(cvlSlotPattern.offset)
                     )
 
                 is CVLSlotPattern.ArrayAccess -> {
                     StorageHook.TACSlotPattern.ArrayAccess(
-                        handleSlotPattern(cvlSlotPattern.base, scope, contracts, base),
+                        handleSlotPattern(cvlSlotPattern.base, scope, contracts),
                         cvlSlotPattern.index
                     )
                 }
@@ -675,7 +652,7 @@ sealed class TACHookPattern : Serializable {
                                 "illegal field access of an array, typechecker should have caught this"
                             }
                             StorageHook.TACSlotPattern.StructAccess(
-                                base = handleSlotPattern(cvlSlotPattern.base, scope, contracts, base),
+                                base = handleSlotPattern(cvlSlotPattern.base, scope, contracts),
                                 offset = TACSymbol.Const(BigInteger.ZERO) // the length field is at offset 0 of an array
                             )
                         }
@@ -683,7 +660,7 @@ sealed class TACHookPattern : Serializable {
                             val fld = ty.members[cvlSlotPattern.field] ?: error("no field ${cvlSlotPattern.field} in the struct, typechecker should have caught this")
                             StorageHook.TACSlotPattern.StructAccess(
                                 offset = (fld.slot * EVM_WORD_SIZE + fld.offset.toBigInteger()).asTACSymbol(),
-                                base = handleSlotPattern(cvlSlotPattern.base, scope, contracts, base)
+                                base = handleSlotPattern(cvlSlotPattern.base, scope, contracts)
                             )
                         }
                         else -> `impossible!`
@@ -694,20 +671,22 @@ sealed class TACHookPattern : Serializable {
         fun cvlHookPatternToTACHookPattern(pattern: CVLHookPattern, scope: CVLScope, contracts: List<IContractClass>): TACHookPattern {
             return when (pattern) {
                 is CVLHookPattern.StoragePattern -> {
+                    val base = when (pattern.base) {
+                        CVLHookPattern.StoragePattern.Base.STORAGE -> TACKeyword.STORAGE.getName()
+                    }
                     val loc = handleSlotPattern(
                         pattern.slot,
                         scope,
-                        contracts,
-                        pattern.base
+                        contracts
                     )
                     val v = pattern.value
                     when (pattern) {
                         is CVLHookPattern.StoragePattern.Load -> {
-                            StorageHook.Load(pattern.base, loc, v)
+                            StorageHook.Load(base, loc, v)
                         }
                         is CVLHookPattern.StoragePattern.Store -> {
                             StorageHook.Store(
-                                pattern.base,
+                                base,
                                 loc,
                                 v,
                                 pattern.previousValue?.also { previousValue ->

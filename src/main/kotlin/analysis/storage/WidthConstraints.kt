@@ -35,6 +35,7 @@ import vc.data.TACCmd.Simple.AssigningCmd.AssignExpCmd
 import vc.data.TACCmd.Simple.AssigningCmd.WordLoad
 import vc.data.TACCmd.Simple.WordStore
 import vc.data.TACMeta.BIT_WIDTH
+import vc.data.TACMeta.STORAGE_KEY
 import vc.data.TACMeta.STORAGE_TYPE
 import vc.data.tacexprutil.ExprUnfolder.Companion.unfoldPlusOneCmd
 
@@ -74,8 +75,8 @@ class StoreInfo(val lcmd: LTACCmd) {
     companion object {
         fun isStoreCmd(lcmd: LTACCmd) =
             lcmd.cmd.let { cmd ->
-                (cmd is WordStore && cmd.base.isStorageOrTransientStorage()) ||
-                    (cmd is AssignExpCmd && cmd.lhs.isStorageOrTransientStorage())
+                (cmd is WordStore && STORAGE_KEY in cmd.base.meta) ||
+                    (cmd is AssignExpCmd && STORAGE_KEY in cmd.lhs.meta)
             }
 
         fun storeInfoOrNull(lcmd: LTACCmd) =
@@ -119,8 +120,8 @@ class LoadInfo private constructor(val lcmd: LTACCmd) {
     companion object {
         fun isLoadCmd(lcmd: LTACCmd) =
             lcmd.cmd.let { cmd ->
-                (cmd is WordLoad && cmd.base.isStorageOrTransientStorage()) ||
-                    (cmd is AssignExpCmd && cmd.rhs is TACExpr.Sym.Var && cmd.rhs.s.isStorageOrTransientStorage())
+                (cmd is WordLoad && STORAGE_KEY in cmd.base.meta) ||
+                    (cmd is AssignExpCmd && cmd.rhs is TACExpr.Sym.Var && STORAGE_KEY in cmd.rhs.s.meta)
             }
 
         fun loadInfoOrNull(lcmd: LTACCmd) =

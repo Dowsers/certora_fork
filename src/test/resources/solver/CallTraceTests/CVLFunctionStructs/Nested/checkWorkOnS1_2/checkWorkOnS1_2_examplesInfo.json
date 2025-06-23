@@ -129,7 +129,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "2"
                 },
                 {
                     "namePrefix": "from_skey",
@@ -213,7 +213,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "40"
+                    "value": "80"
                 },
                 {
                     "namePrefix": "to_skey",
@@ -315,7 +315,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "a"
+                    "value": "2546"
                 },
                 {
                     "namePrefix": "calledContract",
@@ -375,7 +375,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "a"
+                    "value": "2546"
                 },
                 {
                     "namePrefix": "ReachabilityCertora0_0_0_0_0_0",
@@ -603,6 +603,135 @@
                     "value": "24"
                 },
                 {
+                    "namePrefix": "tacCalldatabuf",
+                    "tag": {
+                        "type": "tac.Tag.ByteMap"
+                    },
+                    "callIndex": 1,
+                    "meta": [
+                        {
+                            "key": {
+                                "name": "tac.immutable.array",
+                                "type": "vc.data.ImmutableBound",
+                                "erasureStrategy": "Canonical"
+                            },
+                            "value": {
+                                "sym": {
+                                    "type": "vc.data.TACSymbol.Var.Full",
+                                    "namePrefix": "tacCalldatasize",
+                                    "tag": {
+                                        "type": "tac.Tag.Bit256"
+                                    },
+                                    "callIndex": 1,
+                                    "meta": [
+                                        {
+                                            "key": {
+                                                "name": "Tac.symbol.keyword",
+                                                "type": "vc.data.TACSymbol$Var$KeywordEntry",
+                                                "erasureStrategy": "Canonical"
+                                            },
+                                            "value": {
+                                                "type": "vc.data.TACSymbol.Var.KeywordEntry.TACKeywordEntry",
+                                                "name": "tacCalldatasize",
+                                                "maybeTACKeywordOrdinal": 12
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "key": {
+                                "name": "Tac.symbol.keyword",
+                                "type": "vc.data.TACSymbol$Var$KeywordEntry",
+                                "erasureStrategy": "Canonical"
+                            },
+                            "value": {
+                                "type": "vc.data.TACSymbol.Var.KeywordEntry.TACKeywordEntry",
+                                "name": "tacCalldatabuf",
+                                "maybeTACKeywordOrdinal": 15
+                            }
+                        },
+                        {
+                            "key": {
+                                "name": "tac.is.calldata",
+                                "type": "tac.MetaMap$Companion$NothingValue",
+                                "erasureStrategy": "Canonical"
+                            },
+                            "value": {
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "vc.data.state.TACValue.MappingValue.MapDefinition",
+                    "exp": {
+                        "defParams": [
+                            {
+                                "s": {
+                                    "namePrefix": "arg0",
+                                    "tag": {
+                                        "type": "tac.Tag.Bit256"
+                                    },
+                                    "callIndex": 0
+                                },
+                                "tag": {
+                                    "type": "tac.Tag.Bit256"
+                                }
+                            }
+                        ],
+                        "definition": {
+                            "type": "vc.data.TACExpr.TernaryExp.Ite",
+                            "i": {
+                                "type": "vc.data.TACExpr.BinRel.Le",
+                                "o1": {
+                                    "type": "vc.data.TACExpr.Sym.Const",
+                                    "s": {
+                                        "value": "24"
+                                    },
+                                    "tag": {
+                                        "type": "tac.Tag.Bit256"
+                                    }
+                                },
+                                "o2": {
+                                    "type": "vc.data.TACExpr.Sym.Var",
+                                    "s": {
+                                        "namePrefix": "arg0",
+                                        "tag": {
+                                            "type": "tac.Tag.Bit256"
+                                        },
+                                        "callIndex": 0
+                                    },
+                                    "tag": {
+                                        "type": "tac.Tag.Bit256"
+                                    }
+                                }
+                            },
+                            "t": {
+                                "type": "vc.data.TACExpr.Sym.Const",
+                                "s": {
+                                    "value": "0"
+                                },
+                                "tag": {
+                                    "type": "tac.Tag.Bit256"
+                                }
+                            },
+                            "e": {
+                                "type": "vc.data.TACExpr.Sym.Const",
+                                "s": {
+                                    "value": "4166f100fffffffffffffffffffffffffffffffffffffffffffffffffffffe82"
+                                },
+                                "tag": {
+                                    "type": "tac.Tag.Bit256"
+                                }
+                            }
+                        },
+                        "tag": {
+                            "type": "tac.Tag.ByteMap"
+                        }
+                    }
+                },
+                {
                     "namePrefix": "R1",
                     "tag": {
                         "type": "tac.Tag.Bit256"
@@ -651,7 +780,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe13"
                 },
                 {
                     "namePrefix": "B33",
@@ -718,7 +847,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "2"
                 },
                 {
                     "namePrefix": "I35",
@@ -766,7 +895,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "2"
                 },
                 {
                     "namePrefix": "R25",
@@ -935,7 +1064,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "a"
+                    "value": "2546"
                 },
                 {
                     "namePrefix": "R31",
@@ -966,7 +1095,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe13"
                 },
                 {
                     "namePrefix": "R40",
@@ -988,7 +1117,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "4166f1007fffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                    "value": "4166f100fffffffffffffffffffffffffffffffffffffffffffffffffffffe82"
                 },
                 {
                     "namePrefix": "R43",
@@ -1010,7 +1139,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "c100"
+                    "value": "2710"
                 },
                 {
                     "namePrefix": "R45",
@@ -1032,7 +1161,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffef89"
                 },
                 {
                     "namePrefix": "R48",
@@ -1054,7 +1183,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffef88"
                 },
                 {
                     "namePrefix": "R50",
@@ -1076,7 +1205,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffef88"
                 },
                 {
                     "namePrefix": "R51",
@@ -1098,7 +1227,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe13"
                 },
                 {
                     "namePrefix": "R53",
@@ -1132,7 +1261,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001388"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87e"
                 },
                 {
                     "namePrefix": "R56",
@@ -1156,7 +1285,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "2"
                 },
                 {
                     "namePrefix": "R59",
@@ -1189,7 +1318,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "e"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff80f"
                 },
                 {
                     "namePrefix": "R62",
@@ -1223,7 +1352,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001389"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87f"
                 },
                 {
                     "namePrefix": "R63",
@@ -1256,7 +1385,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "4300"
+                    "value": "fffffffffffffffffffffffffffffffffffff254"
                 },
                 {
                     "namePrefix": "R64",
@@ -1289,7 +1418,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "c"
+                    "value": "29"
                 },
                 {
                     "namePrefix": "R65",
@@ -1322,7 +1451,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "b"
+                    "value": "aa"
                 },
                 {
                     "namePrefix": "R66",
@@ -1355,7 +1484,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "7f"
+                    "value": "0"
                 },
                 {
                     "namePrefix": "R74",
@@ -1388,7 +1517,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "0"
                 },
                 {
                     "namePrefix": "R77",
@@ -1422,7 +1551,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "800000000000000000000000000000000000000000000000000000000000138a"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff880"
                 },
                 {
                     "namePrefix": "R78",
@@ -1455,7 +1584,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "9"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffee01"
                 },
                 {
                     "namePrefix": "R81",
@@ -1489,7 +1618,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "800000000000000000000000000000000000000000000000000000000000138b"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff881"
                 },
                 {
                     "namePrefix": "R82",
@@ -1589,7 +1718,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "800000000000000000000000000000000000000000000000000000000000138c"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff882"
                 },
                 {
                     "namePrefix": "R89",
@@ -1622,7 +1751,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff43c"
                 },
                 {
                     "namePrefix": "R92",
@@ -1656,7 +1785,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "800000000000000000000000000000000000000000000000000000000000138d"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff883"
                 },
                 {
                     "namePrefix": "R93",
@@ -1689,7 +1818,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8200"
+                    "value": "fffffffffffffffffffffffffffffffffffffd61"
                 },
                 {
                     "namePrefix": "R94",
@@ -1722,7 +1851,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "6"
+                    "value": "a9"
                 },
                 {
                     "namePrefix": "R95",
@@ -1755,7 +1884,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "d"
+                    "value": "ff"
                 },
                 {
                     "namePrefix": "R96",
@@ -1788,7 +1917,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "7f"
+                    "value": "0"
                 },
                 {
                     "namePrefix": "B142",
@@ -1987,7 +2116,7 @@
                     "type": "vc.data.state.TACValue.PrimitiveValue.Bool.False"
                 },
                 {
-                    "namePrefix": "i.2389",
+                    "namePrefix": "i.2386",
                     "tag": {
                         "type": "tac.Tag.Bit256"
                     },
@@ -1995,10 +2124,10 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
-                    "namePrefix": "i.2390",
+                    "namePrefix": "i.2387",
                     "tag": {
                         "type": "tac.Tag.Bit256"
                     },
@@ -2006,7 +2135,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "I139",
@@ -2078,7 +2207,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "2"
                 },
                 {
                     "namePrefix": "I152",
@@ -2174,7 +2303,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "2"
                 },
                 {
                     "namePrefix": "I167",
@@ -2255,7 +2384,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "0"
                 },
                 {
                     "namePrefix": "R107",
@@ -2289,7 +2418,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "800000000000000000000000000000000000000000000000000000000000138e"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff884"
                 },
                 {
                     "namePrefix": "R108",
@@ -2322,7 +2451,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "7"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeff8"
                 },
                 {
                     "namePrefix": "R111",
@@ -2356,7 +2485,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "800000000000000000000000000000000000000000000000000000000000138f"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff885"
                 },
                 {
                     "namePrefix": "R112",
@@ -2389,7 +2518,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "7f"
+                    "value": "0"
                 },
                 {
                     "namePrefix": "R114",
@@ -2422,7 +2551,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "0"
                 },
                 {
                     "namePrefix": "R117",
@@ -2495,8 +2624,7 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Const",
@@ -2581,7 +2709,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001390"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff886"
                 },
                 {
                     "namePrefix": "R118",
@@ -2614,7 +2742,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "7f"
+                    "value": "0"
                 },
                 {
                     "namePrefix": "R120",
@@ -2647,7 +2775,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "0"
                 },
                 {
                     "namePrefix": "R123",
@@ -2746,7 +2874,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe13"
                 },
                 {
                     "namePrefix": "R140",
@@ -2769,7 +2897,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001388"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87e"
                 },
                 {
                     "namePrefix": "R141",
@@ -2802,8 +2930,7 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Var.Full",
@@ -2847,7 +2974,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001389"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87f"
                 },
                 {
                     "namePrefix": "R143",
@@ -2892,7 +3019,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001388"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87e"
                 },
                 {
                     "namePrefix": "R148",
@@ -2925,8 +3052,7 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Var.Full",
@@ -2970,7 +3096,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001389"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87f"
                 },
                 {
                     "namePrefix": "R149",
@@ -3015,7 +3141,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001388"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87e"
                 },
                 {
                     "namePrefix": "R156",
@@ -3048,8 +3174,7 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Var.Full",
@@ -3093,7 +3218,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001390"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff886"
                 },
                 {
                     "namePrefix": "R158",
@@ -3138,7 +3263,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001388"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87e"
                 },
                 {
                     "namePrefix": "R163",
@@ -3171,8 +3296,7 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Var.Full",
@@ -3216,7 +3340,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001390"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff886"
                 },
                 {
                     "namePrefix": "R164",
@@ -3261,7 +3385,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001388"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff87e"
                 },
                 {
                     "namePrefix": "R173",
@@ -3294,8 +3418,7 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Var.Full",
@@ -3339,7 +3462,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000001390"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff886"
                 },
                 {
                     "namePrefix": "R174",
@@ -3432,7 +3555,7 @@
                     "type": "vc.data.state.TACValue.PrimitiveValue.Bool.False"
                 },
                 {
-                    "namePrefix": "CANON21.2384",
+                    "namePrefix": "CANON21.2383",
                     "tag": {
                         "type": "tac.Tag.Bit256"
                     },
@@ -3440,7 +3563,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8000000000000000000000000000000000000000000000000000000000000000"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "lastReverted!!170",
@@ -3901,7 +4024,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "6280"
+                    "value": "ffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "CANON12",
@@ -4137,7 +4260,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "6f"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "CANON13",
@@ -4373,7 +4496,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "5f"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "CANON14",
@@ -4607,7 +4730,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "2380"
+                    "value": "ffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "CANON15",
@@ -4843,7 +4966,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "e0"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "CANON16",
@@ -5079,7 +5202,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "a0"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "CANON17",
@@ -5315,7 +5438,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "c0"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "CANON18",
@@ -5551,7 +5674,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "f"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                 },
                 {
                     "namePrefix": "CANON66",
@@ -5613,7 +5736,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "2"
                 },
                 {
                     "namePrefix": "CANON77",
@@ -5869,7 +5992,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "e"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff80f"
                 },
                 {
                     "namePrefix": "CANON78",
@@ -6123,7 +6246,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "4300"
+                    "value": "fffffffffffffffffffffffffffffffffffff254"
                 },
                 {
                     "namePrefix": "CANON79",
@@ -6379,7 +6502,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "c"
+                    "value": "29"
                 },
                 {
                     "namePrefix": "CANON80",
@@ -6635,7 +6758,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "b"
+                    "value": "aa"
                 },
                 {
                     "namePrefix": "CANON81",
@@ -6888,7 +7011,7 @@
                     ]
                 },
                 {
-                    "type": "vc.data.state.TACValue.PrimitiveValue.Bool.True"
+                    "type": "vc.data.state.TACValue.PrimitiveValue.Bool.False"
                 },
                 {
                     "namePrefix": "CANON82",
@@ -7144,7 +7267,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "9"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffee01"
                 },
                 {
                     "namePrefix": "CANON83",
@@ -7653,7 +7776,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8"
+                    "value": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff43c"
                 },
                 {
                     "namePrefix": "CANON85",
@@ -7907,7 +8030,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "8200"
+                    "value": "fffffffffffffffffffffffffffffffffffffd61"
                 },
                 {
                     "namePrefix": "CANON86",
@@ -8163,7 +8286,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "6"
+                    "value": "a9"
                 },
                 {
                     "namePrefix": "CANON87",
@@ -8419,7 +8542,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "d"
+                    "value": "ff"
                 },
                 {
                     "namePrefix": "CANON88",
@@ -8672,7 +8795,7 @@
                     ]
                 },
                 {
-                    "type": "vc.data.state.TACValue.PrimitiveValue.Bool.True"
+                    "type": "vc.data.state.TACValue.PrimitiveValue.Bool.False"
                 },
                 {
                     "namePrefix": "CANON89",
@@ -8928,7 +9051,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "7"
+                    "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeff8"
                 },
                 {
                     "namePrefix": "CANON90",
@@ -9181,7 +9304,7 @@
                     ]
                 },
                 {
-                    "type": "vc.data.state.TACValue.PrimitiveValue.Bool.True"
+                    "type": "vc.data.state.TACValue.PrimitiveValue.Bool.False"
                 },
                 {
                     "namePrefix": "CANON91",
@@ -9379,7 +9502,7 @@
                     ]
                 },
                 {
-                    "type": "vc.data.state.TACValue.PrimitiveValue.Bool.True"
+                    "type": "vc.data.state.TACValue.PrimitiveValue.Bool.False"
                 },
                 {
                     "namePrefix": "executingContract",
@@ -9439,7 +9562,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "a"
+                    "value": "2546"
                 },
                 {
                     "namePrefix": "CANON2!!128",
@@ -9490,7 +9613,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "a"
+                    "value": "2546"
                 },
                 {
                     "namePrefix": "CANON1",
@@ -9541,7 +9664,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "a"
+                    "value": "2546"
                 },
                 {
                     "namePrefix": "CANON9",
@@ -9740,7 +9863,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "c100"
+                    "value": "2710"
                 },
                 {
                     "namePrefix": "OK_0_0_0_0_0_0",
@@ -9979,7 +10102,7 @@
                 },
                 {
                     "type": "vc.data.state.TACValue.PrimitiveValue.Integer",
-                    "value": "1"
+                    "value": "2"
                 },
                 {
                     "namePrefix": "OK_3_0_0_1_0_0",
@@ -10117,8 +10240,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "5"
@@ -10171,8 +10293,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "5"
@@ -10209,8 +10330,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "0"
@@ -10259,8 +10379,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "0"
@@ -10714,8 +10833,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "4"
@@ -10764,8 +10882,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "4"
@@ -11534,8 +11651,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "5"
@@ -11588,8 +11704,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "5"
@@ -11626,8 +11741,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "5"
@@ -11679,8 +11793,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "5"
@@ -11834,8 +11947,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "1"
@@ -11888,8 +12000,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "1"
@@ -11926,8 +12037,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "1"
@@ -11980,8 +12090,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "1"
@@ -12018,8 +12127,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "8"
@@ -12071,8 +12179,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "8"
@@ -12365,8 +12472,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "5"
@@ -12418,8 +12524,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "5"
@@ -13208,8 +13313,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "1"
@@ -13261,8 +13365,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "1"
@@ -13299,8 +13402,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "6"
@@ -13349,8 +13451,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "6"
@@ -13638,8 +13739,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "3"
@@ -13691,8 +13791,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "3"
@@ -13979,8 +14078,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "7"
@@ -14032,8 +14130,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "7"
@@ -14070,8 +14167,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "1"
@@ -14123,8 +14219,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "1"
@@ -14161,8 +14256,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "2"
@@ -14211,8 +14305,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "2"

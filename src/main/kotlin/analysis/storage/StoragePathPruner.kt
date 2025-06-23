@@ -41,11 +41,11 @@ object StoragePathPruner {
     /**
      * Prune unreachable paths as discovered by the storage analysis
      */
-    fun prunePaths(c: IContractClass, res: Map<MethodRef, StorageAnalysisResults>) {
+    fun prunePaths(c: IContractClass, res: Map<MethodRef, StorageAnalysisResult>) {
         val transformer = ChainedMethodTransformers(
             listOf(
                 MethodToCoreTACTransformer(ReportTypes.STORAGE_ANALYSIS_PATH_PRUNING) { m ->
-                    res[m.toRef()]?.tryAs<StorageAnalysisResults.MergedResults>()?.let {
+                    res[m.toRef()]?.tryAs<StorageAnalysisResult.Complete>()?.let {
                         val code = m.code as CoreTACProgram
                         pruneInfeasible(code, it)
                     } ?: m.code as CoreTACProgram
@@ -60,7 +60,7 @@ object StoragePathPruner {
         }
     }
 
-    private fun pruneInfeasible(ctp: CoreTACProgram, result: StorageAnalysisResults.MergedResults): CoreTACProgram {
+    private fun pruneInfeasible(ctp: CoreTACProgram, result: StorageAnalysisResult.Complete): CoreTACProgram {
         val patching = ctp.toPatchingProgram()
         val g = ctp.analysisCache.graph
 

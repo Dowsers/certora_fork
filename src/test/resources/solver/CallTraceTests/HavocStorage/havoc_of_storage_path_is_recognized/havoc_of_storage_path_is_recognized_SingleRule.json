@@ -857,8 +857,7 @@
                         "innerScope": null
                     }
                 }
-            },
-            "comesFromSpec": true
+            }
         },
         {
             "cmd_type": "spec.cvlast.CVLCmd.Simple.Definition",

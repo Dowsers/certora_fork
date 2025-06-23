@@ -58,10 +58,6 @@ object DegeneratedContractClass : IContractClass {
         degeneratedError()
     }
 
-    override fun getTransientStorageLayout(): TACStorageLayout {
-        degeneratedError()
-    }
-
     override fun getDeclaredMethods(): List<ITACMethod> {
         degeneratedError()
     }

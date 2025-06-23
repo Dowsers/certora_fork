@@ -814,8 +814,7 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Var.Full",
@@ -937,8 +936,7 @@
                                             "type": "analysis.storage.StorageAnalysis.AnalysisPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysis.AnalysisPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             },
                                             "key": {
                                                 "type": "vc.data.TACSymbol.Var.Full",
@@ -4194,8 +4192,7 @@
                                             "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                             "base": {
                                                 "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                                "slot": "0",
-                                                "base": "STORAGE"
+                                                "slot": "0"
                                             }
                                         },
                                         "offset": "1"
@@ -4247,8 +4244,7 @@
                                     "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.MapAccess",
                                     "base": {
                                         "type": "analysis.storage.StorageAnalysisResult.NonIndexedPath.Root",
-                                        "slot": "0",
-                                        "base": "STORAGE"
+                                        "slot": "0"
                                     }
                                 },
                                 "offset": "1"

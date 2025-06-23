@@ -39,7 +39,7 @@ class TACExprFolderTest : TACBuilderAuxiliaries() {
                         StorageAnalysisResult.AccessPaths(
                             setOf(
                                 StorageAnalysis.AnalysisPath.ArrayAccess(
-                                    StorageAnalysis.AnalysisPath.Root(BigInteger.ONE, StorageAnalysis.Base.STORAGE),
+                                    StorageAnalysis.AnalysisPath.Root(BigInteger.ONE),
                                     c,
                                     d
                                 )

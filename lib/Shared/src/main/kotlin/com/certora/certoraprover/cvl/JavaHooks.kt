@@ -60,6 +60,8 @@ class HookPattern(
     private val params: List<NamedVMParam>?,
 ) : Kotlinizable<CVLHookPattern> {
 
+    enum class Base { NONE, STORAGE }
+
     constructor(range: Range, hookType: HookType, value: NamedVMParam?, slot: SlotPattern?)
         : this(range, hookType, value, null, slot, null)
 
@@ -87,10 +89,8 @@ class HookPattern(
         val slot     = bind(slot?.kotlinize(resolver, scope) ?: null.lift())
         val oldValue = bind(oldValue?.kotlinize(resolver,scope) ?: null.lift())
         return@collectingErrors when(hookType) {
-            HookType.SLOAD  -> CVLHookPattern.StoragePattern.Load(kvalue!!, slot!!, base(false))
-            HookType.SSTORE -> CVLHookPattern.StoragePattern.Store(kvalue!!, slot!!, base(false), oldValue)
-            HookType.TLOAD  -> CVLHookPattern.StoragePattern.Load(kvalue!!, slot!!, base(true))
-            HookType.TSTORE -> CVLHookPattern.StoragePattern.Store(kvalue!!, slot!!, base(true), oldValue)
+            HookType.SLOAD  -> CVLHookPattern.StoragePattern.Load(kvalue!!, slot!!, base())
+            HookType.SSTORE -> CVLHookPattern.StoragePattern.Store(kvalue!!, slot!!, base(), oldValue)
             HookType.CREATE -> CVLHookPattern.Create(kvalue!!)
             else -> {
                 check(hookType.lowLevel) { "Did not expect a non-opcode low-level hook type ${hookType.name}" }
@@ -100,10 +100,8 @@ class HookPattern(
         }
     }
 
-    private fun base(transient: Boolean): CVLHookPattern.StoragePattern.Base {
-        if (transient) {
-            return CVLHookPattern.StoragePattern.Base.TRANSIENT_STORAGE
-        }
+    private fun base(): CVLHookPattern.StoragePattern.Base {
+        // Currently we only support STORAGE base
         return CVLHookPattern.StoragePattern.Base.STORAGE
     }
 }
@@ -132,9 +130,9 @@ enum class HookType(val lowLevel: Boolean, @Suppress("Unused") val numInputs: In
     ALL_SLOAD(true, 1, 1),
     @OpcodeHookType(withOutput = false, params = ["uint256 loc", "uint256 v"], onlyNoStorageSplitting = true)
     ALL_SSTORE(true, 2, 0),
-    @OpcodeHookType(withOutput = true, valueType = "uint256", params = ["uint256 loc"], onlyNoStorageSplitting = true)
+    @OpcodeHookType(withOutput = true, valueType = "uint256", params = ["uint256 loc"], onlyNoStorageSplitting = false)
     ALL_TLOAD(true, 1, 1),
-    @OpcodeHookType(withOutput = false, params = ["uint256 loc", "uint256 v"], onlyNoStorageSplitting = true)
+    @OpcodeHookType(withOutput = false, params = ["uint256 loc", "uint256 v"], onlyNoStorageSplitting = false)
     ALL_TSTORE(true, 2, 0),
     @OpcodeHookType(withOutput = true, valueType = "address")
     ADDRESS(true, 0, 1),

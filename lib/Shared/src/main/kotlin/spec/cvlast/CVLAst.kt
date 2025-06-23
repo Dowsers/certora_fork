@@ -420,9 +420,9 @@ sealed class CVLHookPattern : AmbiSerializable {
     sealed class StoragePattern : CVLHookPattern(), PatternWithValue {
         abstract override val value: VMParam.Named
 
+        // We currently only support STORAGE as base
         enum class Base {
-            STORAGE,
-            TRANSIENT_STORAGE
+            STORAGE
         }
 
         abstract val slot: CVLSlotPattern

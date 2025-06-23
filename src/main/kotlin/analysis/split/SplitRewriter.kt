@@ -34,7 +34,6 @@ import analysis.split.arrays.PackedArrayRewriter
 import analysis.split.arrays.PackedArrayRewriter.Companion.indexOfArrayAccess
 import analysis.split.arrays.PackedArrayRewriter.Companion.newLocAndAuxCmds
 import analysis.split.arrays.PackingInfoKey.*
-import analysis.storage.StorageAnalysis.Base.Companion.toBase
 import analysis.storage.StorageAnalysisResult.NonIndexedPath
 import datastructures.*
 import datastructures.stdcollections.*
@@ -209,7 +208,7 @@ class SplitRewriter(
          * gives the start location within the storage word from which this storage location was unpacked.
          */
         fun storageVarName(contractId: ContractId, repPath: NonIndexedPath, equivClassSize: Int, splitStart: Int?) : String {
-            return "tac${repPath.storageBase().prefixChar}!${contractId.toString(16)}!" +
+            return "tacS!${contractId.toString(16)}!" +
                 if (SplitContext.canRewriteAsVar(repPath, equivClassSize)) {
                     "${repPath.slot}"
                 } else {
@@ -224,7 +223,7 @@ class SplitRewriter(
     /** Creates a new variable representing a packed array - which we unpack */
     private fun newArrayPathVar(repPath: NonIndexedPath, width: Int) =
         TACSymbol.Var(
-            namePrefix = "tac${repPath.storageBase().prefixChar}!${cx.contract.instanceId.toString(16)}!$repPath!W$width",
+            namePrefix = "tacS!${cx.contract.instanceId.toString(16)}!$repPath!W$width",
             tag = Tag.WordMap,
             meta = metas.pathVarMeta(repPath, BitRange.NonEmpty(0, width), cx.pathEquivalence.getEquivalenceClass(repPath))
         ).also {
@@ -366,12 +365,11 @@ class SplitRewriter(
                             // the value being written to this range
                             assignSource[ptr.block, value]?.let { (p, r) ->
                                 // non null means it goes all the way to a storage load
-                                val c = toCommand(p) as TACCmd.Simple.AssigningCmd.WordLoad
-                                c.loc.toAccessPath(c.base.meta.toBase())
+                                (toCommand(p) as TACCmd.Simple.AssigningCmd.WordLoad).loc.toAccessPath()
                                     ?.let { origPath -> // the indexed access path there
                                         (range to p).takeIf {
                                             // if its the same as this access path, and in this block then its a no-op.
-                                            range == r && origPath == cmd.loc.toAccessPath(cmd.base.meta.toBase()) && ptr.block == p.block
+                                            range == r && origPath == cmd.loc.toAccessPath() && ptr.block == p.block
                                         }
                                     }
                             }

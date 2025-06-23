@@ -18,7 +18,6 @@
 package analysis.split
 
 import analysis.storage.DisplayPath
-import analysis.storage.StorageAnalysis.Base
 import analysis.storage.StorageAnalysis.AnalysisPath
 import analysis.storage.StorageAnalysisResult.NonIndexedPath
 import analysis.storage.StoragePath
@@ -31,7 +30,6 @@ import evm.EVM_BYTE_SIZE
 import log.*
 import scene.IContractClass
 import tac.StructField
-import tac.TACStorageLayout
 import tac.TACStorageType
 import vc.data.TACSymbol
 import vc.data.asTACSymbol
@@ -58,27 +56,16 @@ class StorageLayoutHelper(private val contract: IContractClass, private val show
 
     /** A view of the storage layout as a struct */
     private val topLevel: Map<String, StructField>? =
-        contract.getStorageLayout()?.toStruct()
-
-    /** A view of the transient storage layout as a struct */
-    private val topLevelTransient: Map<String, StructField>? =
-        contract.getTransientStorageLayout()?.toStruct()
-
-    private fun TACStorageLayout.toStruct() =
-        this.entries.filter { (name, storage) ->
-            // Not sure this can happen anymore.
-            if (storage.storageType == null) {
-                warn { "Storage layout has no type for $name" }
+        contract.getStorageLayout()?.let {
+            it.entries.filter { (name, storage) ->
+                // Not sure this can happen anymore.
+                if (storage.storageType == null) {
+                    warn { "Storage layout has no type for $name" }
+                }
+                storage.storageType != null
+            }.associate { (name, storage) ->
+                name to StructField(storage.storageType!!, storage.slot, storage.offset)
             }
-            storage.storageType != null
-        }.associate { (name, storage) ->
-            name to StructField(storage.storageType!!, storage.slot, storage.offset)
-        }
-
-    private val Base.topLevel: Map<String, StructField>?
-        get() = when (this) {
-            Base.STORAGE -> this@StorageLayoutHelper.topLevel
-            Base.TRANSIENT_STORAGE -> topLevelTransient
         }
 
     /** A utility class for constructing the [DisplayPath] while traversing the given analysis path and storage layout */
@@ -137,7 +124,7 @@ class StorageLayoutHelper(private val contract: IContractClass, private val show
         when (path) {
 
             is StoragePath.Root ->
-                decomposeStruct("top level layout", path.base.topLevel!!, path.slot, display).pairWithFalse()
+                decomposeStruct("top level layout", topLevel!!, path.slot, display).pairWithFalse()
 
             is StoragePath.ArrayAccess ->
                 recurse<TACStorageType.Array>(path.base, display) {
@@ -269,7 +256,7 @@ class StorageLayoutHelper(private val contract: IContractClass, private val show
      * The expected split corresponding to this [path], if analysis does not work, than the Split is empty, basically
      * meaning that it will be ignored.
      */
-    fun expectedSplit(path: NonIndexedPath) = path.storageBase().topLevel?.let {
+    fun expectedSplit(path: NonIndexedPath) = topLevel?.let {
         traverse(StoragePath(path), null)
             ?.let { (typeList, noOuterStruct) ->
                 when {
@@ -308,7 +295,7 @@ class StorageLayoutHelper(private val contract: IContractClass, private val show
 
     fun widthOfPackedArray(path: NonIndexedPath) =
         if (path is NonIndexedPath.StructAccess && path.base is NonIndexedPath.ArrayLikePath) {
-            path.storageBase().topLevel?.let {
+            topLevel?.let {
                 traverse(StoragePath(path), null)
                     ?.let { (typeList, noOuterStruct) ->
                         if (noOuterStruct) {
@@ -344,7 +331,7 @@ class StorageLayoutHelper(private val contract: IContractClass, private val show
             }
 
     /** returns the [PrimitiveType] corresponding to [range] within the last slot of [path] */
-    fun integralTypeAt(path: NonIndexedPath, range: BitRange.NonEmpty) = path.storageBase().topLevel?.let {
+    fun integralTypeAt(path: NonIndexedPath, range: BitRange.NonEmpty) = topLevel?.let {
         lastType(StoragePath(path), range, null)
             ?.type
             ?.let {
@@ -361,7 +348,7 @@ class StorageLayoutHelper(private val contract: IContractClass, private val show
     }
 
     /** returns the [DisplayPath] corresponding to [range] within the last slot of [path] */
-    fun toDisplayPath(path: AnalysisPath, range: BitRange.NonEmpty) = path.storageBase().topLevel?.let {
+    fun toDisplayPath(path: AnalysisPath, range: BitRange.NonEmpty) = topLevel?.let {
         val display = DisplayPathBuilder()
         val (_, name, _) = lastType(StoragePath(path), range, display) ?: return null
         if (name != null) {

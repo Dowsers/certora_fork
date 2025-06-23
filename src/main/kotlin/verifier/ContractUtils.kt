@@ -212,7 +212,6 @@ object ContractUtils {
             instance,
             decompiled,
             instance.storageLayout?.toTACStorageLayout(),
-            instance.transientStorageLayout?.toTACStorageLayout(),
             disassembledBytecode,
             disassembledConstructorBytecode,
             perContract,

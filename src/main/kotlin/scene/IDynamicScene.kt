@@ -253,7 +253,6 @@ interface IDynamicScene : IScene {
             storageInfo = StorageInfoWithReadTracker(newStorage),
             transientStorageInfo = StorageInfo(newTransientStorage),
             storageLayout = null,
-            transientStorageLayout = null,
             methods = regularMethods,
             wholeContractMethod = wholeMethod,
             constructorMethod = constructor,

@@ -130,7 +130,6 @@ interface ExtendableScene {
         }
         return ForkedContractClass(
             storageLayout = this.getStorageLayout(),
-            transientStorageLayout = this.getTransientStorageLayout(),
             src = this.src,
             methods = this.getStandardMethods() + ext,
             bytecode = this.bytecode,

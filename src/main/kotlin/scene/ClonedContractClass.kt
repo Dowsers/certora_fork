@@ -25,7 +25,6 @@ class ClonedContractClass(
     instanceId: BigInteger,
     name: String,
     storageLayout: TACStorageLayout?,
-    transientStorageLayout: TACStorageLayout?,
     methods: Map<BigInteger?, IFreeTACMethod>,
     constructorMethod: IFreeTACMethod,
     wholeContractMethod: IFreeTACMethod?,
@@ -39,8 +38,7 @@ class ClonedContractClass(
     bytecode = null,
     constructorBytecode = null,
     name,
-    storageLayout,
-    transientStorageLayout
+    storageLayout
 ), IClonedContract {
     override val methods: Map<BigInteger?, ITACMethod> = methods.mapValues { it.value.cloneWithContract(this) }
     override val wholeContractMethod: ITACMethod? = wholeContractMethod?.cloneWithContract(this)
@@ -50,7 +48,7 @@ class ClonedContractClass(
 
     override fun fork(): IContractClass {
         return ClonedContractClass(
-            instanceId, name, storageLayout = this.getStorageLayout(), transientStorageLayout = this.getTransientStorageLayout(),
+            instanceId, name, storageLayout = this.getStorageLayout(),
             methods.mapValues {
                 it.value.fork()
             },
