@@ -2632,7 +2632,7 @@ class CVLCompiler(
     private val assertModifier = object : CVLCmdTransformer<Nothing>(castExprModifier) {
 
         override fun assertCmd(cmd: CVLCmd.Simple.Assert): CollectingResult<CVLCmd, Nothing> {
-            return cmd.copy(description = "${cmd.description} (uid ${Allocator.getFreshId(Allocator.Id.ASSERT_IN_CVL_BLOCK)})").lift()
+            return cmd.copy(description = "${cmd.descriptionOrDefault} (uid ${Allocator.getFreshId(Allocator.Id.ASSERT_IN_CVL_BLOCK)})").lift()
         }
     }
 
