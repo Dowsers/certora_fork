@@ -1532,6 +1532,15 @@ object Config {
         )
     ) { }
 
+    val EnableOptimisticSpillLocations = object : ConfigType.BooleanCmdLine(
+        default = false,
+        option = Option(
+            "enableOptimisticSpillLocations",
+            true,
+            "Optimistically try to scalarize spill locations heuristically. This scalarization is checked with runtime instrumentation"
+        )
+    ) { }
+
     val RelaxedPointsToSemantics = object : ConfigType.RelaxedSemantics(
         default = arrayOf(),
         option = Option(

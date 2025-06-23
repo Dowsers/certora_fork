@@ -238,6 +238,9 @@ class ContractClass(
             }
 
             transforms.add(ReportTypes.SPURIOUS_FP_UPDATE_REMOVAL, SpuriousFreePointerUpdateRemoval::transform)
+            if(Config.EnableOptimisticSpillLocations.get()) {
+                transforms.add(ReportTypes.OPTIMISTIC_SPILL_REWRITE, OptimisticSpillRewriter::rewrite)
+            }
 
             // these passes are directed at helping PTA not fail
             transforms.add(ReportTypes.NOTE_MODIFIER_REWRITER, NoteModifierRewriter::transform)
