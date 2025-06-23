@@ -26,7 +26,6 @@ from twine.settings import Settings  # type: ignore
 from setuptools import sandbox  # type: ignore
 from shutil import copy, copytree, rmtree
 from pathlib import Path
-from time import sleep
 import argparse
 import os
 
@@ -293,21 +292,3 @@ setuptools.setup(
 
     dists = ["dist/*"]
     twine.commands.upload.upload(upload_settings, dists)
-
-    # test it
-    TEST_FILE = Path("test.sh")
-    ENTRY_POINTS = [
-        "certoraRun",
-        "certoraMutate",
-        "certoraSolanaProver",
-        "certoraSorobanProver",
-        "certoraEVMProver",
-        "certoraRanger"
-    ]
-
-    with TEST_FILE.open("w+") as test_file:
-        commands = [f"python3 -m pip install {NAME}"]
-        commands += [f"{entry_point} --help" for entry_point in ENTRY_POINTS]
-        test_file.write("; ".join(commands))
-    # sleep to give time to pypi to update
-    sleep(20)
