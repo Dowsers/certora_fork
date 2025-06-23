@@ -17,6 +17,7 @@
 
 package sbf.inliner
 
+import allocator.Allocator
 import sbf.callgraph.*
 import sbf.cfg.*
 import sbf.disassembler.*
@@ -76,8 +77,6 @@ private class Inliner(val entry: String,
                       private val inlinerConfig: InlinerConfig) {
 
     val prog = InlinerSbfCallGraph(callgraph)
-    // To assign a unique identifier to each pair of CVT_save_scratch_registers/CVT_restore_scratch_registers
-    private var callId: ULong = 0UL
     // For debugging only
     private val numOfInsts = mutableMapOf<String, ULong>()
 
@@ -202,15 +201,16 @@ private class Inliner(val entry: String,
         // reset callee CFG
         calleeCFG.clear()
 
+        val callId = Allocator.getFreshId(Allocator.Id.INTERNAL_FUNC)
+        check(callId >= 0) {"expected non-negative call id"}
         val metaData = call.metaData.plus(
-            SbfMeta.CALL_ID to callId).plus(
+            SbfMeta.CALL_ID to callId.toULong()).plus(
             SbfMeta.INLINED_FUNCTION_NAME to calleeCFG.getName()).plus(
                 SbfMeta.INLINED_FUNCTION_SIZE to numCalleeInsts
             )
 
         val saveRegistersInst = SbfInstruction.Call(name = CVTCore.SAVE_SCRATCH_REGISTERS.function.name, metaData = metaData)
         val restoreRegistersInst = SbfInstruction.Call(name = CVTCore.RESTORE_SCRATCH_REGISTERS.function.name, metaData = metaData)
-        callId++
         // r10 += 4096
         val increaseFramePtrInst = SbfInstruction.Bin(BinOp.ADD, Value.Reg(SbfRegister.R10_STACK_POINTER),
                                                         Value.Imm(SBF_STACK_FRAME_SIZE.toULong()), true)
