@@ -18,10 +18,8 @@
 import copy
 import json
 import os
-import stat
 import shutil
 import sys
-import random
 import unittest
 from pathlib import Path
 from typing import List, Any, Dict, Optional
@@ -59,11 +57,8 @@ os.environ["CERTORA_TEST_DATA_DIRECTORY"] = f"{CITests_path}/test_data"
 import CertoraProver.certoraContextAttributes as Attrs
 from Mutate import mutateAttributes as MutAttrs
 import CITests.testCertoraUtils as TestUtil
-from certoraSolanaProver import run_solana_prover
 from certoraSorobanProver import run_soroban_prover
 from certoraRanger import run_ranger
-
-
 from certoraRun import run_certora
 from Shared import certoraUtils as Util
 from CertoraProver.Compiler.CompilerCollectorFactory import get_relevant_compiler
@@ -71,9 +66,6 @@ from Shared import certoraValidateFuncs as Vf
 from CertoraProver.certoraContextClass import CertoraContext
 import CertoraProver.certoraContext as Ctx
 from Shared import certoraAttrUtil as AttrUtil
-
-
-
 
 # short call so we can put all args in a single line
 def _p(filename: str) -> str:
@@ -91,30 +83,6 @@ def test_simple_args(attr: AttrUtil.AttributeDefinition = Attrs.EvmProverAttribu
                 f"_Simple$:{_p('_simple$.spec')}", '--solc', 'solc4.25',
                 '--disable_local_typechecking']
     return args
-
-
-class SorobanProverTestSuite(TestUtil.TestSuite):
-    def __init__(self, **kwargs: Any):
-        super().__init__(run_soroban_prover, **kwargs)
-
-
-class SolanaProverTestSuite(TestUtil.TestSuite):
-    def __init__(self, **kwargs: Any):
-        super().__init__(run_solana_prover, **kwargs)
-
-class RangerTestSuite(TestUtil.TestSuite):
-    def __init__(self, **kwargs: Any):
-        super().__init__(run_ranger, **kwargs)
-
-
-class ProverTestSuite(TestUtil.TestSuite):
-    def __init__(self, **kwargs: Any):
-        super().__init__(run_certora, **kwargs)
-
-    @staticmethod
-    def conf_arg(conf: str) -> List[str]:
-        return [conf] if conf else []
-
 
 class TestClient(unittest.TestCase):
 
@@ -145,7 +113,7 @@ class TestClient(unittest.TestCase):
         mutation_test_id = 'test5'
         java_args = '-ea'
 
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_AUTH_DATA))
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_AUTH_DATA))
         args = auth_data_run(['--prover_version', branch, '--test', str(Util.TestValue.CHECK_AUTH_DATA)])
         result = suite.expect_checkpoint(description="check valid flags",
                                          run_flags=auth_data_run(['--prover_version', branch]))
@@ -189,7 +157,7 @@ class TestClient(unittest.TestCase):
             assert False, "'buildArgs' is not in auth_data"
 
     def test_conf_file_inputs(self) -> None:
-        suite = ProverTestSuite(conf_file_template=_p('mutation_conf_top_level.conf'),
+        suite = TestUtil.ProverTestSuite(conf_file_template=_p('mutation_conf_top_level.conf'),
                                 test_attribute=str(Util.TestValue.CHECK_ARGS))
         suite.expect_success(description='placeholder is replaced with empty string',
                              replacements=TestUtil.replace_x(''))
@@ -249,14 +217,14 @@ class TestClient(unittest.TestCase):
         suite.expect_failure(description="string instead of map",
                              replacements=TestUtil.replace_x("'solc_map': 'solc6.1',"),
                              expected='should be stored as a map')
-        suite = ProverTestSuite(conf_file_template=_p('conf_in_a_conf.conf'),
+        suite = TestUtil.ProverTestSuite(conf_file_template=_p('conf_in_a_conf.conf'),
                                 test_attribute=str(Util.TestValue.CHECK_ARGS))
         suite.expect_failure(description="Cannot use conf files inside a conf file",
                              expected='Cannot use conf files inside a conf file')
 
     def test_valid_runs(self) -> None:
 
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
         suite.expect_success(description='valid assert on file name',
                              run_flags=[_p('A.sol'), '--verify', f"A:{_p('spec1.spec')}"])
         suite.expect_success(description='valid assert on redundant name:contract',
@@ -469,7 +437,7 @@ class TestClient(unittest.TestCase):
             self.fail("dynamic_bound should set disable_source_finders")
 
     def test_invalid_runs(self) -> None:
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
 
         suite.expect_failure(description='--compiler_map file not found',
                              run_flags=[_p('A.sol'), _p('V.vy'), '--verify', f"A:{_p('spec1.spec')}", '--compiler_map',
@@ -700,141 +668,10 @@ class TestClient(unittest.TestCase):
                              expected="Cannot use both `precise_bitwise_ops` and -smt_preciseBitwiseOps in "
                                       "`prover_args`")
 
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.AFTER_BUILD))
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.AFTER_BUILD))
         suite.expect_failure(description="wrong slot in link",
                              run_flags=[_p('A.sol'), '--verify', f"A:{_p('spec1.spec')}", '--link', 'A:bb=A'],
                              expected="Error in linkage: link A:bb, variable bb does not exist in contract A")
-
-    def test_solana_runs(self) -> None:
-
-        temp_dir = f"temp_{random.randint(0, 99999):05d}"
-
-        os.makedirs(temp_dir, exist_ok=True)
-
-        suite = SolanaProverTestSuite(
-            conf_file_template=str(Path.cwd() / _p("rust.conf")),
-            test_attribute=str(Util.TestValue.AFTER_BUILD),
-            build_script_template=str(Path.cwd() / _p("rust_build_script_template.py.j2")),
-        )
-
-        suite.expect_checkpoint(
-            description="run solana from subdir",
-            build_script_context={
-                'argument': 'json',
-                'output_data':
-                    {
-                        "success": True,
-                        "project_directory": temp_dir,
-                        "sources": ["a.rs"],
-                        "executables": str(Path('..') / _p('empty.so'))
-                    }
-            }
-        )
-        assert Path('./.certora_internal/latest/.certora_sources/.cwd').is_file(), \
-            "test_solana_runs: .cwd does not exist (1)"
-        assert Path(f'./.certora_internal/latest/.certora_sources/{temp_dir}/.project_directory').is_file(), \
-            "test_solana_runs: .project_directory does not exist (1)"
-
-        with (((Util.change_working_directory(temp_dir)))):
-            suite.expect_checkpoint(
-                description="run solana from subdir with change dir",
-                build_script_context={
-                    'argument': 'json',
-                    'output_data':
-                        {
-                            "success": True,
-                            "project_directory": '..',
-                            "sources": ["a.rs"],
-                            "executables": _p('empty.so')
-                        }
-                }
-            )
-
-            print(f"cwd: {os.getcwd()}")
-            p = f"../{_p('empty.so')}"
-            print(f"p: {p}")
-            print(f"exists: {Path(p).exists()}")
-
-            assert Path(f'./.certora_internal/latest/.certora_sources/{temp_dir}/.cwd').is_file(), \
-                "test_solana_runs: .cwd does not exist (2)"
-            assert Path('./.certora_internal/latest/.certora_sources/.project_directory').is_file(), \
-                "test_solana_runs: .project_directory does not exist (2)"
-
-        suite = SolanaProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
-        suite.expect_success(description='calling solana with .so',
-                             run_flags=[_p('empty.so')])
-        suite.expect_failure(description='calling solana with solc flag',
-                             run_flags=[_p('empty.so'), '--solc', 'solc4.25'],
-                             expected="unrecognized arguments: --solc")
-
-        suite = SolanaProverTestSuite(
-            conf_file_template=_p("rust.conf"),
-            test_attribute=str(Util.TestValue.AFTER_BUILD_RUST),
-            build_script_template=_p("rust_build_script_template.py.j2"),
-        )
-
-        result = suite.expect_checkpoint(
-            description="run soroban with correct build script schema",
-            build_script_context={
-                'argument': 'json',
-                'output_data':
-                    {
-                        "success": True,
-                        "project_directory": temp_dir,
-                        "sources": ["a.rs"],
-                        "solana_inlining": "inline.txt",
-                        "executables": _p('empty.so'),
-                    }
-            }
-        )
-
-        assert result.solana_inlining == [f'{temp_dir}/inline.txt'], "setting solana_inlining from CLI"
-
-    def test_soroban_runs(self) -> None:
-
-        suite = SorobanProverTestSuite(
-            conf_file_template=_p("rust.conf"),
-            test_attribute=str(Util.TestValue.AFTER_BUILD_RUST),
-            build_script_template=_p("rust_build_script_template.py.j2"),
-        )
-
-        suite.expect_success(
-            description="run soroban with correct build script schema",
-            build_script_context={'argument': 'json', 'output_data': '{"success": True, "project_directory": "project", "sources": ["a.rs"], "executables": "a.wasm"}'},
-        )
-
-        suite.expect_failure(
-            description="run soroban with build script without --json input",
-            build_script_context={'argument': 'not_json', 'output_data': '{"a": 1}'},
-            expected="Error running the script"
-        )
-
-        suite.expect_failure(
-            description="run soroban with build script without nessessary output data",
-            build_script_context={'argument': 'json', 'output_data': '{"a": 1}'},
-            expected="An unexpected error occurred: Missing required keys in build script response: success, project_directory, sources, executables",
-        )
-
-        suite = SorobanProverTestSuite(
-            conf_file_template=_p("rust.conf"),
-            test_attribute=str(Util.TestValue.CHECK_ARGS),
-        )
-        suite.expect_failure(
-            description="run soroban without files or build script",
-            expected="'files' or 'build script' must be set for Soroban runs",
-        )
-
-        suite = SorobanProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
-
-        suite.expect_failure(description='calling soroban with .sol',
-                             run_flags=[_p('empty.sol')],
-                             expected="does not end with .wasm")
-        suite.expect_failure(description='calling soroban with .so',
-                             run_flags=[_p('empty.so')],
-                             expected="does not end with .wasm")
-        suite.expect_failure(description='calling soroban with solc flag',
-                             run_flags=[_p('empty.so'), '--solc', 'solc4.25'],
-                             expected="unrecognized arguments: --solc")
 
     def test_source_tree(self) -> None:
         Path(f'{CITests_path}/test_data/dir1/dir2').mkdir(parents=True, exist_ok=True)
@@ -879,7 +716,7 @@ class TestClient(unittest.TestCase):
                 shutil.rmtree('.certora_internal')
 
     def test_abs_to_rel(self) -> None:
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
         result = suite.expect_checkpoint(
             description='abs to rel',
             run_flags=[os.path.abspath(_p('A.sol')),
@@ -917,7 +754,7 @@ class TestClient(unittest.TestCase):
                 continue
             try:
                 args = test_simple_args(attr)
-                args = TestUtil.add_test_flag(args, Util.TestValue.LOCAL_JAR)
+                args = TestUtil.add_test_flag(args, Util.TestValue.BEFORE_LOCAL_PROVER_CALL)
                 value = TestUtil.get_valid_value(attr)
                 # bytecode command already contains the jar flag no need to append
                 if attr not in [Attrs.EvmProverAttributes.BYTECODE_JSONS,
@@ -982,7 +819,7 @@ class TestClient(unittest.TestCase):
             got = sorted([dep.split('=')[0] for dep in packages_attr])
             assert expect == got, f"{description}. Expected: {expect}. Got: {got}"
 
-        suite = ProverTestSuite(conf_file_template=_p('mutation_conf_top_level.conf'),
+        suite = TestUtil.ProverTestSuite(conf_file_template=_p('mutation_conf_top_level.conf'),
                                 test_attribute=str(Util.TestValue.CHECK_ARGS))
         Path(Util.REMAPPINGS_FILE).unlink(missing_ok=True)
         Path(Util.PACKAGE_FILE).unlink(missing_ok=True)
@@ -1192,7 +1029,7 @@ class TestClient(unittest.TestCase):
         #
         #   testing that the right map value is set in the solc command json object
 
-        suite = ProverTestSuite(conf_file_template=f'{TestEVM_path}/MultiContract/sameFile/SolcArgs/Default_for_ci.conf',
+        suite = TestUtil.ProverTestSuite(conf_file_template=f'{TestEVM_path}/MultiContract/sameFile/SolcArgs/Default_for_ci.conf',
                                 test_attribute=str(Util.TestValue.CHECK_SOLC_OPTIONS))
 
         expected = {
@@ -1247,7 +1084,7 @@ class TestClient(unittest.TestCase):
 
     def test_split_rules(self) -> None:
         rules = {'always_false', 'always_true', 'tautology'}
-        suite = ProverTestSuite(conf_file_template=f'{TestEVM_path}/RulePickingTest/Default_for_ci.conf',
+        suite = TestUtil.ProverTestSuite(conf_file_template=f'{TestEVM_path}/RulePickingTest/Default_for_ci.conf',
                                 test_attribute=str(Util.TestValue.AFTER_RULE_SPLIT))
         commands = suite.expect_checkpoint(description='split to 3 runs', run_flags=['--split_rules', 'always*'])
         commands_rule = set()
@@ -1269,7 +1106,7 @@ class TestClient(unittest.TestCase):
                              expected="Failed to get rules")
 
     def test_storage_extension_harnesses(self) -> None:
-        suite = ProverTestSuite(conf_file_template=f'{CITests_path}/test_data/storage_extensions/CI.conf',
+        suite = TestUtil.ProverTestSuite(conf_file_template=f'{CITests_path}/test_data/storage_extensions/CI.conf',
                                 test_attribute=str(Util.TestValue.AFTER_BUILD))
 
         suite.expect_failure(description="Overwrite an existing target slot",
@@ -1291,7 +1128,7 @@ class TestClient(unittest.TestCase):
     def test_automatic_storage_extension_harnesses(self) -> None:
         # Test the no storage extension flow (no extracted storage extension from the contract)
         with Util.change_working_directory('Public/TestEVM/Counter'):
-            suite = ProverTestSuite(conf_file_template='counter.conf',
+            suite = TestUtil.ProverTestSuite(conf_file_template='counter.conf',
                                     test_attribute=str(Util.TestValue.STORAGE_EXTENSION_LAYOUT))
             suite.expect_success(description="ERC7201 storage extension harnesses no flow",
                                  run_flags=['--disable_local_typechecking', '--storage_extension_annotation'])
@@ -1301,7 +1138,7 @@ class TestClient(unittest.TestCase):
 
         # Test the normal flow (extracted storage extension from the contract)
         with Util.change_working_directory('Public/TestEVM/StorageExtensions'):
-            suite = ProverTestSuite(conf_file_template='ERC7201.conf',
+            suite = TestUtil.ProverTestSuite(conf_file_template='ERC7201.conf',
                                     test_attribute=str(Util.TestValue.STORAGE_EXTENSION_LAYOUT))
             suite.expect_success(description="ERC7201 storage extension harnesses normal flow",
                                  run_flags=['--disable_local_typechecking', '--storage_extension_annotation'])
@@ -1311,7 +1148,7 @@ class TestClient(unittest.TestCase):
             assert list(result.keys())[0][1] == 'Test_ERC7201'
 
         # Test 2 structs but only one storage extension
-        suite = ProverTestSuite(conf_file_template=f'{CITests_path}/test_data/automatic_storage_extensions/single_struct/single_struct.conf',
+        suite = TestUtil.ProverTestSuite(conf_file_template=f'{CITests_path}/test_data/automatic_storage_extensions/single_struct/single_struct.conf',
                                 test_attribute=str(Util.TestValue.STORAGE_EXTENSION_LAYOUT))
         suite.expect_success(description="Single struct with storage extension out of 2",
                             run_flags=['--disable_local_typechecking', '--storage_extension_annotation'])
@@ -1322,7 +1159,7 @@ class TestClient(unittest.TestCase):
         assert added_fields[0]["label"] == "ext_test_book1"
 
         # Test 2 structs with the same storage extension variable
-        suite = ProverTestSuite(conf_file_template=f'{CITests_path}/test_data/automatic_storage_extensions/same_extension/same_extension.conf',
+        suite = TestUtil.ProverTestSuite(conf_file_template=f'{CITests_path}/test_data/automatic_storage_extensions/same_extension/same_extension.conf',
                                 test_attribute=str(Util.TestValue.STORAGE_EXTENSION_LAYOUT))
         suite.expect_failure(description="Same extension for 2 structs",
                              run_flags=['--disable_local_typechecking', '--storage_extension_annotation'],
@@ -1383,47 +1220,10 @@ class TestClient(unittest.TestCase):
                 f"Error! solc flag in solidity_compiler section is incorrect!\n" \
                 f"expected: 'solc8.28' of content_type 'FLAG', actual: '{solc_data}'"
 
-    def test_solana_configuration_layout_data(self) -> None:
-        """
-        Tests that the configuration_layout is as expected.
-        """
-        args = [_p('empty.so'), '--server', 'production', '--rule', 'dummy_rule']
-        args = TestUtil.add_test_flag(args, Util.TestValue.CHECK_CONFIG_LAYOUT)
-        try:
-            run_solana_prover(args)
-            raise AssertionError(f"__test_main_spec: No Test Result for {args}")
-        except Util.TestResultsReady as e:
-            layout = e.data.configuration_layout
-
-            # Validating files section in RunConfigurationLayout
-            files = self.get_card_object(layout, 'files')
-            assert files, f"Error! files section is expected to exist in configuration layout data!\n{layout}"
-            assert _p('empty.so') in files.content[0].content, \
-                f"Error! files in configuration layout is {files.content[0].content}, expected {_p('empty.so')}"
-            assert 'solana' in files.content[0].doc_link and 'files' in files.content[0].doc_link, \
-                f"Error! doc_link in configuration layout is {files.content[0].doc_link}\n" \
-                f"expected 'solana' and '#files' in link!"
-
-            # Validating general section in RunConfigurationLayout
-            assert (general := self.get_card_object(layout, 'general')) and \
-                   (general_flags := self.get_inner_object(general.content, 'flags')), \
-                   f"Error! flags in general section are expected to exist in configuration layout data!\n{layout}"
-
-            server_data = self.get_inner_object(general_flags.content, 'server')
-            assert server_data and "production" == server_data.content, \
-                f"Error! server flag in general section is incorrect!\n" \
-                f"expected: 'production', actual: '{server_data.content}'"
-
-            rule_data = self.get_inner_object(general.content, 'rule')
-            assert rule_data and "dummy_rule" in rule_data.content and "SIMPLE" == rule_data.content_type \
-                   and "prover/cli" in rule_data.doc_link, \
-                   f"Error! rule subsection in general section is incorrect!\n" \
-                   f"expected: dummy_rule in content, content_type: SIMPLE and 'prover/cli' in doc_link,\n" \
-                   f"actual: '{rule_data}'"
 
     def test_override_base_config(self) -> None:
 
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
 
         # creating 2 conf files: a base and a child
         base_data = {
@@ -1470,7 +1270,7 @@ class TestClient(unittest.TestCase):
         result = suite.expect_checkpoint(description="override base: child override", run_flags=['child.conf'])
         assert result.solc == "solc6.12", f"test_override_base_config: expecting solc6.12, got {result.solc}"
 
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.AFTER_BUILD))  # build to get source tree
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.AFTER_BUILD))  # build to get source tree
         # solc is defined also in CLI - - value in CLI shadows confs
         result = suite.expect_checkpoint(description="override base: CLI override",
                                          run_flags=['child.conf', '--solc', 'solc5.11'])
@@ -1488,7 +1288,7 @@ class TestClient(unittest.TestCase):
                                                             f", got {last_run_context['solc']}")
 
         # base conf does not exist
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
         child_data['override_base_config'] = "does_not_exist.conf"
         with open("child.conf", "w") as f: json.dump(child_data, f, indent=4)
         suite.expect_failure(description="override base: base does not exist", run_flags=['child.conf'],
@@ -1501,33 +1301,14 @@ class TestClient(unittest.TestCase):
         suite.expect_failure(description="override base: base does not exist", run_flags=['child.conf'],
                              expected="Error when reading child.conf: Cannot load base config: base_bad.conf")
 
-    def test_solana_build(self) -> None:
-        suite = SolanaProverTestSuite(
-            conf_file_template=_p("rust.conf"),
-            test_attribute=str(Util.TestValue.SOLANA_BUILD_CMD)
-        )
-        open("build_script.py", "a").close()
-        os.chmod("build_script.py", os.stat("build_script.py").st_mode | stat.S_IXUSR)
 
-        result = suite.expect_checkpoint(description="solana build with build script",
-                                         run_flags=["--build_script", "./build_script.py",
-                                                    "--cargo_features", "feature1",
-                                                    "--cargo_tools_version", "v1.41"])
-        expected = ['./build_script.py', '--json', '-l', '--cargo_features', 'feature1']
-        assert result == expected, f"with --build_script: expected {expected}, got {result}"
-
-        result = suite.expect_checkpoint(description="solana build with cargo flags",
-                                         run_flags=["--cargo_features", "feature1",
-                                                    "--cargo_tools_version", "v1.41"])
-        expected = ['cargo', 'certora-sbf', '--json', '--tools-version', 'v1.41', '--features', 'feature1']
-        assert result == expected, f"without  --build_script: expected {expected}, got {result}"
 
     def test_ranger(self) -> None:
-        suite = ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
+        suite = TestUtil.ProverTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
         suite.expect_success(description='run certoraRun with ranger attributes',
                              run_flags=[_p('A.sol'), '--verify', f"A:{_p('spec1.spec')}", "--range", "8",
                                         "--ranger_failure_limit", "7"])
-        suite = RangerTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
+        suite = TestUtil.RangerTestSuite(test_attribute=str(Util.TestValue.CHECK_ARGS))
 
         result = suite.expect_checkpoint(description='run certoraRun with ranger attributes',
                                          run_flags=[_p('A.sol'), '--verify', f"A:{_p('spec1.spec')}",

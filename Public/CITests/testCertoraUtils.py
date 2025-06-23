@@ -34,6 +34,11 @@ import CertoraProver.certoraContextAttributes as Attrs
 from Shared import certoraAttrUtil as AttrUtil
 from Shared import certoraUtils as Util
 from Mutate import mutateConstants as MConstants
+from certoraSolanaProver import run_solana_prover
+from certoraSorobanProver import run_soroban_prover
+from certoraRanger import run_ranger
+from certoraRun import run_certora
+
 
 class InvalidResultException(Exception):
     pass
@@ -806,6 +811,30 @@ class TestSuite:
         with open(dest, 'w') as file:
             file.write(json5.dumps(content))
         return dest
+
+
+class SorobanProverTestSuite(TestSuite):
+    def __init__(self, **kwargs: Any):
+        super().__init__(run_soroban_prover, **kwargs)
+
+
+class SolanaProverTestSuite(TestSuite):
+    def __init__(self, **kwargs: Any):
+        super().__init__(run_solana_prover, **kwargs)
+
+class RangerTestSuite(TestSuite):
+    def __init__(self, **kwargs: Any):
+        super().__init__(run_ranger, **kwargs)
+
+
+class ProverTestSuite(TestSuite):
+    def __init__(self, **kwargs: Any):
+        super().__init__(run_certora, **kwargs)
+
+    @staticmethod
+    def conf_arg(conf: str) -> List[str]:
+        return [conf] if conf else []
+
 
 def replace_in_file(file_path: Path, old: str, new: str) -> None:
     with file_path.open('r') as f:
