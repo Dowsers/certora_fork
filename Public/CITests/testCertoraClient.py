@@ -1015,7 +1015,7 @@ class TestClient(unittest.TestCase):
             (f'{CITests_path}/test_data/A.sol', 'solc5.11'),
             (f'{CITests_path}/test_data/B.sol', 'solc5.9'),
             (f'{CITests_path}/test_data/dir1/*.sol', 'solc7.0'),
-            ('*.sol', 'solc6.8')
+            ('**/*.sol', 'solc6.8')
         ])
 
         expected_results = ['solc5.11', 'solc5.9', 'solc6.8', 'solc7.0']

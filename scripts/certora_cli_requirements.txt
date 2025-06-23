@@ -9,3 +9,4 @@ tqdm
 StrEnum
 universalmutator
 jinja2
+wcmatch
