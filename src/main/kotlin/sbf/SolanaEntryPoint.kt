@@ -17,6 +17,7 @@
 
 package sbf
 
+import analysis.maybeAnnotation
 import analysis.maybeNarrow
 import cli.SanityValues
 import config.Config
@@ -269,7 +270,8 @@ private fun attachRangeToRule(
         val parentRule = rule.ruleType.getOriginatingRule() as EcosystemAgnosticRule
         // Since this rule has been generated, we need to first get the name of the parent rule, and resolve the range
         // based on that.
-        val ruleRange = DebugInfoReader.findFunctionRangeInSourcesDir(parentRule.ruleIdentifier.displayName) ?: Range.Empty()
+        val ruleRange = DebugInfoReader.findFunctionRangeInSourcesDir(parentRule.ruleIdentifier.displayName)
+            ?: getRuleRange(optCoreTAC) // If debug information is not available, reads the range from CVT_rule_location
         val newBaseRule = parentRule.copy(range = ruleRange)
         val ruleType = (rule.ruleType as SpecType.Single.GeneratedFromBasicRule).copyWithOriginalRule(newBaseRule)
         CompiledSolanaRule(
@@ -278,8 +280,41 @@ private fun attachRangeToRule(
         )
     } else {
         val ruleRange: Range =
-            DebugInfoReader.findFunctionRangeInSourcesDir(rule.ruleIdentifier.displayName) ?: Range.Empty()
-        CompiledSolanaRule(code = optCoreTAC, rule = rule.copy(isSatisfyRule = isSatisfyRule, range = ruleRange))
+            DebugInfoReader.findFunctionRangeInSourcesDir(rule.ruleIdentifier.displayName)
+                ?: getRuleRange(optCoreTAC) // If debug information is not available, reads the range from CVT_rule_location
+        CompiledSolanaRule(
+            code = optCoreTAC,
+            rule = rule.copy(isSatisfyRule = isSatisfyRule, range = ruleRange)
+        )
+    }
+}
+
+/**
+ * Returns the [Range] associated with [tacProgram].
+ * Iterates over the commands, and if *any* command is a [RuleLocationAnnotation], returns the
+ * location associated with such command.
+ * If there are no [RuleLocationAnnotation] or the location does not exist in the uploaded files, returns
+ * [Range.Empty].
+ * If there are multiple [RuleLocationAnnotation], selects nondeterministically one to read the
+ * location from. If in the rules `CVT_rule_location` is called exactly once as the first instruction, this never
+ * happens.
+ */
+private fun getRuleRange(tacProgram: CoreTACProgram): Range {
+    val rangeFromAnnotation = tacProgram.parallelLtacStream()
+        .mapNotNull { it.maybeAnnotation(RULE_LOCATION) }
+        .findAny()
+        .orElse(null)
+        ?.toRange()
+    return if (rangeFromAnnotation != null) {
+        val fileInSourcesDir = File(Config.prependSourcesDir(rangeFromAnnotation.file))
+        if (fileInSourcesDir.exists()) {
+            rangeFromAnnotation
+        } else {
+            sbfLogger.warn { "file '$fileInSourcesDir' does not exist: jump to source information for rule will not be available" }
+            Range.Empty()
+        }
+    } else {
+        Range.Empty()
     }
 }
 
