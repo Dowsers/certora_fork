@@ -21,8 +21,8 @@ import analysis.*
 import analysis.split.Ternary.Companion.isPowOf2Minus1
 import utils.*
 import vc.data.*
+import vc.data.SimplePatchingProgram.Companion.patchForEach
 import java.math.BigInteger
-import java.util.stream.Collectors
 
 /**
  * Given an analysis that can bound the value of tac symbols,
@@ -35,20 +35,16 @@ import java.util.stream.Collectors
 object IntervalBasedExprSimplifier {
     fun analyze(core: CoreTACProgram): CoreTACProgram {
         val analysis = core.analysisCache[IntervalAnalysis]
+        val graph = core.analysisCache.graph
 
-        val toPatch = core.parallelLtacStream().mapNotNull { lcmd ->
-            lcmd.maybeExpr<TACExpr>()?.let { assign ->
-                val state = analysis.inState(assign.ptr) ?: return@let null
-                lcmd.ptr `to?` tryRewriteExpr(assign.exp, state)?.let { rewrite ->
+        return analysis.parallelStreamStates().mapNotNull { (where, state) ->
+            graph.elab(where).maybeExpr<TACExpr>()?.let { assign ->
+                assign.ptr `to?` tryRewriteExpr(assign.exp, state)?.let { rewrite ->
                     TACCmd.Simple.AssigningCmd.AssignExpCmd(assign.lhs, rewrite)
                 }
             }
-        }.collect(Collectors.toSet())
-
-        return core.patching {
-            for ((where, replacement) in toPatch) {
-                it.update(where, replacement)
-            }
+        }.patchForEach(core) { (where, replacement) ->
+            update(where, replacement)
         }
     }
 

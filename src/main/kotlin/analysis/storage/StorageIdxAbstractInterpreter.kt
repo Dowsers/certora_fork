@@ -307,9 +307,7 @@ class SimpleQualifiedIntAbstractInterpreter<T: Any> private constructor (
     }
 
     override fun killLHS(lhs: TACSymbol.Var, s: ProjectedMap<TACSymbol.Var, T, SimpleQualifiedInt>, w: SimpleQualifiedIntAbstractInterpreterState<T>, narrow: LTACCmdView<TACCmd.Simple.AssigningCmd>): ProjectedMap<TACSymbol.Var, T, SimpleQualifiedInt> {
-        return s[lhs]?.let { idx ->
-            qualifierManager.killLHS(lhs = lhs, lhsVal = idx, narrow = narrow, s = s)
-        } ?: s
+        return qualifierManager.killLHS(lhs = lhs, lhsVal = s[lhs], narrow = narrow, s = s)
     }
 
     override fun project(l: LTACCmd, w: SimpleQualifiedIntAbstractInterpreterState<T>): ProjectedMap<TACSymbol.Var, T, SimpleQualifiedInt> {
