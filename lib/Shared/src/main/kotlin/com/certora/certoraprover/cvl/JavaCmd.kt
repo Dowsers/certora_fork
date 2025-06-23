@@ -55,7 +55,7 @@ class AssumeCmd(_range: Range, val exp: Exp, val description: String?) : Cmd(_ra
     override fun toString() = "Assume($exp,$description)"
 
     override fun kotlinize(resolver: TypeResolver, scope: CVLScope): CollectingResult<CVLCmd, CVLError>
-        = exp.kotlinize(resolver, scope).map { CVLCmd.Simple.AssumeCmd.Assume(range, it, description, scope, invariantPreCond = false) }
+        = exp.kotlinize(resolver, scope).map { CVLCmd.Simple.AssumeCmd.Assume(range, it, description, scope, invariantPreCond = false, comesFromSpec = true) }
 }
 
 

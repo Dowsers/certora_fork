@@ -169,14 +169,16 @@ fun collectRequireWithoutReasonNotifications(compiledRule: CompiledRule): List<R
 
     val res = graph.commands
         .filter { isRequireWithoutReason(it.cmd) }
-        .map { (ptr, cmd) ->
+        .mapToSet { (ptr, cmd) ->
             check(cmd is TACCmd.Simple.AssumeCmd)
+            val generalMsgPre = "Rule depends on a `require`${sourceString(cmd)} without reason${locationString(cmd)}"
+            val generalMsgPost =
+                "Be sure to carefully evaluate whether this `require` may hide relevant behaviors and document it with a reason as a second argument, like `require(<your condition>, \"<Reason for this require to be a safe assumption>\")`."
             when (isFunctionInputRequire(cmd, ptr)) {
                 Result.TRUE -> {
                     Logger.regression { "Function-Input-Require${sourceString(cmd)} without Reason${locationString(cmd)}" }
                     RuleAlertReport.Warning(
-                        "Rule depends on a `require`${sourceString(cmd)} without reason${locationString(cmd)} that affects an argument of a solidity call. " +
-                            "Be sure to carefully evaluate whether this `require` may hide relevant behaviors and document it with a reason."
+                        "$generalMsgPre that affects an argument of a solidity call. $generalMsgPost"
                     )
                 }
 
@@ -185,16 +187,14 @@ fun collectRequireWithoutReasonNotifications(compiledRule: CompiledRule): List<R
                         "Non-Function-Input-Require${sourceString(cmd)} without Reason${locationString(cmd)}"
                     }
                     RuleAlertReport.Info(
-                        "Rule depends on a `require`${sourceString(cmd)} without reason${locationString(cmd)}. " +
-                            "Be sure to carefully evaluate whether this `require` may hide relevant behaviors and document it with a reason."
+                        "$generalMsgPre. $generalMsgPost"
                     )
                 }
 
                 Result.ABORTED -> {
                     Logger.regression { "Require${sourceString(cmd)} without Reason${locationString(cmd)} with aborted function-input check" }
                     RuleAlertReport.Warning(
-                        "Rule depends on a `require`${sourceString(cmd)} without reason${locationString(cmd)} that may affect an argument of a solidity call. " +
-                            "Be sure to carefully evaluate whether this `require` may hide relevant behaviors and document it with a reason."
+                        "$generalMsgPre that may affect an argument of a solidity call. $generalMsgPost"
                     )
                 }
             }
