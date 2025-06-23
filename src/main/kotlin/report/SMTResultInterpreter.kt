@@ -18,15 +18,18 @@
 package report
 
 import solver.SolverResult
+import spec.cvlast.SpecType
 import spec.rules.IRule
 
 object SMTResultInterpreter {
     fun getResultString(res: SolverResult?, rule: IRule): String {
-        val isSatisfyRule = rule.isSatisfyRule
+        val isSatisfyRule = rule.isSatisfyRule || rule.getAllSingleRules().all {
+            it.ruleType is SpecType.Single.GeneratedFromBasicRule.SanityRule.VacuityCheck
+        }
         return when (res) {
             null -> "No result"
-            SolverResult.SAT -> if(isSatisfyRule) { "Not violated" } else { "Violated" }
-            SolverResult.UNSAT -> if(isSatisfyRule) { "Violated" } else { "Not violated" }
+            SolverResult.SAT -> if(isSatisfyRule) { "Not violated (sat)" } else { "Violated (sat)" }
+            SolverResult.UNSAT -> if(isSatisfyRule) { "Violated (unsat)" } else { "Not violated (unsat)" }
             SolverResult.UNKNOWN -> "?"
             SolverResult.TIMEOUT -> "Timeout"
             SolverResult.SANITY_FAIL -> "Sanity check failed"
