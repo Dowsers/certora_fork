@@ -66,7 +66,9 @@ class ExpNormalizerBV(
     }
 
     private fun List<LExpression>.deriveTag(): Tag.Bits =
-        map { it.tag }.commonBitsOrInt() as Tag.Bits
+        map { it.tag }.commonBitsOrInt() as? Tag.Bits
+            ?: error("Tags of ${joinToString { "$it := ${it.tag}" }} don't end up as Bits")
+
     override val functionSymbolNormalizer = object: PlainLExpressionTransformer() {
         override fun literalPre(lit: LExpression.Literal) = when (lit.tag) {
             Tag.Int -> {
@@ -93,7 +95,7 @@ class ExpNormalizerBV(
                 is NonSMTInterpretedFunctionSymbol.Unary.BitwiseNot ->
                     exp.copy(f = TheoryFunctionSymbol.BV.BvNot(exp.arg.tag as Tag.Bits))
                 is NonSMTInterpretedFunctionSymbol.Unary.Extract ->
-                    exp.copy(f = TheoryFunctionSymbol.BV.Extract(exp.f.l, exp.f.r))
+                    exp.copy(f = TheoryFunctionSymbol.BV.Extract(exp.f.l, exp.f.r, exp.f.paramSort, exp.f.resultSort))
                 is NonSMTInterpretedFunctionSymbol.Unary.SignedPromote ->
                     exp.copy(f = TheoryFunctionSymbol.BV.SignedPromote(exp.f.from, exp.f.to))
                 is NonSMTInterpretedFunctionSymbol.Unary.UnsignedPromote ->

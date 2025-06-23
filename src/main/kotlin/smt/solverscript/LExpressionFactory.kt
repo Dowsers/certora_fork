@@ -1073,7 +1073,7 @@ class LExpressionFactory private constructor(
 
     fun extract(l: Int, r: Int, op: LExpression): LExpression {
         check(l >= 0 && r >= 0) { "can't initialize `extract` with negative indices (got \"$l\", \"$r\")" }
-        return applyExp(NonSMTInterpretedFunctionSymbol.Unary.Extract(l, r), op)
+        return applyExp(NonSMTInterpretedFunctionSymbol.Unary.Extract(l, r, op.tag as Tag.Bits, Tag.Bits(l-r)), op)
     }
 
     // datatypes
