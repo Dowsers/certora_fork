@@ -103,19 +103,11 @@ object Calltrace {
     }
 
     context(SbfCFGToTAC<TNum, TOffset>)
-    fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>>  ruleLocation(locInst: LocatedSbfInstruction): TACCmd.Simple {
-        val (filepath, lineNumber) = getFilepathAndLineNumber(locInst)
-        val ruleLocationAnnotation = RuleLocationAnnotation(filepath, lineNumber)
-        return TACCmd.Simple.AnnotationCmd(RULE_LOCATION, ruleLocationAnnotation)
-    }
-
-    context(SbfCFGToTAC<TNum, TOffset>)
     fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>>  printString(locInst: LocatedSbfInstruction): TACCmd.Simple {
         val tag = getString(locInst, SbfRegister.R1_ARG)
         val str = getString(locInst, SbfRegister.R3_ARG)
         return SnippetCmd.CvlrSnippetCmd.CexPrintTag("$tag: $str").toAnnotation()
     }
-
 
     /** Read the filepath from the first two registers and the line number from the third one. */
     context(SbfCFGToTAC<TNum, TOffset>)

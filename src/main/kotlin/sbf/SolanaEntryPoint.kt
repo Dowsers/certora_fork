@@ -17,7 +17,6 @@
 
 package sbf
 
-import analysis.maybeAnnotation
 import analysis.maybeNarrow
 import cli.SanityValues
 import config.Config
@@ -261,8 +260,6 @@ private fun attachRangeToRule(
     optCoreTAC: CoreTACProgram,
     isSatisfyRule: Boolean
 ): CompiledSolanaRule {
-    val ruleRange: Range = getRuleRange(optCoreTAC)
-
     return if (rule.ruleType is SpecType.Single.GeneratedFromBasicRule) {
         // If the rule has been generated from a basic rule, then we have to update the parent rule range.
         // It would be more elegant to generate the original rule with the correct range, but [getRuleRange] relies on
@@ -270,6 +267,9 @@ private fun attachRangeToRule(
         // In fact, those annotations need the value and pointer analysis to be executed to be able to infer the compile
         // time constants that represent the file name and the line number.
         val parentRule = rule.ruleType.getOriginatingRule() as EcosystemAgnosticRule
+        // Since this rule has been generated, we need to first get the name of the parent rule, and resolve the range
+        // based on that.
+        val ruleRange = DebugInfoReader.findFunctionRangeInSourcesDir(parentRule.ruleIdentifier.displayName) ?: Range.Empty()
         val newBaseRule = parentRule.copy(range = ruleRange)
         val ruleType = (rule.ruleType as SpecType.Single.GeneratedFromBasicRule).copyWithOriginalRule(newBaseRule)
         CompiledSolanaRule(
@@ -277,39 +277,9 @@ private fun attachRangeToRule(
             rule = rule.copy(ruleType = ruleType, isSatisfyRule = isSatisfyRule, range = ruleRange)
         )
     } else {
-        CompiledSolanaRule(
-            code = optCoreTAC,
-            rule = rule.copy(isSatisfyRule = isSatisfyRule, range = ruleRange)
-        )
-    }
-}
-
-/**
- * Returns the [Range] associated with [tacProgram].
- * Iterates over the commands, and if *any* command is a [RuleLocationAnnotation], returns the
- * location associated with such command.
- * If there are no [RuleLocationAnnotation] or the location does not exist in the uploaded files, returns
- * [Range.Empty].
- * If there are multiple [RuleLocationAnnotation], selects nondeterministically one to read the
- * location from. If in the rules `CVT_rule_location` is called exactly once as the first instruction, this never
- * happens.
- */
-private fun getRuleRange(tacProgram: CoreTACProgram): Range {
-    val rangeFromAnnotation = tacProgram.parallelLtacStream()
-        .mapNotNull { it.maybeAnnotation(RULE_LOCATION) }
-        .findAny()
-        .orElse(null)
-        ?.toRange()
-    return if (rangeFromAnnotation != null) {
-        val fileInSourcesDir = File(Config.prependSourcesDir(rangeFromAnnotation.file))
-        if (fileInSourcesDir.exists()) {
-            rangeFromAnnotation
-        } else {
-            sbfLogger.warn { "file '$fileInSourcesDir' does not exist: jump to source information for rule will not be available" }
-            Range.Empty()
-        }
-    } else {
-        Range.Empty()
+        val ruleRange: Range =
+            DebugInfoReader.findFunctionRangeInSourcesDir(rule.ruleIdentifier.displayName) ?: Range.Empty()
+        CompiledSolanaRule(code = optCoreTAC, rule = rule.copy(isSatisfyRule = isSatisfyRule, range = ruleRange))
     }
 }
 

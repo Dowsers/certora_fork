@@ -1336,9 +1336,6 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
                             CVTCalltrace.PRINT_STRING -> {
                                 listOf(Calltrace.printString(locInst))
                             }
-                            CVTCalltrace.RULE_LOCATION -> {
-                                listOf(Calltrace.ruleLocation(locInst))
-                            }
                             CVTCalltrace.SCOPE_END -> {
                                 listOf(Calltrace.endScope(locInst))
                             }

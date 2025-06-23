@@ -82,7 +82,7 @@ class SolanaRuleLocationTest {
     fun ruleLocationFailingRule() {
         assertExistsRuleWithExpectedRange(
             "rule_failing_with_location",
-            getRangeForRule("src/rule_locations.rs", 14U)
+            getRangeForRule("src/rule_locations.rs", 13U)
         )
     }
 
@@ -90,7 +90,7 @@ class SolanaRuleLocationTest {
     fun ruleLocationFailingRuleCvlrSanity() {
         assertExistsRuleWithExpectedRange(
             "rule_failing_with_location-$vacuitySuffix",
-            getRangeForRule("src/rule_locations.rs", 14U)
+            getRangeForRule("src/rule_locations.rs", 13U)
         )
     }
 

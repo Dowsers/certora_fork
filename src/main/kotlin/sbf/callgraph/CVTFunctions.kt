@@ -150,13 +150,10 @@ enum class CVTCalltrace(val function: ExternalFunction,
         listOf(SbfRegister.R1_ARG, SbfRegister.R2_ARG).map{ Value.Reg(it)}.toSet()),
         setOf(CalltraceStr(SbfRegister.R1_ARG))),
     PRINT_STRING(CexPrintValue(CvlrFunctions.CVT_calltrace_print_string, 4),
-                 setOf(CalltraceStr(SbfRegister.R1_ARG), CalltraceStr(SbfRegister.R3_ARG))),
-    RULE_LOCATION(ExternalFunction(CvlrFunctions.CVT_rule_location, setOf(),
-                  listOf(SbfRegister.R1_ARG, SbfRegister.R2_ARG, SbfRegister.R3_ARG).map{ Value.Reg(it)}.toSet()),
-                  setOf(CalltraceStr(SbfRegister.R1_ARG)));
+                 setOf(CalltraceStr(SbfRegister.R1_ARG), CalltraceStr(SbfRegister.R3_ARG)));
 
     companion object: ExternalLibrary<CVTCalltrace>  {
-        private val nameMap = values().associateBy { it.function.name }
+        private val nameMap = CVTCalltrace.entries.associateBy { it.function.name }
 
         override fun from(name: String) = nameMap[name]
         override fun addSummaries(memSummaries: MemorySummaries) {
