@@ -185,9 +185,9 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
                         scalars.widen(other.scalars, left)
                     }
             val outPtaGraph = if (isJoin) {
-                        ptaGraph.join(other.ptaGraph, scalars, other.scalars, left, right)
+                        ptaGraph.join(other.ptaGraph, scalars, other.scalars, outScalars, left, right)
                     } else {
-                        ptaGraph.widen(other.ptaGraph, scalars, other.scalars, left, right)
+                        ptaGraph.widen(other.ptaGraph, scalars, other.scalars, outScalars, left, right)
                     }
 
             return MemoryDomain(outScalars, outPtaGraph)
@@ -408,25 +408,42 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
         }
     }
 
+    /**
+     * Transfer function for load and store.
+     *
+     * The function `reductionFromScalarsToPtaGraph` reconstructs PTA cells from scalar information (for stack).
+     *
+     * Moreover, PTA transfer functions `doLoad` and `doStore` take the scalar value of the base register as a parameter.
+     * This parameter is used to do further reduction by reconstructing PTA cells from globals/heap locations.
+     *
+     * To improve the design, we should do that second reduction also here so that when `doLoad` and `doStore` are called,
+     * all the cells have been reconstructed.
+     */
     private fun analyzeMem(locInst: LocatedSbfInstruction,
                            globals: GlobalVariableMap,
                            @Suppress("UNUSED_PARAMETER") memSummaries: MemorySummaries) {
         check(!isBottom()) {"called analyzeMem on bottom in memory domain"}
         val stmt = locInst.inst
         check(stmt is SbfInstruction.Mem) {"Memory domain expects a memory instruction instead of $stmt"}
+
+
+        // This reduction must happen before the scalar transfer function because for load
+        // instructions the base register and the lhs can be the same register.
+        reductionFromScalarsToPtaGraph(locInst)
+
+        // In the case of a load instruction where base register and lhs are the same register,
+        // `baseValBeforeKilled` contains the type of the register **before** the lhs is processed but after
+        // potentially casting the abstract value of the base register from a number to a global/heap pointer.
         val baseValBeforeKilled = scalars.analyzeMem(locInst, globals)
+
         if (scalars.isBottom()) {
             setToBottom()
         } else  {
-            reductionFromScalarsToPtaGraph(locInst)
-
             val base = stmt.access.baseReg
             val isLoad = stmt.isLoad
-            // We ask for the type of baseReg after the transfer function of the
-            // scalar domain has been executed, because it can refine the abstract value
-            // of baseReg (e.g., implicit cast from an integer to a pointer)
             if (isLoad) {
-                val baseType = baseValBeforeKilled?.type() ?: scalars.getValue(base).type()
+                check(baseValBeforeKilled != null) {"Unexpected null scalar value for $stmt"}
+                val baseType = baseValBeforeKilled.type()
                 ptaGraph.doLoad(locInst, base, baseType, globals)
             } else {
                 val value = stmt.value

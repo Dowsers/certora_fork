@@ -1871,10 +1871,9 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
      * As a result, any future access to that field will throw an exception. In many cases, that field is never
      * accessed so the analysis can go on.
      *
-     * @param leftStack
-     * @param rightStack
-     * @param leftUntrackedStackFields: fields in leftStack that point to "top"
-     * @param rightUntrackedStackFields: fields in rightStack that point to "top"
+     * @param leftStack: the PTA node that represents the left stack
+     * @param rightStack: the PTA node that represents the right stack
+     * @param scalars: Scalar state after the join
      * @param onlyLeft: stack fields defined (accessed) only on leftStack
      * @param onlyRight: stack fields defined (accessed) only on rightStack
      * @param unificationList: stack fields defined in both leftStack and rightStack but pointing to different cells.
@@ -1883,8 +1882,7 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
     private fun joinStacks(/** input parameters **/
                            leftStack: PTANode,
                            rightStack: PTANode,
-                           @Suppress("UNUSED_PARAMETER") leftUntrackedStackFields: SetDomain<PTAField>,
-                           @Suppress("UNUSED_PARAMETER") rightUntrackedStackFields: SetDomain<PTAField>,
+                           scalars: ScalarDomain<TNum, TOffset>,
                            /** input/output parameters **/
                            onlyLeft: MutableList<Pair<PTAField, PTACell>>,
                            onlyRight: MutableList<Pair<PTAField, PTACell>>,
@@ -1918,7 +1916,15 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
                     /** leftSuccC and rightSuccC are different cells **/
                     if (leftSuccC.getNode() == leftStack || rightSuccC.getNode() == rightStack) {
                         /** One of the stack fields points back to its stack **/
-                        outUntrackedStackFields = outUntrackedStackFields.add(field)
+
+                        // Before we make that particular field inaccessible we ask the scalar domain
+                        // If the scalar domain knows precisely about the field then we don't mark it as inaccessible.
+                        // If we try to load from the same field, the transfer function of load will ask the scalar analysis.
+                        val scalarVal = scalars.getStackContent(field.offset.v, field.size.toByte())
+                        val offset = (scalarVal.type() as? SbfType.PointerType.Stack<TNum, TOffset>)?.offset
+                        if (offset == null || offset.isTop()) {
+                            outUntrackedStackFields = outUntrackedStackFields.add(field)
+                        }
                     } else {
                         /**
                          *  left and right stacks have a cell at the same field but the cells are
@@ -2171,8 +2177,18 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
      * The high-level idea of the join is to "import" the stack of one graph into the other, and then keep all
      * commonalities by performing unifications (if needed), when the same stack fields or registers point to
      * different cells (in the two abstract states).
+     *
+     * @param other: the right PTA graph
+     * @param leftScalars: scalar state before the join for the left operand
+     * @param rightScalars: scalar state before the join for the right operand
+     * @param outScalars: scalar state after the join
+     * @param left: basic block for the left operand (for debugging)
+     * @param right: basic block for the right operand (for debugging)
      */
-    fun join(other: PTAGraph<TNum, TOffset>, leftScalars: ScalarDomain<TNum, TOffset>, rightScalars: ScalarDomain<TNum, TOffset>,
+    fun join(other: PTAGraph<TNum, TOffset>,
+             leftScalars: ScalarDomain<TNum, TOffset>,
+             rightScalars: ScalarDomain<TNum, TOffset>,
+             outScalars: ScalarDomain<TNum, TOffset>,
              left: Label?, right: Label?): PTAGraph<TNum, TOffset> {
         if (scratchRegisters.size != other.scratchRegisters.size) {
             val msg = if (left != null && right != null ){
@@ -2209,8 +2225,9 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
 
         val (outUntrackedStackFields, outTrackedStackFields) =
             joinStacks(leftStack, rightStack,
-                       leftG.untrackedStackFields, rightG.untrackedStackFields,
-                       onlyLeft, onlyRight,
+                       outScalars,
+                       onlyLeft,
+                       onlyRight,
                        unificationList)
         val commonRegisters =
             joinRegisters(leftStack, rightStack,
@@ -2327,9 +2344,11 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
     }
 
     fun widen(other: PTAGraph<TNum, TOffset>,
-              leftScalars: ScalarDomain<TNum, TOffset>, rightScalars: ScalarDomain<TNum, TOffset>,
+              leftScalars: ScalarDomain<TNum, TOffset>,
+              rightScalars: ScalarDomain<TNum, TOffset>,
+              outScalars: ScalarDomain<TNum, TOffset>,
               left: Label?, right: Label?): PTAGraph<TNum, TOffset> =
-        join(other, leftScalars, rightScalars, left, right)
+        join(other, leftScalars, rightScalars, outScalars, left, right)
 
     /**
      * We only compare the flow-sensitive components: normal registers, stack, and
@@ -2418,23 +2437,17 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
     /** TRANSFER FUNCTIONS **/
 
     /**
-     * let `c` be `getRegCell(reg)` and let `c'` be a fresh cell.
-     * - if `c` is not null return `c`
-     * - if [type] is a pointer to Heap/Global then  make [reg] pointing to `c'` and return `c'`
-     * - if [type] is a number then the behaviour depends on [stopIfError]. If [stopIfError] is true then
-     *   we report an error else make [reg] pointing to `c'` and return `c'`
+     * - if [type] is a pointer to Heap/Global then make [reg] to point to a fresh cell.
+     * - if [type] is a number then the behaviour depends on [stopIfError].
+     *
+     *   If [stopIfError] is true then we report an error. Otherwise, make [reg] pointing to a fresh cell.
      * - else return null.
-     */
-    fun getRegCell(reg: Value.Reg,
-                   type: SbfType<TNum, TOffset>,
-                   globalsMap: GlobalVariableMap,
-                   locInst: LocatedSbfInstruction?,
-                   stopIfError: Boolean = true): PTASymCell? {
-
-        var sc = getRegCell(reg)
-        if (sc != null) {
-            return sc
-        }
+     **/
+    private fun reductionFromScalars(reg: Value.Reg,
+                                     type: SbfType<TNum, TOffset>,
+                                     globalsMap: GlobalVariableMap,
+                                     locInst: LocatedSbfInstruction?,
+                                     stopIfError: Boolean) {
 
         val pointerType: SbfType.PointerType<TNum, TOffset>? = when(type) {
             is SbfType.NumType -> type.castToPtr(sbfTypesFac, globalsMap)
@@ -2452,13 +2465,13 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
                     check(!o.isBottom()) { "offsets cannot be bottom" }
 
                     if (!o.isTop()) {
-                        val r10C = getRegCell(Value.Reg(SbfRegister.R10_STACK_POINTER))
-                        if (r10C != null) {
+                        val stackPtrC = getRegCell(Value.Reg(SbfRegister.R10_STACK_POINTER))
+                        if (stackPtrC != null) {
                             val concreteOffset = o.toLongOrNull() // it can be null if o is a set
-                            sc = if (concreteOffset != null) {
-                                r10C.getNode().createSymCell(PTAOffset(concreteOffset))
+                            val sc = if (concreteOffset != null) {
+                                stackPtrC.getNode().createSymCell(PTAOffset(concreteOffset))
                             } else {
-                                r10C.getNode().createSymCell(PTASymOffset.mkTop())
+                                stackPtrC.getNode().createSymCell(PTASymOffset.mkTop())
                             }
                             setRegCell(reg, sc)
                         }
@@ -2466,11 +2479,11 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
                 }
                 is SbfType.PointerType.Global -> {
                     val gv = pointerType.global ?: throw UnknownGlobalDerefError(DevErrorInfo(locInst, PtrExprErrReg(reg),""))
-                    sc = globalAlloc.alloc(gv, pointerType.offset.toLongOrNull().let {Constant(it)})
+                    val sc = globalAlloc.alloc(gv, pointerType.offset.toLongOrNull().let {Constant(it)})
                     setRegCell(reg, sc)
                 }
                 is SbfType.PointerType.Heap -> {
-                    sc = heapAlloc.lowLevelAlloc(pointerType.offset.toLongOrNull().let {Constant(it)})
+                    val sc = heapAlloc.lowLevelAlloc(pointerType.offset.toLongOrNull().let {Constant(it)})
                     setRegCell(reg, sc)
                 }
                 is SbfType.PointerType.Input -> {
@@ -2478,31 +2491,44 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(/** Global node
                 }
             }
         } else if (type is SbfType.NumType) {
-                val address = type.value.toLongOrNull()
-                if (address != null) {
-                    if (!stopIfError) {
-                        // allocate fresh memory
-                        sc = externAlloc.alloc(address.toULong())
-                        setRegCell(reg, sc)
-                        return sc
-                    }
+            val address = type.value.toLongOrNull()
+            if (address != null) {
+                if (!stopIfError) {
+                    // allocate fresh memory
+                    val sc = externAlloc.alloc(address.toULong())
+                    setRegCell(reg, sc)
+                    return
                 }
+            }
 
-                val devMsg = "dereference of an absolute address " +
-                    if (address != null) {
-                        "$address (0x${address.toString(16)})"
-                    } else {
-                        "although the actual address is unknown statically"
-                    } +
-                    if (locInst != null) {
-                        " at ${locInst.inst}"
-                    } else {
-                        ""
-                    }
-                throw DerefOfAbsoluteAddressError(DevErrorInfo(locInst, PtrExprErrReg(reg), devMsg))
+            val devMsg = "dereference of an absolute address " +
+                if (address != null) {
+                    "$address (0x${address.toString(16)})"
+                } else {
+                    "although the actual address is unknown statically"
+                } +
+                if (locInst != null) {
+                    " at ${locInst.inst}"
+                } else {
+                    ""
+                }
+            throw DerefOfAbsoluteAddressError(DevErrorInfo(locInst, PtrExprErrReg(reg), devMsg))
         }
+    }
 
-        return sc
+    fun getRegCell(reg: Value.Reg,
+                   type: SbfType<TNum, TOffset>,
+                   globalsMap: GlobalVariableMap,
+                   locInst: LocatedSbfInstruction?,
+                   stopIfError: Boolean = true): PTASymCell? {
+
+        val sc = getRegCell(reg)
+        return if (sc != null) {
+            sc
+        } else {
+            reductionFromScalars(reg, type, globalsMap, locInst, stopIfError)
+            getRegCell(reg)
+        }
     }
 
     fun forget(reg: Value.Reg) {
