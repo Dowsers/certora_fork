@@ -27,6 +27,7 @@ import analysis.ip.*
 import analysis.narrow
 import config.Config
 import config.HardFailMode
+import datastructures.stdcollections.*
 import log.*
 import report.*
 import report.calltrace.*
@@ -578,7 +579,7 @@ internal sealed class CallTraceGenerator(
             eventDescription = "END_INTERNAL_SUMMARY for function ${internalFuncExitAnnot.methodSignature.prettyPrint()}",
             callback = {
                 val invokingInstance = it as CallInstance.InvokingInstance.VMInvokingInstance
-                val returnValues = internalFuncExitAnnot.rets.retValsInModel(model)
+                val returnValues = internalFuncExitAnnot.rets?.retValsInModel(model).orEmpty()
                 val dump = CallInputsAndOutputs.Dump.ReturnValues(invokingInstance.returnTypes)
                 callInputsAndOutputs.writeDumpToCall(dump, returnValues, invokingInstance)
             }
