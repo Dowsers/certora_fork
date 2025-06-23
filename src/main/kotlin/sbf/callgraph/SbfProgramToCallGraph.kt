@@ -228,7 +228,8 @@ private fun relinkAbort(prog: SbfCallGraph, inlinerConfig: InlinerConfig, memSum
         newCFGs,
         prog.getCallGraphRoots().map {it.getName()}.toSet(),
         prog.getGlobals(),
-        check = false)
+        check = false,
+        preservedCFGs = prog.getPreservedCFGs())
 }
 
 private fun relinkAbort(cfg: MutableSbfCFG, inlinerConfig: InlinerConfig, memSummaries: MemorySummaries) {
@@ -407,7 +408,12 @@ private fun relink(prog: SbfCallGraph, demangler: Demangler): SbfCallGraph {
     }
 
     // We create a new call-graph from scratch (call-graph roots and globals are not affected by relinking).
-    return MutableSbfCallGraph(newCFGs, prog.getCallGraphRoots().map { it.getName() }.toSet(), prog.getGlobals())
+    return MutableSbfCallGraph(
+        newCFGs,
+        prog.getCallGraphRoots().map { it.getName() }.toSet(),
+        prog.getGlobals(),
+        preservedCFGs = prog.getPreservedCFGs()
+    )
 }
 
 private const val certoraNamespace = "certora"

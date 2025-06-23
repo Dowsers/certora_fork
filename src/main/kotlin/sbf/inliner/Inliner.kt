@@ -63,6 +63,8 @@ private class InlinerSbfCallGraph(private val prog: SbfCallGraph) {
     // no existing CFG can call it.
     fun getRecursiveFunctions(): Set<String> = prog.getRecursiveFunctions()
     fun getStats(): CFGStats = prog.getStats()
+    fun getTransitivelyPreservedCFGs(): Set<String> = prog.getTransitivelyPreservedCFGs()
+    fun getPreservedCFGs(): Set<String> = prog.getPreservedCFGs()
 }
 
 
@@ -311,7 +313,8 @@ private class Inliner(val entry: String,
         for (b in cfg.getBlocks().values) {
             for (inst in b.getInstructions()) {
                 if (inst is SbfInstruction.Call) {
-                    if (!inst.isExternalFn()) {
+                    // If the instruction is in the preserved CFGs, we do not add any empty stub.
+                    if (!inst.isExternalFn() && inst.name !in prog.getTransitivelyPreservedCFGs()) {
                         worklist.add(inst.name)
                     }
                 }
@@ -355,6 +358,7 @@ private class Inliner(val entry: String,
 
     fun inline(): MutableSbfCallGraph {
         val entryCFG = prog.getCFG(entry)?.clone(newEntry)
+        val preservedCFGs: Set<SbfCFG> = prog.getTransitivelyPreservedCFGs().mapNotNull { prog.getCFG(it) }.toSet()
         check(entryCFG != null) {"Inliner expects a callgraph with a single root"}
         val statsBefore = prog.getStats()
         // Start inlining from entry point
@@ -381,8 +385,11 @@ private class Inliner(val entry: String,
         )
 
         cfgs.add(entryCFG)
-        return MutableSbfCallGraph(cfgs, setOf(entryCFG.getName()), prog.getGlobals())
+        // Add back the preservedCFGs.
+        cfgs.addAll(preservedCFGs.map { it.clone(it.getName()) })
+        return MutableSbfCallGraph(cfgs, setOf(entryCFG.getName()), prog.getGlobals(), preservedCFGs = prog.getPreservedCFGs())
     }
+
 }
 
 

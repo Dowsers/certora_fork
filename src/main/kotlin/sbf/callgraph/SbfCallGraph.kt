@@ -24,11 +24,13 @@ import sbf.sbfLogger
 import sbf.support.printToFile
 import java.io.File
 
+/** CFGs are identified by Strings. */
+typealias CfgName = String
+
 /**
  * A container to keep all program CFGs and its call graph.
  * All function names have been already demangled.
  **/
-
 interface SbfCallGraph {
     fun getGlobals(): GlobalVariableMap
     fun getCFGs(): List<SbfCFG>
@@ -36,35 +38,58 @@ interface SbfCallGraph {
     fun transformSingleEntryAndGlobals(f: (SbfCFG) -> Pair<SbfCFG, GlobalVariableMap>): SbfCallGraph
     fun getCallGraphRoots(): List<SbfCFG>
     fun getCallGraphRootSingleOrFail(): SbfCFG
-    fun getCallGraph(): Map<String, Set<String>>
-    fun getCFG(name: String): SbfCFG?
-    fun getRecursiveFunctions(): Set<String>
+    fun getCallGraph(): Map<CfgName, Set<CfgName>>
+    fun getCFG(name: CfgName): SbfCFG?
+    fun getRecursiveFunctions(): Set<CfgName>
     fun callGraphStructureToString(): String
     fun callGraphStructureToDot(prefix: File)
     fun toDot(prefix: File, onlyEntryPoint: Boolean = false)
     fun getStats(): CFGStats
+
+    /** Set of CFGs that have to be preserved (i.e., cannot be eliminated or modified) by program transformations. */
+    fun getPreservedCFGs(): Set<CfgName>
+
+    /**
+     * A set of CFGs that must be preserved (i.e., cannot be eliminated or modified) by program transformations.
+     * This includes all CFGs returned by [getPreservedCFGs], as well as the CFGs that are transitively
+     * reachable from them by calls.
+     * Program transformations that modify or remove CFGs have to check this set to ensure they do not affect
+     * any preserved CFG.
+     */
+    fun getTransitivelyPreservedCFGs(): Set<CfgName>
 }
 
 /**
  *  @params cfgs the set of CFGs
  *  @params globalsMap contains information about global variables
- *  @params runtime contains information about Solana syscalls
  **/
 class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
-                           private val rootNames: Set<String>,
-                           private val globalsMap: GlobalVariableMap,
-                           checkCFGHasExactlyOneExit: Boolean = true): SbfCallGraph {
+                          private val rootNames: Set<CfgName>,
+                          private val globalsMap: GlobalVariableMap,
+                          checkCFGHasExactlyOneExit: Boolean = true,
+                          preservedCFGs: Set<CfgName> = setOf()): SbfCallGraph {
     // Roots of the call graph
     private val roots: List<MutableSbfCFG>
-    private val cfgMap: MutableMap<String, MutableSbfCFG> = mutableMapOf()
+    private val cfgMap: MutableMap<CfgName, MutableSbfCFG> = mutableMapOf()
     // Call graph of the program: map from function names to its callees (also as function names)
-    private val callGraph: MutableMap<String, MutableSet<String>> = mutableMapOf()
+    private val callGraph: MutableMap<CfgName, MutableSet<CfgName>> = mutableMapOf()
     // Recursive functions in the program
-    private val recursiveSet: MutableSet<String> = mutableSetOf()
+    private val recursiveSet: MutableSet<CfgName> = mutableSetOf()
     // sccs[i] contains the i-th SCC
-    private val sccVector: ArrayList<Set<String>> = arrayListOf()
+    private val sccVector: ArrayList<Set<CfgName>> = arrayListOf()
     // map a CFG to an index in sccs
-    private val sccMap: MutableMap<String, Int> = mutableMapOf()
+    private val sccMap: MutableMap<CfgName, Int> = mutableMapOf()
+    /**
+     * Set of CFGs that have to be preserved over different program transformations.
+     * Since the preservedCFGs in the constructor might not exist in [cfgs], this set is the constructor parameter
+     * preservedCFGs filtered by the CFGs that actually exist.
+     */
+    private val preservedCFGs: Set<CfgName>
+    /**
+     * Set of CFGs that have to be preserved over different program transformations.
+     * This is the transitive closure of [preservedCFGs] by calls.
+     */
+    private val transitivelyPreservedCFGs: Set<CfgName>
 
     init {
         // Not bother to keep cfgs from functions considered as external by the prover (e.g., compiler-rt functions).
@@ -72,16 +97,35 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
         roots = cfgs.filter { rootNames.contains(it.getName()) }
         verify(checkCFGHasExactlyOneExit, "call graph constructor", false)
         buildDataStructures()
+        // Remove the preserved CFGs that are not in the call graph.
+        this.preservedCFGs =
+            preservedCFGs.filter { cfgName ->
+                val keep = cfgName in callGraph
+                if (!keep) {
+                    sbfLogger.warn { "Preserved CFG `$cfgName` not found in call graph: proceeding without" }
+                }
+                keep
+            }.toSet()
+        // Compute the set of all transitively reachable calls from the preserved roots and add to the
+        // transitive closure of preserved CFGs.
+        transitivelyPreservedCFGs = preservedCFGs.flatMap { reachableCfgsByTransitiveCalls(it) }.toSet()
         simplify()
         verify(checkCFGHasExactlyOneExit,"after call graph simplification", true)
     }
 
     constructor(
         cfgs: Collection<SbfCFG>,
-        rootNames: Set<String>,
+        rootNames: Set<CfgName>,
         globals: GlobalVariableMap,
-        check: Boolean = true
-    ): this(cfgs.map { it.clone(it.getName()) }.toMutableList(), rootNames, globals, check)
+        check: Boolean = true,
+        preservedCFGs: Set<CfgName> = setOf(),
+    ) : this(
+        cfgs = cfgs.map { it.clone(it.getName()) }.toMutableList(),
+        rootNames,
+        globals,
+        check,
+        preservedCFGs = preservedCFGs
+    )
 
     private fun buildCallGraph() {
         // `buildCallGraph` is called twice: one at the constructor and another one after `simplify`
@@ -129,7 +173,7 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
         }
     }
 
-    private fun getSCCMember(cfg: String): Set<String> {
+    private fun getSCCMember(cfg: CfgName): Set<CfgName> {
         val id = sccMap[cfg]
                 ?: // This is possible because in the input program is a shared library,
                 // so it might have external calls.
@@ -158,11 +202,11 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
     }
 
     /**
-     *  Remove any CFG that is not reachable from root
-     *  Of course, we assume that the call graph is statically known
+     * Remove any CFG that is not reachable from root and is not in [getTransitivelyPreservedCFGs].
+     * Of course, we assume that the call graph is statically known.
      **/
     private fun simplify() {
-        val visited: MutableSet<String> = mutableSetOf()
+        val visited: MutableSet<CfgName> = mutableSetOf()
         val worklist = getCallGraphRoots().toMutableList()
         while (worklist.isNotEmpty()) {
             val cur = worklist.removeLast()
@@ -182,6 +226,13 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
         if (visited.size == cfgs.size) {
             /** No simplification takes place **/
         } else {
+            val preservedCFGs: Set<MutableSbfCFG> =
+                getTransitivelyPreservedCFGs().mapNotNull {
+                    if (it !in cfgMap) {
+                        sbfLogger.warn { "Did not find preserved CFG `$it` in cfgMap" }
+                    }
+                    cfgMap[it]
+                }.toSet()
             val oldNumCFGs = cfgs.size
             cfgs.clear()
             for (name in visited) {
@@ -189,6 +240,8 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
                 check(cfg!= null)
                 cfgs.add(cfg)
             }
+            // Add back the preserved CFGs.
+            cfgs.addAll(preservedCFGs)
 
             buildDataStructures()
             sbfLogger.info { "Simplified call graph: #functions before=$oldNumCFGs #functions after=${cfgs.size}" }
@@ -196,12 +249,12 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
     }
 
     private fun verify(checkCFGHasExactlyOneExit: Boolean, msg: String, printExternal: Boolean) {
-        val functions: MutableSet<String> = mutableSetOf()
+        val functions: MutableSet<CfgName> = mutableSetOf()
         for (cfg in cfgs) {
             functions.add(cfg.getName())
             cfg.verify(checkCFGHasExactlyOneExit, msg)
         }
-        val externalFns = mutableSetOf<String>()
+        val externalFns = mutableSetOf<CfgName>()
         for (cfg in cfgs) {
             for (block in cfg.getBlocks().values) {
                 for (inst in block.getInstructions()) {
@@ -243,15 +296,15 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
         return root
     }
 
-    override fun getCallGraph(): Map<String, Set<String>> {
+    override fun getCallGraph(): Map<CfgName, Set<CfgName>> {
         return callGraph
     }
 
-    override fun getCFG(name: String): SbfCFG? {
+    override fun getCFG(name: CfgName): SbfCFG? {
         return getMutableCFG(name)
     }
 
-    fun getMutableCFG(name: String): MutableSbfCFG? {
+    fun getMutableCFG(name: CfgName): MutableSbfCFG? {
         return cfgMap[name]
     }
 
@@ -265,7 +318,7 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
                 newCFGs.add(it.clone(it.getName()))
             }
         }
-        return MutableSbfCallGraph(newCFGs, setOf(newEntry.getName()), getGlobals(), check=false)
+        return MutableSbfCallGraph(newCFGs, setOf(newEntry.getName()), getGlobals(), check=false, preservedCFGs = preservedCFGs)
     }
 
     override fun transformSingleEntryAndGlobals(f: (SbfCFG) -> Pair<SbfCFG, GlobalVariableMap>): SbfCallGraph {
@@ -278,10 +331,10 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
                 newCFGs.add(it.clone(it.getName()))
             }
         }
-        return MutableSbfCallGraph(newCFGs, setOf(newEntry.getName()), newGlobals, check=false)
+        return MutableSbfCallGraph(newCFGs, setOf(newEntry.getName()), newGlobals, check=false, preservedCFGs = preservedCFGs)
     }
 
-    override fun getRecursiveFunctions(): Set<String> {
+    override fun getRecursiveFunctions(): Set<CfgName> {
         return recursiveSet
     }
 
@@ -306,7 +359,7 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
     }
 
     override fun callGraphStructureToDot(prefix: File) {
-        val rootsStr = roots.map { it.getName() }.joinToString(separator = "-")
+        val rootsStr = roots.joinToString(separator = "-") { it.getName() }
         val sb = StringBuilder()
         sb.append("digraph \"Callgraph for roots $rootsStr\" {\n")
         sb.append("\tlabel=\"Callgraph for roots $rootsStr\";\n")
@@ -337,6 +390,31 @@ class MutableSbfCallGraph(private val cfgs: MutableList<MutableSbfCFG>,
             stats = stats.add(cfg.getStats())
         }
         return stats
+    }
+
+    override fun getTransitivelyPreservedCFGs(): Set<CfgName> {
+        return transitivelyPreservedCFGs
+    }
+
+    override fun getPreservedCFGs(): Set<CfgName> {
+        return preservedCFGs
+    }
+
+    /**
+     * Returns the set of CFG names transitively reachable from the given CFG via call edges.
+     * Includes [cfgName] itself in the result.
+     */
+    private fun reachableCfgsByTransitiveCalls(cfgName: CfgName): Set<CfgName> {
+        val reachableCfgs: MutableSet<CfgName> = mutableSetOf(cfgName)
+        val worklist: ArrayList<CfgName> = ArrayList(listOf(cfgName))
+        while (worklist.isNotEmpty()) {
+            val currentCfgName = worklist.removeLast()
+            callGraph[currentCfgName]?.filter { it !in reachableCfgs && it in cfgMap }?.forEach {
+                reachableCfgs.add(it)
+                worklist.add(it)
+            }
+        }
+        return reachableCfgs
     }
 }
 
