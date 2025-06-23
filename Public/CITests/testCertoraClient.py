@@ -1194,28 +1194,31 @@ class TestClient(unittest.TestCase):
                 f"Error! doc_link in configuration layout is {files.content[0].doc_link}\n" \
                 f"expected 'prover/cli' and '#files' in link!"
 
-            # Validating general section in RunConfigurationLayout
-            assert (general := self.get_card_object(layout, 'general')) and \
-                   (general_flags := self.get_inner_object(general.content, 'flags')), \
-                   f"Error! flags in general section are expected to exist in configuration layout data!\n{layout}"
+            # Validating general section exists in RunConfigurationLayout
+            # Note: we do not have Git or CLI version info on CI
+            assert self.get_card_object(layout, 'general'), \
+                   f"Error! General section is expected to exist in configuration layout data!\n{layout}"
 
-            verify_data = self.get_inner_object(general.content, 'Verify')
+            # Validating options section
+            options_data = self.get_card_object(layout, 'options')
+            assert options_data, \
+                f"Error! Options section is expected to exist in configuration layout data!\n{layout}"
+
+            verify_data = self.get_inner_object(options_data.content, 'verify')
             assert verify_data and f"A:{_p('spec1.spec')}" == verify_data.content, \
-                f"Error! verify flag in general section is incorrect!\n" \
+                f"Error! verify flag in options section is incorrect!\n" \
                 f"expected: 'A:{_p('spec1.spec')}', actual: '{verify_data}'"
 
-            server_data = self.get_inner_object(general_flags.content, 'server')
+            server_data = self.get_inner_object(options_data.content, 'server')
             assert server_data and "production" == server_data.content, \
                 f"Error! server flag in general section is incorrect!\n" \
                 f"expected: 'production', actual: '{server_data.content}'"
 
             # Validating solidity compiler section in RunConfigurationLayout
-            assert (solidity_compiler := self.get_card_object(layout, 'solidity_compiler')) \
-                   and (solc_flags := self.get_inner_object(solidity_compiler.content, 'flags')), \
-                   f"Error! flags in solidity_compiler section is expected to exist in configuration layout data!\n" \
-                   f"{layout}"
-
-            solc_data = self.get_inner_object(solc_flags.content, 'solc')
+            solidity_compiler_data = self.get_card_object(layout, 'solidity_compiler')
+            assert solidity_compiler_data, \
+                f"Error! Solidity compiler section is expected to exist in configuration layout data!\n{layout}"
+            solc_data = self.get_inner_object(solidity_compiler_data.content, 'solc')
             assert solc_data and "solc8.28" == solc_data.content and "FLAG" == solc_data.content_type, \
                 f"Error! solc flag in solidity_compiler section is incorrect!\n" \
                 f"expected: 'solc8.28' of content_type 'FLAG', actual: '{solc_data}'"

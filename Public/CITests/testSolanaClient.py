@@ -143,6 +143,7 @@ common_build_files_set = {
     '.certora_sources/.project_directory'
 }
 
+
 def assert_zip_file(zip_path: str, test_id: str, expected_files_set: Set[str]) -> None:
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_contents_set = set(zip_ref.namelist())
@@ -154,7 +155,6 @@ def assert_zip_file(zip_path: str, test_id: str, expected_files_set: Set[str]) -
 
 
 class TestClient(unittest.TestCase):
-
 
     def test_solana_context(self) -> None:
         with Util.change_working_directory(VAULT_CONF_DIR):
@@ -391,22 +391,28 @@ class TestClient(unittest.TestCase):
                 f"Error! doc_link in configuration layout is {files.content[0].doc_link}\n" \
                 f"expected 'solana' and '#files' in link!"
 
-            # Validating general section in RunConfigurationLayout
-            assert (general := self.get_card_object(layout, 'general')) and \
-                   (general_flags := self.get_inner_object(general.content, 'flags')), \
-                   f"Error! flags in general section are expected to exist in configuration layout data!\n{layout}"
+            # Validating general section exists in RunConfigurationLayout
+            # Note: we do not have Git or CLI version info on CI
+            assert self.get_card_object(layout, 'general'), \
+                   f"Error! General section is expected to exist in configuration layout data!\n{layout}"
 
-            server_data = self.get_inner_object(general_flags.content, 'server')
+            # Validating options section
+            options_data = self.get_card_object(layout, 'options')
+            assert options_data, \
+                f"Error! Options section is expected to exist in configuration layout data!\n{layout}"
+
+            server_data = self.get_inner_object(options_data.content, 'server')
             assert server_data and "production" == server_data.content, \
                 f"Error! server flag in general section is incorrect!\n" \
                 f"expected: 'production', actual: '{server_data.content}'"
 
-            rule_data = self.get_inner_object(general.content, 'rule')
+            rule_data = self.get_inner_object(options_data.content, 'rule')
             assert rule_data and "dummy_rule" in rule_data.content and "SIMPLE" == rule_data.content_type \
                    and "prover/cli" in rule_data.doc_link, \
                    f"Error! rule subsection in general section is incorrect!\n" \
                    f"expected: dummy_rule in content, content_type: SIMPLE and 'prover/cli' in doc_link,\n" \
                    f"actual: '{rule_data}'"
+
 
 if __name__ == '__main__':
     test_argv = [f"{sys.argv[1]}, {sys.argv[2]}"]
