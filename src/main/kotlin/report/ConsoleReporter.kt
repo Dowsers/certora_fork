@@ -34,7 +34,6 @@ import spec.CVLTestGenerator
 import spec.rules.IRule
 
 object ConsoleReporter : OutputReporter {
-    var finalVerificationResult : FinalResult = FinalResult.NONE
 
     override fun getOutFile(): String {
         throw AssertionError("not implemented")
@@ -196,11 +195,8 @@ object ConsoleReporter : OutputReporter {
             }
 
         if (failures.isNotBlank()) {
-            finalVerificationResult = FinalResult.FAIL
             Logger.always("Failures summary:", respectQuiet = true)
             Logger.always(failures.toString(), respectQuiet = true)
-        } else {
-            finalVerificationResult = FinalResult.SUCCESS
         }
     }
 
