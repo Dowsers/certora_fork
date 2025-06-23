@@ -538,3 +538,4 @@ workflows:
             branches:
               ignore:
                 - *all
+                -
