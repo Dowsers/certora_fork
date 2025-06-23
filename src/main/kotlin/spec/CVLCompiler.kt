@@ -1484,6 +1484,10 @@ class CVLCompiler(
         allocatedTACSymbols: TACSymbolAllocation,
         env: CompilationEnvironment
     ): ParametricInstantiation<CVLTACProgram> {
+        if (cmd.block.isEmpty()) {
+            return CommandWithRequiredDecls(TACCmd.Simple.NopCmd).toProg("empty block", env).toSimple()
+        }
+
         val bodyAllocatedTACSymbols = allocatedTACSymbols.nestedScope()
         val compiledBlock = cmd.block.map { b -> compileCommand(b, bodyAllocatedTACSymbols, compilationEnvironment = env) }
         return ParametricMethodInstantiatedCode.merge(compiledBlock, name)
