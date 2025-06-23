@@ -17,6 +17,7 @@
 
 package analysis
 
+import vc.data.AnalysisCache
 import vc.data.TACCmd
 import vc.data.TACExpr
 import vc.data.TACSymbol
@@ -26,6 +27,13 @@ class MustBeConstantAnalysis(
     private val graph: TACCommandGraph,
     private val wrapped: NonTrivialDefAnalysis = NonTrivialDefAnalysis(graph)
 ) : MustBeAnalysis(graph, wrapped) {
+
+    companion object : AnalysisCache.Key<MustBeConstantAnalysis> {
+        override fun createCached(graph: TACCommandGraph): MustBeConstantAnalysis {
+            return MustBeConstantAnalysis(graph)
+        }
+
+    }
 
     fun mustBeConstantAt(where: CmdPointer, v: TACSymbol.Var): BigInteger? {
         return mustBeAt(where, v, { lc ->
