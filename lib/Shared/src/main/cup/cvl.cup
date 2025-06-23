@@ -359,7 +359,6 @@ non terminal UninterpretedSortDecl sort_decl;
 non terminal UseDeclaration use_decl;
 non terminal OverrideDeclaration override_decl;
 non terminal TypeOrLhs tuple_type;
-non terminal List<TypeOrLhs> non_singleton_type_list;
 non terminal TypeOrLhs opt_function_return;
 
 
@@ -891,12 +890,7 @@ override_decl ::=
   | OVERRIDE cvl_function:f                                        {: RESULT = new OverrideDeclaration.CVLFunction(f);     :}
 ;
 
-tuple_type ::= LP:l non_singleton_type_list:tt RP:r {: RESULT = new TupleType(tt, new Range.Range(lxleft, rxright)); :};
-
-non_singleton_type_list ::=
-     type:t1 COMMA type:t2                      {: RESULT = append(singletonList(t1), t2); :}
-   | non_singleton_type_list:prev COMMA  type:t {: RESULT = append(prev, t); :}
-;
+tuple_type ::= LP:l type_list:tt RP:r {: RESULT = new TupleType(tt, new Range.Range(lxleft, rxright)); :};
 
 /* ghosts *****************************************************************************************/
 
