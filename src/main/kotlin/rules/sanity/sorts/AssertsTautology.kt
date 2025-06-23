@@ -35,7 +35,11 @@ object AssertsTautology :
     override val preds: List<SanityCheckNodeType> =
         listOf(SanityCheckNodeType.None)
 
-    override fun getRuleNotificationForResult(solverResult: SolverResult): RuleAlertReport {
+    override fun getRuleNotificationForResult(solverResult: SolverResult): RuleAlertReport? {
+        if (solverResult == SolverResult.SAT){
+            // In the case the check succeeded, i.e. SAT, don't output any rule notification
+            return null;
+        }
         val msg =  "The assert tautology sanity check ${solverResult.toSanityStatusString()}."
         return if(solverResult == SolverResult.UNSAT) {
             RuleAlertReport.Warning(msg + " The respective assert is a tautology, i.e. is always true. See ${CheckedUrl.SANITY_ASSERTS_TAUTOLOGY}")
