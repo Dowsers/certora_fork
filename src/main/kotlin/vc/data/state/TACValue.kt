@@ -171,6 +171,12 @@ sealed class TACValue : SerializableWithAdapter {
                     TACSymbol.False.asSym()
                 }
 
+            fun negate() =
+                when(this) {
+                    True -> False
+                    False -> True
+                }
+
             override fun toString(): String {
                 return value.toString()
             }
@@ -859,6 +865,13 @@ sealed class TACValue : SerializableWithAdapter {
     object SumIndex : TACValue() { // For uninitialized array/map entries.
         override fun hashCode() = hashObject(this)
         fun readResolve(): Any = SumIndex
+    }
+
+    fun negateBool(): PrimitiveValue.Bool {
+        check(this is PrimitiveValue.Bool) {
+            "can only negate bool values"
+        }
+        return negate()
     }
 
 }

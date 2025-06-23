@@ -22,27 +22,23 @@ import analysis.CmdPointer
 import analysis.icfg.Inliner
 import analysis.icfg.SummaryStack
 import analysis.icfg.SummaryStack.END_EXTERNAL_SUMMARY
-import analysis.ip.*
+import analysis.ip.InternalFuncExitAnnotation
+import analysis.ip.InternalFuncStartAnnotation
+import analysis.ip.InternalFunctionFinderReport
 import com.certora.collect.*
 import compiler.SourceIdentifier
 import compiler.SourceSegment
 import config.Config
 import config.Config.IsGenerateGraphs
 import config.ReportTypes
-import datastructures.*
+import datastructures.MultiMap
 import datastructures.stdcollections.*
 import decompiler.BLOCK_SOURCE_INFO
-import evm.EVM_MOD_GROUP256
 import log.*
 import report.BigIntPretty.bigIntPretty
 import report.TreeViewLocation
 import report.dumps.AddInternalFunctions.addInternalFunctionIdxsDontThrow
-import sbf.tac.SbfInlinedFuncStartAnnotation
-import sbf.tac.SbfInlinedFuncEndAnnotation
-import sbf.tac.SbfInlinedFuncNopAnnotation
-import sbf.tac.DEBUG_EXTERNAL_CALL
-import sbf.tac.DEBUG_INLINED_FUNC_START
-import sbf.tac.DEBUG_INLINED_FUNC_END
+import sbf.tac.*
 import scene.NamedCode
 import smtlibutils.data.ProcessDifficultiesResult
 import solver.CounterexampleModel
@@ -51,6 +47,9 @@ import spec.CVLExpToTACExprMeta
 import statistics.data.CallIdWithName
 import tac.*
 import utils.*
+import utils.ModZm.Companion.addMod
+import utils.ModZm.Companion.asBigInteger
+import utils.ModZm.Companion.mulMod
 import vc.data.*
 import vc.data.TACMeta.CVL_LABEL_END
 import vc.data.TACMeta.CVL_LABEL_START
@@ -115,7 +114,6 @@ data class CodeMap(
 
     var toolTipCacheId = 0
 
-
     val callIdNames: Map<CallId, String> get() = callGraphInfo.callIdToName
 
     data class ToolTipEntry(val sourceDetails: SourceSegment, val Id: Int)
@@ -146,323 +144,164 @@ data class CodeMap(
      * using [CodeMap.withInternalFunctions] */
     fun translateWithInternalFuncs(blocks: Set<NBId>) = blocks.flatMap { intFuncsCmdPtrMapping[it] }
 
-    private fun cmdToValue(c: TACCmd): String {
-        return when (c) {
-            is TACCmd.Simple.AssigningCmd.ByteStore -> "(${getFieldValue(c, "value")})"
-            is TACCmd.Simple.AssigningCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssignSymCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningUnaryOpCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningTernaryOpCmd,
-            is TACCmd.EVM.AssignIszeroCmd,
-            is TACCmd.EVM.AssignAddressCmd,
-            is TACCmd.EVM.AssignBalanceCmd,
-            is TACCmd.EVM.AssignOriginCmd,
-            is TACCmd.EVM.AssignCallerCmd,
-            is TACCmd.EVM.AssignCallvalueCmd,
-            is TACCmd.EVM.AssignCalldataloadCmd,
-            is TACCmd.EVM.AssignCalldatasizeCmd,
-            is TACCmd.EVM.AssignCodesizeCmd,
-            is TACCmd.EVM.AssignGaspriceCmd,
-            is TACCmd.EVM.AssignExtcodesizeCmd,
-            is TACCmd.EVM.AssignExtcodehashCmd,
-            is TACCmd.EVM.AssignBlockhashCmd,
-            is TACCmd.EVM.AssignCoinbaseCmd,
-            is TACCmd.EVM.AssignTimestampCmd,
-            is TACCmd.EVM.AssignNumberCmd,
-            is TACCmd.EVM.AssignDifficultyCmd,
-            is TACCmd.EVM.AssignGaslimitCmd,
-            is TACCmd.EVM.AssignChainidCmd,
-            is TACCmd.EVM.AssignSelfBalanceCmd,
-            is TACCmd.EVM.AssignBasefeeCmd,
-            is TACCmd.EVM.AssignBlobhashCmd,
-            is TACCmd.EVM.AssignBlobbasefeeCmd,
-            is TACCmd.EVM.MloadCmd,
-            is TACCmd.EVM.SloadCmd,
-            is TACCmd.EVM.CreateCmd,
-            is TACCmd.EVM.ExtCallCmd,
-            is TACCmd.EVM.ReturndatasizeCmd,
-            -> {
-                "(${getLhsValue(c)})"
-            }
-            is TACCmd.Simple.AssumeCmd -> {
-                "(${getFieldValue(c, "cond")})"
-            }
-            is TACCmd.Simple.AssumeNotCmd -> {
-                "(${invertBool(getFieldValue(c, "cond"))})"
-            }
-            is TACCmd.Simple.AssertCmd -> {
-                "(${getFieldValue(c, "o")})"
-            }
-            is TACCmd.Simple.WordStore -> "(${getFieldValue(c, "value")})"
-            else -> ""
+    private fun cmdToValue(c: TACCmd): TACValue? = when (c) {
+        is TACCmd.Simple.AssigningCmd.ByteStore -> c.value.cexValue
+        is TACCmd.Simple.AssigningCmd,
+        is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssignSymCmd,
+        is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningUnaryOpCmd,
+        is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd,
+        is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningTernaryOpCmd,
+        is TACCmd.EVM.AssignIszeroCmd,
+        is TACCmd.EVM.AssignAddressCmd,
+        is TACCmd.EVM.AssignBalanceCmd,
+        is TACCmd.EVM.AssignOriginCmd,
+        is TACCmd.EVM.AssignCallerCmd,
+        is TACCmd.EVM.AssignCallvalueCmd,
+        is TACCmd.EVM.AssignCalldataloadCmd,
+        is TACCmd.EVM.AssignCalldatasizeCmd,
+        is TACCmd.EVM.AssignCodesizeCmd,
+        is TACCmd.EVM.AssignGaspriceCmd,
+        is TACCmd.EVM.AssignExtcodesizeCmd,
+        is TACCmd.EVM.AssignExtcodehashCmd,
+        is TACCmd.EVM.AssignBlockhashCmd,
+        is TACCmd.EVM.AssignCoinbaseCmd,
+        is TACCmd.EVM.AssignTimestampCmd,
+        is TACCmd.EVM.AssignNumberCmd,
+        is TACCmd.EVM.AssignDifficultyCmd,
+        is TACCmd.EVM.AssignGaslimitCmd,
+        is TACCmd.EVM.AssignChainidCmd,
+        is TACCmd.EVM.AssignSelfBalanceCmd,
+        is TACCmd.EVM.AssignBasefeeCmd,
+        is TACCmd.EVM.AssignBlobhashCmd,
+        is TACCmd.EVM.AssignBlobbasefeeCmd,
+        is TACCmd.EVM.MloadCmd,
+        is TACCmd.EVM.SloadCmd,
+        is TACCmd.EVM.CreateCmd,
+        is TACCmd.EVM.ExtCallCmd,
+        is TACCmd.EVM.ReturndatasizeCmd,
+            -> c.getLhs()!!.cexValue
+
+        is TACCmd.Simple.AssumeCmd -> c.cond.cexValue
+        is TACCmd.Simple.AssumeNotCmd -> c.cond.cexValue?.negateBool()
+        is TACCmd.Simple.AssertCmd -> c.o.cexValue
+        is TACCmd.Simple.WordStore -> c.value.cexValue
+        else -> null
+    }
+
+    sealed interface ExpectedValue {
+
+        class Value(val value: BigInteger) : ExpectedValue {
+            override fun toString() =
+                bigIntPretty(value)
+                    ?.let { "($it)" }
+                    ?: "(0x${value.toString(16)})"
+        }
+
+        /** There was an exception while trying to calculate the expected value */
+        class Error(val msg: String) : ExpectedValue {
+            override fun toString() = "ERROR - $msg"
+        }
+
+        object Fail : ExpectedValue {
+            override fun toString() = "failed to compute expected"
+        }
+
+        object NoAnswerButWeDontExpectIt : ExpectedValue {
+            override fun toString() = "Can't calculate, but it's fine"
         }
     }
 
-    data class BadExpectedValue(val msg: String?)
+    private fun cmdToExpectedValue(c: TACCmd): ExpectedValue {
 
-    private fun cmdToExpectedValue(c: TACCmd): Either<String?, BadExpectedValue> {
+        fun evalList(vararg ops: TACSymbol, eval: ModZm.(List<BigInteger>) -> BigInteger): ExpectedValue {
+            val opValues = ops.map { it.cexValue?.asBigIntOrNull() }
+            return opValues.monadicMap { it }?.let { EVMOps.eval(it) }
+                ?.let { ExpectedValue.Value(it) }
+                ?: ExpectedValue.NoAnswerButWeDontExpectIt
+        }
+
+        fun evalCmd(eval: ModZm.(List<BigInteger>) -> BigInteger): ExpectedValue =
+            when (c) {
+                is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningUnaryOpCmd ->
+                    evalList(c.op1, eval = eval)
+
+                is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd ->
+                    evalList(c.op1, c.op2, eval = eval)
+
+                is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningTernaryOpCmd ->
+                    evalList(c.op1, c.op2, c.op3, eval = eval)
+
+                else -> ExpectedValue.NoAnswerButWeDontExpectIt
+            }
+
         return when (c) {
             is TACCmd.Simple.AssigningCmd.AssignExpCmd -> {
-                val v = try {
-                    cexModel?.evalExprByRhs(c.rhs)
+                val (success, result) = try {
+                    cexModel!!.evalExprByRhs(c.rhs)
                 } catch (arithError: ArithmeticException) {
-                    return BadExpectedValue(arithError.message ?: "arithmetic error").toRight()
+                    return ExpectedValue.Error(arithError.message ?: "arithmetic error")
                 }
-                if (v != null && v.first) {
-                    getExpected(v.second)
-                } else {
-                    Either.Left(null)
-                } // TODO: discern between failures and don't cares.
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignAddCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        op1_.plus(op2_).mod(EVM_MOD_GROUP256)
-                    }
+                when {
+                    !success  -> ExpectedValue.NoAnswerButWeDontExpectIt
+                    result == null -> ExpectedValue.Fail
+                    else -> ExpectedValue.Value(result)
                 }
-                getExpected(v)
             }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignMulCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        op1_.multiply(op2_).mod(EVM_MOD_GROUP256)
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignSubCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        op1_.subtract(op2_).mod(EVM_MOD_GROUP256)
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignDivCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        op1_.divide(op2_).mod(EVM_MOD_GROUP256)
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignSdivCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignModCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignSModCmd -> {
-                Either.Left(null)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningTernaryOpCmd.AssignMulModCmd -> {
-                val a = getFieldValue(c, "a").toBigIntegerOrNull(16)
-                val b = getFieldValue(c, "b").toBigIntegerOrNull(16)
-                val n = getFieldValue(c, "n").toBigIntegerOrNull(16)
-                val v = a?.let { a_ ->
-                    b?.let { b_ ->
-                        n?.let { n_ ->
-                            a_.multiply(b_).mod(n_)
-                        }
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningTernaryOpCmd.AssignAddModCmd -> {
-                val a = getFieldValue(c, "a").toBigIntegerOrNull(16)
-                val b = getFieldValue(c, "b").toBigIntegerOrNull(16)
-                val n = getFieldValue(c, "n").toBigIntegerOrNull(16)
-                val v = a?.let { a_ ->
-                    b?.let { b_ ->
-                        n?.let { n_ ->
-                            a_.add(b_).mod(n_)
-                        }
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignExponentCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        if (op2_.toInt().toBigInteger() != op2_) {
-                            null
-                        } else {
-                            op1_.pow(op2_.toInt()).mod(EVM_MOD_GROUP256)
-                        }
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignLtCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignGtCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignSltCmd,
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignSgtCmd -> {
-                Either.Left(null)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignEqCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        if (op1_.compareTo(op2_) == 0) BigInteger.ONE else BigInteger.ZERO
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssignIszeroCmd -> {
-                Either.Left(null)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignAndCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        op1_.and(op2_).mod(EVM_MOD_GROUP256)
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignOrCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        op1_.or(op2_).mod(EVM_MOD_GROUP256)
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignXOrCmd -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        op1_.xor(op2_).mod(EVM_MOD_GROUP256)
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningUnaryOpCmd.AssignNotCmd,
-            is TACCmd.EVM.AssigningCmd.AssignByteCmd,
-            is TACCmd.Simple.AssigningCmd.AssignSha3Cmd,
-            is TACCmd.Simple.AssigningCmd.AssignSimpleSha3Cmd,
-            is TACCmd.EVM.AssignAddressCmd,
-            is TACCmd.EVM.AssignBalanceCmd,
-            is TACCmd.EVM.AssignOriginCmd,
-            is TACCmd.EVM.AssignCallerCmd,
-            is TACCmd.EVM.AssignCallvalueCmd,
-            is TACCmd.EVM.AssignCalldataloadCmd,
-            is TACCmd.EVM.AssignCalldatasizeCmd,
-            is TACCmd.EVM.AssignCodesizeCmd,
-            is TACCmd.EVM.AssignGaspriceCmd,
-            is TACCmd.EVM.AssignExtcodesizeCmd,
-            is TACCmd.EVM.AssignExtcodehashCmd,
-            is TACCmd.EVM.AssignBlockhashCmd,
-            is TACCmd.EVM.AssignCoinbaseCmd,
-            is TACCmd.EVM.AssignTimestampCmd,
-            is TACCmd.EVM.AssignNumberCmd,
-            is TACCmd.EVM.AssignDifficultyCmd,
-            is TACCmd.EVM.AssignGaslimitCmd,
-            is TACCmd.EVM.AssignChainidCmd,
-            is TACCmd.EVM.AssignSelfBalanceCmd,
-            is TACCmd.EVM.AssignBasefeeCmd,
-            is TACCmd.EVM.AssignBlobhashCmd,
-            is TACCmd.EVM.AssignBlobbasefeeCmd,
-            is TACCmd.EVM.MloadCmd,
-            is TACCmd.EVM.SloadCmd,
-            is TACCmd.Simple.AssigningCmd.AssignMsizeCmd,
-            is TACCmd.Simple.AssigningCmd.AssignGasCmd,
-            is TACCmd.EVM.CreateCmd,
-            is TACCmd.EVM.ExtCallCmd,
-            is TACCmd.EVM.ReturndatasizeCmd,
-            is TACCmd.Simple.AssigningCmd.AssignHavocCmd,
-            is TACCmd.Simple.AssigningCmd.ByteLoad,
-            is TACCmd.Simple.AssigningCmd.WordLoad -> {
-                Either.Left(null)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignShiftLeft -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        if (op2_.toInt().toBigInteger() != op2_) {
-                            null
-                        } else {
-                            op1_.shiftLeft(op2_.toInt())
-                        }
-                    }
-                }
-                getExpected(v)
-            }
-            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignShiftRightLogical -> {
-                val op1 = getFieldValue(c, "op1")
-                val op2 = getFieldValue(c, "op2")
-                val v = op1.toBigIntegerOrNull(16)?.let { op1_ ->
-                    op2.toBigIntegerOrNull(16)?.let { op2_ ->
-                        // BigInteger's shiftRight does sign extension, so need to do div(o1,2^o2)
-                        if (op2_.toInt().toBigInteger() != op2_) {
-                            null
-                        } else {
-                            op1_.divide(BigInteger.TWO.pow(op2_.toInt()))
-                        }
-                    }
-                }
-                getExpected(v)
-            }
-            else -> Either.Left(null)
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignAddCmd ->
+                evalCmd { (a, b) -> add(a, b) }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignMulCmd ->
+                evalCmd { (a, b) -> mul(a, b) }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignSubCmd ->
+                evalCmd { (a, b) -> sub(a, b) }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignDivCmd ->
+                evalCmd { (a, b) -> div(a, b) }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningTernaryOpCmd.AssignMulModCmd ->
+                evalCmd { (a, b, n) -> mulMod(a, b, n) }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningTernaryOpCmd.AssignAddModCmd ->
+                evalCmd { (a, b, n) -> addMod(a, b, n) }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignExponentCmd ->
+                evalCmd { (a, b) -> exp(a, b) }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignEqCmd ->
+                evalCmd { (a, b) -> (a == b).asBigInteger }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignAndCmd ->
+                evalCmd { (a, b) -> a and b }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignOrCmd ->
+                evalCmd { (a, b) -> a and b }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignXOrCmd ->
+                evalCmd { (a, b) -> a xor b }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignShiftLeft ->
+                evalCmd { (a, b) -> shl(a, b) }
+
+            is TACCmd.EVM.AssigningCmd.WithExprBuilder.AssigningBinaryOpCmd.AssignShiftRightLogical ->
+                evalCmd { (a, b) -> shr(a, b) }
+
+            else -> ExpectedValue.NoAnswerButWeDontExpectIt
         }
     }
 
-    private fun getExpected(v: BigInteger?): Either<String?,BadExpectedValue> {
-        return (if (v == null) {
-            "FAIL"
-        } else {
-            bigIntPretty(v)
-                ?.let { pretty -> "(${pretty})" }
-                ?: "(0x${v.toString(16)})"
-        }).toLeft()
-    }
+    private val TACSymbol.cexValue get() =
+        cexModel?.valueAsTACValue(this)
 
-    private fun invertBool(s: String): String {
-        if (s == "true") {
-            return "false"
-        } else if (s == "false") {
-            return "true"
-        } else {
-            logger.debug { "Got illegal boolean value: $s" }
-            return ""
-        }
-    }
-
-
-    private fun getFieldValue(c: TACCmd, fieldName: String): String {
-        // comment (alex):
-        // uhm I'm not sure why this needs to be done like this, but seems very dirty
-        //  -- same for the `invertBool` method above -- can't we stay in properly typed Kotlin land longer somehow??
-        val f = c::class.java.getDeclaredField(fieldName)
-        f.trySetAccessible()
-        val v = cexModel?.valueAsTACValue(f.get(c) as TACSymbol)
-        return if (v != null) {
-            when (v) {
-                is TACValue.PrimitiveValue -> bigIntPretty(v.asBigInt) ?: v.toString()
-                is TACValue.SKey -> skeyValueToHTML(v)
-                else -> v.toString().sanitize()
+    private val TACValue?.asString: String
+        get() =
+            when (this) {
+                null -> ""
+                is TACValue.PrimitiveValue -> bigIntPretty(asBigInt) ?: toString()
+                is TACValue.SKey -> skeyValueToHTML(this)
+                else -> this.toString().sanitize()
             }
-        } else {
-            ""
-        }
-    }
-
-    private fun getLhsValue(c: TACCmd): String {
-        return getFieldValue(c, "lhs")
-    }
 
     private fun HTMLString.withTitle(s: String): HTMLString {
         return when (this) {
@@ -1210,13 +1049,16 @@ data class CodeMap(
             }
 
             val cmdHtml = cmdToHtml(cmd, ast, b)
-            val cmdValue =
-                if (cexModel != null && cexModel.tacAssignments.isNotEmpty()) { cmdToValue(cmd) } else { "" }
-            val cmdExpectedValue =
-                if (cexModel != null && cexModel.tacAssignments.isNotEmpty()) { cmdToExpectedValue(cmd) } else { "".toLeft() }
-
-            val cmdExpectedValueStr = cmdExpectedValue.leftOrElse { null }
-            val cmdExpectedBadValue = cmdExpectedValue.rightOrNull()
+            val cmdValue = if (cexModel != null && cexModel.tacAssignments.isNotEmpty()) {
+                cmdToValue(cmd)
+            } else {
+                null
+            }
+            val cmdExpectedValue = if (cexModel != null && cexModel.tacAssignments.isNotEmpty()) {
+                cmdToExpectedValue(cmd)
+            } else {
+                ExpectedValue.NoAnswerButWeDontExpectIt
+            }
 
             val fromSpec = if (cmd.meta.size > 0 && cmd.meta.map.values.any { m -> m is CVLExpToTACExprMeta }) {
                 "<span style='background-color:$cmdFromSpecColor;'>SPEC</span>"
@@ -1228,62 +1070,74 @@ data class CodeMap(
                 "<span style='background-color:$cmdFromSolidityColor;'>SOL</span>"
             } else ""
 
-            val cmdWithPotentialValue = if (cmdValue != "") {
-                if ((cmdExpectedValueStr != null
-                    && cmdExpectedValueStr != cmdValue
-                    && !(cmdExpectedValueStr == "(0x1)" && cmdValue == "(true)")
-                    && !(cmdExpectedValueStr == "(0x0)" && cmdValue == "(false)"))
-                    || (cmdExpectedBadValue != null)
-                    ) {
-                    if (cmdExpectedValueStr == "FAIL") {
-                        "<span style='background-color:orange;'>$cmdHtml $cmdValue (failed to compute expected)</span>"
-                    } else {
-                        // it's guaranteed not to have (ex. null) here
-                        "<span style='background-color:red;'>$cmdHtml $cmdValue (ex. ${cmdExpectedValueStr?:cmdExpectedBadValue?.msg})</span>"
-                    }
-                } else {
-                    if (cmd is TACCmd.Simple.AssertCmd && cmdValue == "(false)") {
-                        "<span style='background-color:#ffcccc;'>$cmdHtml $cmdValue</span>"
-                    } else if (cmd is TACCmd.Simple.AssertCmd && cmdValue == "(true)") {
-                        val cmdHtmlStripped = if (cmdHtml is HTMLString.ColoredText) {
-                            cmdHtml.s.asRaw()
-                        } else {
-                            cmdHtml
-                        }
-                        "<span style='background-color:#ffcccc;color:green'>$cmdHtmlStripped $cmdValue</span>"
-                    } else {
-                        "$cmdHtml $cmdValue"
-                    }
-                }.asRaw()
-            } else {
-                if (cmd in unsatCoreDomain) { //assumed by the unsat core analysis
-                    if (cmd in unsatCore) { //in the unsat core
-                        "<span style='background-color:$inUnsatCoreColor;padding-left:5px;padding-right:5px;'>$cmdHtml $fromSpec $fromSol</span>"
-                    } else {
-                        "<span style='background-color:$notInUnsatCoreColor;padding-left:5px;padding-right:5px;'>$cmdHtml $fromSpec $fromSol</span>"
+            val cmdWithPotentialValue: HTMLString =
+                if (cmdValue != null) {
+                    val valueStr = "(${cmdValue.asString})"
+                    when (cmdExpectedValue) {
+                        is ExpectedValue.Value ->
+                            if (cmdExpectedValue.value != cmdValue.asBigIntOrNull()) {
+                                val expectedStr = bigIntPretty(cmdExpectedValue.value) ?: toString()
+                                "<span style='background-color:red;'>$cmdHtml $valueStr (ex. $expectedStr)</span>"
+                            } else {
+                                "$cmdHtml $valueStr"
+                            }
+
+                        is ExpectedValue.NoAnswerButWeDontExpectIt ->
+                            if (cmd is TACCmd.Simple.AssertCmd) {
+                                if (cmdValue.asBigIntOrNull() == BigInteger.ZERO) {
+                                    "<span style='background-color:#ffcccc;'>$cmdHtml $valueStr</span>"
+                                } else {
+                                    val cmdHtmlStripped = if (cmdHtml is HTMLString.ColoredText) {
+                                        cmdHtml.s.asRaw()
+                                    } else {
+                                        cmdHtml
+                                    }
+                                    "<span style='background-color:#ffcccc;color:green'>$cmdHtmlStripped $valueStr</span>"
+                                }
+                            } else {
+                                "$cmdHtml $valueStr"
+                            }
+
+                        is ExpectedValue.Error ->
+                            "<span style='background-color:red;'>$cmdHtml $valueStr ($cmdExpectedValue)</span>"
+
+                        is ExpectedValue.Fail ->
+                            "<span style='background-color:orange;'>$cmdHtml $valueStr ($cmdExpectedValue)</span>"
                     }.asRaw()
-                } else if ((ltacCmd.ptr.block in heuristicallyDifficultBlocks  &&  // we only highlight the commands if the block is considered difficult (might be discussed)
-                        ltacCmd.ptr in heuristicallyDifficultCommands) || ltacCmd.ptr in timeoutCore) {
-                    val color = when {
-                        ltacCmd.ptr in heuristicallyDifficultCommands && ltacCmd.ptr !in timeoutCore  ->
-                            heuristicallyDifficultNotInTimeoutCoreColor
-                        ltacCmd.ptr !in heuristicallyDifficultCommands && ltacCmd.ptr in timeoutCore  ->
-                            inTimeoutCoreAndNotHeuristicallyDifficultColor
-                        ltacCmd.ptr in heuristicallyDifficultCommands && ltacCmd.ptr in timeoutCore  ->
-                            inTimeoutCoreAndHeuristicallyDifficultColor
-                        else ->
-                            DotColorList(errorColor)
-                    }
-
-                    val backgroundStyle = "background-image:linear-gradient(to right, ${color.asCommaSeparatedColorPair})"
-
-                    ("<span style='${backgroundStyle};padding-left:5px;padding-right:5px;'>" +
-                        "$cmdHtml $fromSpec $fromSol" +
-                        "</span>").asRaw()
                 } else {
-                    cmdHtml
+                    if (cmd in unsatCoreDomain) { //assumed by the unsat core analysis
+                        if (cmd in unsatCore) { //in the unsat core
+                            "<span style='background-color:$inUnsatCoreColor;padding-left:5px;padding-right:5px;'>$cmdHtml $fromSpec $fromSol</span>"
+                        } else {
+                            "<span style='background-color:$notInUnsatCoreColor;padding-left:5px;padding-right:5px;'>$cmdHtml $fromSpec $fromSol</span>"
+                        }.asRaw()
+                    } else if ((ltacCmd.ptr.block in heuristicallyDifficultBlocks &&  // we only highlight the commands if the block is considered difficult (might be discussed)
+                            ltacCmd.ptr in heuristicallyDifficultCommands) || ltacCmd.ptr in timeoutCore
+                    ) {
+                        val color = when {
+                            ltacCmd.ptr in heuristicallyDifficultCommands && ltacCmd.ptr !in timeoutCore ->
+                                heuristicallyDifficultNotInTimeoutCoreColor
+
+                            ltacCmd.ptr !in heuristicallyDifficultCommands && ltacCmd.ptr in timeoutCore ->
+                                inTimeoutCoreAndNotHeuristicallyDifficultColor
+
+                            ltacCmd.ptr in heuristicallyDifficultCommands && ltacCmd.ptr in timeoutCore ->
+                                inTimeoutCoreAndHeuristicallyDifficultColor
+
+                            else ->
+                                DotColorList(errorColor)
+                        }
+
+                        val backgroundStyle =
+                            "background-image:linear-gradient(to right, ${color.asCommaSeparatedColorPair})"
+
+                        ("<span style='${backgroundStyle};padding-left:5px;padding-right:5px;'>" +
+                            "$cmdHtml $fromSpec $fromSol" +
+                            "</span>").asRaw()
+                    } else {
+                        cmdHtml
+                    }
                 }
-            }
 
             fun tooltipTemplate(contents: String, tooltipTextId: Int): String {
                 return "<span class=\"tooltip\">${contents} <span class=\"tooltiptext\" tooltipatt=\"$tooltipTextId\"></span></span>"
