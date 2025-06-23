@@ -28,7 +28,8 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.*
 import log.*
 import org.jetbrains.annotations.TestOnly
-import parallel.coroutines.launchMaybeBackground
+import parallel.coroutines.canLaunchBackground
+import parallel.coroutines.launchBackground
 import report.SolverResultStatusToTreeViewStatusMapper.computeFinalStatus
 import report.callresolution.GlobalCallResolutionReportView
 import rules.RuleCheckResult
@@ -43,6 +44,7 @@ import tac.TACStorageLayout
 import tac.TACStorageType
 import utils.*
 import verifier.RuleAndSplitIdentifier
+import java.io.Closeable
 import java.io.IOException
 import java.math.BigInteger
 import java.util.SortedMap
@@ -100,6 +102,7 @@ object SolverResultStatusToTreeViewStatusMapper {
                 } else {
                     getStatusForRegularRule(solverResult)
                 }
+
             is EquivalenceRule,
             is StaticRule,
             is AssertRule -> if (rule.isSatisfyRule) {
@@ -153,9 +156,14 @@ class TreeViewReporter(
     contractName: String?,
     specFile: String,
     scene: IScene,
-) {
+) : Closeable {
     // XXX: this path used to configurable, but I believe it's now hardcoded in some of our infrastructure.
     private val versionedFile get() = VersionedFile("treeViewStatus.json")
+
+    private val tree: TreeViewTree =
+        TreeViewTree(contractName, specFile, ContractsTable(scene), GlobalCallResolutionReportView.Builder())
+
+    private val hotUpdateJob = startAutoHotUpdate()
 
     init {
         instance = this
@@ -577,6 +585,7 @@ class TreeViewReporter(
         private fun timestamp() = System.currentTimeMillis()
 
         private val bmcDisplayedSequencesCounter = ConcurrentHashMap<String, Map<DisplayableIdentifier, Int>>()
+
         /**
          * This function (recursively) calls itself and first computes the final result for all children of [curr]
          * and then merges the results with the result at the [curr] node.
@@ -600,6 +609,7 @@ class TreeViewReporter(
                                         0 -> !(rule as CVLSingleRule).isSanityCheck() || treeViewResult.status != TreeViewStatusEnum.VERIFIED
                                         else -> getChildren(childDI).isNotEmpty()
                                     }
+
                                 else -> true
                             }
                         } ?: true
@@ -670,6 +680,11 @@ ${getTopLevelNodes().joinToString("\n") { nodeToString(it, 0) }}
                 (parentToChild[node] ?: listOf()).joinToString("\n") { nodeToString(it, indentation + 1) })
         }
 
+
+        /**
+         * Performs a basic check that the tree doesn't contain any running nodes, if so it will
+         * log an error.
+         */
         fun checkAllLeavesAreTerminated() {
             val runningNodes = identifierToNode.filter {
                 getChildren(it.key).isEmpty() && it.value.status == TreeViewStatusEnum.SOLVING
@@ -727,10 +742,6 @@ ${getTopLevelNodes().joinToString("\n") { nodeToString(it, 0) }}
             getChildren(ROOT_NODE_IDENTIFIER).forEach { rec(it) }
         }
     }
-
-    private val tree: TreeViewTree =
-        TreeViewTree(contractName, specFile, ContractsTable(scene), GlobalCallResolutionReportView.Builder())
-
 
     private fun mapRuleToNodeType(child: IRule): NodeType {
         /**
@@ -853,21 +864,32 @@ ${getTopLevelNodes().joinToString("\n") { nodeToString(it, 0) }}
         tree.signalSkip(rule.ruleIdentifier)
     }
 
+    /**
+     * The auto hot update job is only started when
+     * [parallel.coroutines.BackgroundCoroutineScopeKt.canLaunchBackground()],
+     * which avoids executing the hot updating job during Unit tests.
+     */
     @OptIn(DelicateCoroutinesApi::class, ExperimentalCoroutinesApi::class)
-    fun startAutoHotUpdate(): Job = launchMaybeBackground("TreeView Reporting", newSingleThreadContext("Reporting")) {
-        logger.debug { "SpecChecker: TreeView periodic reporting job started; " +
-            "hotUpdate every ${HOT_UPDATE_TIME_RATE.inWholeSeconds} seconds" }
-        while (true) {
-            delay(HOT_UPDATE_TIME_RATE.inWholeMilliseconds)
-            try {
-                hotUpdate()
-            } catch (e: Throwable) {
-                logger.error { "Tree view reporting failed: $e" }
+    private fun startAutoHotUpdate(): Job? = if (canLaunchBackground()) {
+        launchBackground("TreeView Reporting", newSingleThreadContext("Reporting")) {
+            if (HOT_UPDATE_TIME_RATE != Duration.ZERO) {
+                logger.debug {
+                    "SpecChecker: TreeView periodic reporting job started; " +
+                        "hotUpdate every ${HOT_UPDATE_TIME_RATE.inWholeSeconds} seconds"
+                }
+                while (true) {
+                    delay(HOT_UPDATE_TIME_RATE.inWholeMilliseconds)
+                    try {
+                        hotUpdate()
+                    } catch (e: Throwable) {
+                        logger.error { "Tree view reporting failed: $e" }
+                    }
+                }
             }
         }
+    } else {
+        null
     }
-
-    fun stopAutoHotUpdate(job: Job) = job.cancel()
 
     /**
      * Hot-updates [perAssertReporter]. Then hot-updates this [TreeViewReporter], which leads to a creation
@@ -878,6 +900,7 @@ ${getTopLevelNodes().joinToString("\n") { nodeToString(it, 0) }}
      * point to rule_output.json files (generated by [perAssertReporter]) which are not exist yet.
      * This might cause a problem in the frontend.
      */
+    @TestOnly
     fun hotUpdate() {
         if (!Config.AvoidAnyOutput.get()) {
             synchronized(this) {
@@ -1029,14 +1052,6 @@ ${getTopLevelNodes().joinToString("\n") { nodeToString(it, 0) }}
     }
 
     /**
-     * Performs a basic check that the tree doesn't contain any running nodes, if so it will
-     * log an error.
-     */
-    fun checkTermination() {
-        tree.checkAllLeavesAreTerminated()
-    }
-
-    /**
      * This method adds a [IRule] to the top level of the tree.
      */
     fun addTopLevelRule(rule: IRule) {
@@ -1177,8 +1192,11 @@ ${getTopLevelNodes().joinToString("\n") { nodeToString(it, 0) }}
         }
     }
 
+    /**
+     * Internal method to compute the output.json based on the tree view reporter
+     */
     @OptIn(ExperimentalSerializationApi::class)
-    fun writeOutputJson() {
+    private fun writeOutputJson() {
         /**
          * The output.json groups nodes by their results, i.e. for invariants or parametric rules on method f
          *
@@ -1219,7 +1237,7 @@ ${getTopLevelNodes().joinToString("\n") { nodeToString(it, 0) }}
                 val currRes = tree.getResultForNode(node)
                 buildSortedMap {
                     if (currRes.status != TreeViewStatusEnum.SKIPPED) {
-                        val outputJsonKey = if(currRes.rule?.ruleType is SpecType.Single.BMC){
+                        val outputJsonKey = if (currRes.rule?.ruleType is SpecType.Single.BMC) {
                             // In BMC mode we use the full rule identifier to identify nodes as the
                             // the rule identifier contains the entire sequence.
                             node.toString()
@@ -1265,6 +1283,26 @@ ${getTopLevelNodes().joinToString("\n") { nodeToString(it, 0) }}
             ArtifactFileUtils.getWriterForFile(handle, overwrite = true).use { i ->
                 i.append(prettyJson.encodeToString(JsonElement.serializer(), outputJsonRes))
             }
+        }
+    }
+
+    override fun close() {
+        try {
+            /**
+             * At this time, no child of the tree should be in the state [SOLVING] anymore.
+             */
+            tree.checkAllLeavesAreTerminated()
+            /**
+             * Do a last hotupdate to ensure output.json and treeViewStatus_X.json contain the
+             * same information.
+             */
+            hotUpdate()
+            hotUpdateJob?.cancel()
+        } finally {
+            /**
+             * Write the output<CONFIG_NAME>.json file to disk
+             */
+            writeOutputJson()
         }
     }
 }

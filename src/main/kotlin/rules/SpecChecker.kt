@@ -68,7 +68,6 @@ class SpecChecker(
         val r = ruleChecker.check(this)
 
         reporter.feedReporter(listOf(r), scene)
-        treeViewReporter.hotUpdate()
 
         Logger.always(
             "Result for ${declarationId}: ${r.consolePrint(this.isSatisfyRule)}",
@@ -170,24 +169,18 @@ class SpecChecker(
 
         val dependencyGraph = TrivialRuleDependencies.generate(chosenRules)
 
-        val reportingJob = treeViewReporter.startAutoHotUpdate()
-        val results = try {
-            logger.info { "Checking rules $allRules" }
-            dependencyGraph.resultComputation(
-                task = { it.check(chosenRules.indexOf(it) + 1, chosenRules.size) },
-                reduce = { it.map { dpResult -> dpResult.result } }
-            ).also {
-                summaryMonitor?.reportUnusedSumm()
-            }
-        } finally {
-            treeViewReporter.stopAutoHotUpdate(reportingJob)
+        logger.info { "Checking rules $allRules" }
+        val results = dependencyGraph.resultComputation(
+            task = { it.check(chosenRules.indexOf(it) + 1, chosenRules.size) },
+            reduce = { it.map { dpResult -> dpResult.result } }
+        ).also {
+            summaryMonitor?.reportUnusedSumm()
         }
 
         checkEnvfreeRuleResults(results)
 
         visualiseUnsatCores(results)
 
-        treeViewReporter.checkTermination()
         return results
     }
 }

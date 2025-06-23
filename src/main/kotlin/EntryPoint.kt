@@ -537,11 +537,12 @@ suspend fun handleTACFlow(fileName: String) {
     when (val reportType = Config.TacEntryPoint.get()) {
         ReportTypes.PRESOLVER_RULE -> TACVerifier.verifyPresolver(scene, fileName, rule)
         ReportTypes.GENERIC_FLOW -> {
-            val parsedTACCode = runInterruptible {
-                CoreTACProgram.fromStream(FileInputStream(fileName), ArtifactFileUtils.getBasenameOnly(fileName))
+            treeView.use {
+                val parsedTACCode = runInterruptible {
+                    CoreTACProgram.fromStream(FileInputStream(fileName), ArtifactFileUtils.getBasenameOnly(fileName))
+                }
+                handleGenericFlow(scene, reporter, treeView, listOf(rule to parsedTACCode))
             }
-            handleGenericFlow(scene, reporter, treeView, listOf(rule to parsedTACCode))
-            treeView.writeOutputJson()
         }
 
         ReportTypes.PRESIMPLIFIED_RULE -> TACVerifier.verify(scene, fileName, rule)
@@ -560,7 +561,6 @@ fun createSceneReporterAndTreeview(fileName: String, contractName: String): Trip
             ConsoleReporter
         )
     )
-
     val treeView = TreeViewReporter(
         contractName,
         "",
@@ -628,7 +628,6 @@ suspend fun handleGenericFlow(
 
         // Signal termination of the fake rule and persist result to TreeView JSON for the web UI to pick it up.
         treeView.signalEnd(rule, rcrs)
-        treeView.hotUpdate()
         reporterContainer.hotUpdate(scene)
         rcrs
     }
@@ -636,35 +635,37 @@ suspend fun handleGenericFlow(
 
 suspend fun handleSorobanFlow(fileName: String): List<RuleCheckResult.Single> {
     val (scene, reporterContainer, treeView) = createSceneReporterAndTreeview(fileName, "SorobanMainProgram")
-    val wasmRules = WasmEntryPoint.webAssemblyToTAC(
-        inputFile = File(fileName),
-        selectedRules = Config.WasmEntrypoint.getOrNull().orEmpty(),
-        env = SorobanHost,
-        optimize = true
-    )
-    val result = handleGenericFlow(
-        scene,
-        reporterContainer,
-        treeView,
-        wasmRules.map { it.rule to it.code }
-    )
-    treeView.writeOutputJson()
-    reporterContainer.toFile(scene)
-    return result
+    treeView.use {
+        val wasmRules = WasmEntryPoint.webAssemblyToTAC(
+            inputFile = File(fileName),
+            selectedRules = Config.WasmEntrypoint.getOrNull().orEmpty(),
+            env = SorobanHost,
+            optimize = true
+        )
+        val result = handleGenericFlow(
+            scene,
+            reporterContainer,
+            treeView,
+            wasmRules.map { it.rule to it.code }
+        )
+        reporterContainer.toFile(scene)
+        return result
+    }
 }
 
 suspend fun handleSolanaFlow(fileName: String): Pair<TreeViewReporter,List<RuleCheckResult.Single>> {
     val (scene, reporterContainer, treeView) = createSceneReporterAndTreeview(fileName, "SolanaMainProgram")
-    val solanaRules = sbf.solanaSbfToTAC(fileName)
-    val result = handleGenericFlow(
-        scene,
-        reporterContainer,
-        treeView,
-        solanaRules.map { it.rule to it.code }
-    )
-    treeView.writeOutputJson()
-    reporterContainer.toFile(scene)
-    return treeView to result
+    treeView.use {
+        val solanaRules = sbf.solanaSbfToTAC(fileName)
+        val result = handleGenericFlow(
+            scene,
+            reporterContainer,
+            treeView,
+            solanaRules.map { it.rule to it.code }
+        )
+        reporterContainer.toFile(scene)
+        return treeView to result
+    }
 }
 
 fun getContractFile(fileName: String): IContractSource =

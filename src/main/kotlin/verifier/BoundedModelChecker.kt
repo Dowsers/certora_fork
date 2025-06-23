@@ -960,7 +960,6 @@ class BoundedModelChecker(
             listOf()
         }
 
-        treeViewReporter.hotUpdate()
         logger.info { "${baseRule.declarationId}: Ran a total of $nSequencesChecked sequences" }
 
         return allResults
@@ -968,17 +967,12 @@ class BoundedModelChecker(
 
     suspend fun checkAll(): List<RuleCheckResult> {
         StatusReporter.freeze()
-        val reportingJob = treeViewReporter.startAutoHotUpdate()
-        try {
+        treeViewReporter.use {
             val allToRun = invProgs + ruleProgs
 
             return allToRun.toList().parallelMapOrdered { _, (baseRule, data) ->
                 runAllSequences(baseRule, data)
-            }.flatten().also {
-                reporter.hotUpdate(scene)
-            }
-        } finally {
-            treeViewReporter.stopAutoHotUpdate(reportingJob)
+            }.flatten()
         }
     }
 }

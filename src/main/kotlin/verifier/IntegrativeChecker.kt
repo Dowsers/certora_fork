@@ -805,52 +805,51 @@ object IntegrativeChecker {
         extensionContractsMapping: ExtensionContractsMapping,
     ): List<RuleCheckResult> {
         val treeView = createTreeViewReporter(scene, query)
-        val result = if (!Config.SceneConstructionOnly.get()) { // works thanks to logSceneInfo above which triggers the lazy computation
-            // run initial transformations, before checking specs or assertions
-            if(query is ProverQuery.EquivalenceQuery) {
-                return handleEquivalence(query, scene, reporterContainer, treeView).also {
-                    treeView.hotUpdate() // v hot
-                    treeView.writeOutputJson()
-                    reporterContainer.toFile(scene)
+        treeView.use {
+            val result = if (!Config.SceneConstructionOnly.get()) { // works thanks to logSceneInfo above which triggers the lazy computation
+                // run initial transformations, before checking specs or assertions
+                if(query is ProverQuery.EquivalenceQuery) {
+                    return handleEquivalence(query, scene, reporterContainer, treeView).also {
+                        reporterContainer.toFile(scene)
+                    }
                 }
-            }
-            runInitialTransformations(scene, query, extensionContractsMapping)
-            if(!Config.PreprocessOnly.get()) {
-                when (query) {
-                    is ProverQuery.AssertionQuery -> {
-                        handleAssertions(
-                            scene.fork(IScene.ForkInfo.ASSERTION),
-                            query,
-                            reporterContainer,
-                            treeView
-                        )
-                    }
+                runInitialTransformations(scene, query, extensionContractsMapping)
+                if(!Config.PreprocessOnly.get()) {
+                    when (query) {
+                        is ProverQuery.AssertionQuery -> {
+                            handleAssertions(
+                                scene.fork(IScene.ForkInfo.ASSERTION),
+                                query,
+                                reporterContainer,
+                                treeView
+                            )
+                        }
 
-                    is ProverQuery.CVLQuery.Single -> {
-                        handleCVLs(
-                            scene.fork(IScene.ForkInfo.CVL),
-                            query,
-                            reporterContainer,
-                            treeView
-                        )
+                        is ProverQuery.CVLQuery.Single -> {
+                            handleCVLs(
+                                scene.fork(IScene.ForkInfo.CVL),
+                                query,
+                                reporterContainer,
+                                treeView
+                            )
+                        }
+                        is ProverQuery.EquivalenceQuery -> `impossible!`
                     }
-                    is ProverQuery.EquivalenceQuery -> `impossible!`
+                } else {
+                    Logger.always("Preprocess-only mode enabled", respectQuiet = false)
+                    emptyList()
                 }
             } else {
-                Logger.always("Preprocess-only mode enabled", respectQuiet = false)
+                Logger.always("Scene construction-only mode enabled", respectQuiet = false)
                 emptyList()
             }
-        } else {
-            Logger.always("Scene construction-only mode enabled", respectQuiet = false)
-            emptyList()
-        }
 
-        // report results
-        if(!Config.SceneConstructionOnly.get() && !Config.PreprocessOnly.get()) {
-            reporterContainer.toFile(scene)
+            // report results
+            if(!Config.SceneConstructionOnly.get() && !Config.PreprocessOnly.get()) {
+                reporterContainer.toFile(scene)
+            }
+            return result
         }
-        treeView.writeOutputJson()
-        return result
     }
 
     private suspend fun handleEquivalence(
