@@ -27,7 +27,11 @@ import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import sbf.analysis.AnalysisRegisterTypes
+import sbf.callgraph.MutableSbfCallGraph
+import sbf.callgraph.SolanaFunction
+import sbf.disassembler.SbfRegister
 import sbf.domains.*
+import sbf.slicer.sliceAssertions
 
 private val sbfTypesFac = ConstantSbfTypeFactory()
 private val top = NPDomain.mkTrue<ScalarDomain<Constant, Constant>, Constant, Constant>()
@@ -227,14 +231,16 @@ class NPDomainTest {
 
     @Test
     fun test07() {
-        /*   // Example where propagation is too weak
-             assume(r4 < 3)
-             assume(r4 > 5)
+        /*
+             assume(r4 != 7)
+             assume(r4 < 8)
+             assume(r4 > 6)
          */
         val cfg = SbfTestDSL.makeCFG("entrypoint") {
             bb(0) {
-                assume(CondOp.LT(r4, 3))
-                assume(CondOp.GT(r4, 5))
+                assume(CondOp.NE(r4, 7))
+                assume(CondOp.LT(r4, 8))
+                assume(CondOp.GT(r4, 6))
             }
         }
 
@@ -249,7 +255,7 @@ class NPDomainTest {
         check(b!=null)
         val newAbsVal = absVal.analyze(b, vFac, regTypes, false)
         println("absVal=$absVal\n$b\nnewAbsVal=$newAbsVal")
-        Assertions.assertEquals(false, newAbsVal.isBottom())
+        Assertions.assertEquals(true, newAbsVal.isBottom())
     }
 
     @Test
@@ -424,6 +430,192 @@ class NPDomainTest {
             Assertions.assertEquals(false, absValAt2.isBottom())
         }
     }
+
+    @Test
+    fun test12() {
+        val x = ExpressionVar("x", 1U)
+        val y = ExpressionVar("y", 2U)
+
+        val csts = listOf(
+            SbfLinearConstraint(CondOp.LE, x, ExpressionNum(10)),
+            SbfLinearConstraint(CondOp.GT, x, ExpressionNum(4)),
+            SbfLinearConstraint(CondOp.LT, y, ExpressionNum(1000)),
+            // this will be ignored
+            SbfLinearConstraint(CondOp.EQ, LinearExpression(x).add(y), LinearExpression(ExpressionNum(50))),
+            SbfLinearConstraint(CondOp.NE, x, ExpressionNum(5)),
+            SbfLinearConstraint(CondOp.NE, y, ExpressionNum(10)),
+        )
+        val solver = IntervalSolver(csts, UnsignedIntervalFactory())
+        val solMap = solver.run()
+        Assertions.assertEquals(true, solMap != null)
+        check(solMap != null)
+        for ((v, i) in solMap) {
+            when (v) {
+                x -> Assertions.assertEquals(true, i == UnsignedInterval(6U,10U))
+                y -> Assertions.assertEquals(true, i == UnsignedInterval(0U,999U))
+            }
+        }
+    }
+
+    @Test
+    fun test13() {
+        // csts has already a contradiction but the constructor of IntervalSolver will ignore it.
+        // This is expected behavior because the interval solver only supports constrains `v op n`
+        val csts = listOf(
+            SbfLinearConstraint(CondOp.GT, LinearExpression(ExpressionNum(0)), LinearExpression(ExpressionNum(1))),
+        )
+        val solver = IntervalSolver(csts, UnsignedIntervalFactory())
+        val solMap = solver.run()
+        Assertions.assertEquals(true, solMap != null)
+    }
+
+    @Test
+    fun test14() {
+        // csts is empty
+        val csts = listOf<SbfLinearConstraint>()
+        val solver = IntervalSolver(csts, UnsignedIntervalFactory())
+        val solMap = solver.run()
+        Assertions.assertEquals(true, solMap != null)
+    }
+
+    /**
+     *  Common pattern in borsh serialize
+     *
+     *  "copy the minimum between available space and requested size
+     *  and return error if the number of copied bytes less than the requested size"
+     *
+     *  (no select)
+     **/
+    @Test
+    fun test15() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(0) {
+                r1 = 1024
+                "__rust_alloc"()
+                r1 = r0
+                r2 = r10
+                r7 = r1[24]
+                r9 = r1[32]
+                BinOp.ADD(r7, r6)
+                BinOp.SUB(r9, r6)
+                r8 = 32
+                br(CondOp.LE(r8, r9), 1, 2)
+            }
+            bb(1) {
+                r6 = 32
+                goto(3)
+            }
+            bb(2) {
+                r6 = r9
+                goto(3)
+            }
+            bb(3) {
+                r1 = r7
+                BinOp.SUB(r2, 600)
+                r3 = r6
+                goto(4)
+            }
+            bb(4) {
+                "sol_memcpy_"()
+                assume(CondOp.LE(r8, r9))
+                assert(CondOp.EQ(r4, 0)) // added assert so that NPAnalysis runs
+                exit()
+            }
+        }
+        cfg.lowerBranchesIntoAssume()
+
+        val globals = newGlobalVariableMap()
+        val memSummaries = MemorySummaries()
+        val (_, slicedProg) = sliceAssertions(MutableSbfCallGraph(mutableListOf(cfg), setOf("test"), globals), memSummaries)
+        val slicedCfg = slicedProg.getCFG("test")
+        check(slicedCfg != null)
+        println("$slicedCfg")
+
+
+        // This code is just to check that r3 is 32 at memcpy instruction
+        val scalarAnalysis = ScalarAnalysis(slicedCfg, globals, memSummaries, ConstantSbfTypeFactory())
+        val regTypes = AnalysisRegisterTypes(scalarAnalysis)
+        for (b in slicedCfg.getBlocks().values) {
+            for (locInst in b.getLocatedInstructions()) {
+                val inst = locInst.inst
+                if (inst is SbfInstruction.Call && SolanaFunction.from(inst.name) == SolanaFunction.SOL_MEMCPY) {
+                    val ty = regTypes.typeAtInstruction(locInst, SbfRegister.R3_ARG)
+                    Assertions.assertEquals(true, (ty as? SbfType.NumType)?.value?.toLongOrNull() == 32L)
+                }
+            }
+        }
+    }
+
+    /**
+     *  As test15 but with a select.
+     *  It cannot be handled precisely at the moment.
+     **/
+    @Test
+    fun test16() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(0) {
+                r1 = 1024
+                "__rust_alloc"()
+                r1 = r0
+                r2 = r10
+                r7 = r1[24]
+                r9 = r1[32]
+                BinOp.ADD(r7, r6)
+                BinOp.SUB(r9, r6)
+                r8 = 32
+                select(r6, CondOp.LE(r8, r9), 32, r9)
+                r1 = r7
+                BinOp.SUB(r2, 600)
+                r3 = r6
+                "sol_memcpy_"()
+                assume(CondOp.LE(r8, r9))
+                goto(1)
+            }
+            bb(1) {
+                assert(CondOp.EQ(r4, 0)) // added assert so that NPAnalysis runs
+                exit()
+            }
+        }
+        cfg.lowerBranchesIntoAssume()
+        val globals = newGlobalVariableMap()
+        val memSummaries = MemorySummaries()
+        val (_, slicedProg) = sliceAssertions(MutableSbfCallGraph(mutableListOf(cfg), setOf("test"), globals), memSummaries)
+        val slicedCfg = slicedProg.getCFG("test")
+        check(slicedCfg != null)
+        println("$slicedCfg")
+
+        // This code is just to check that r3 is 32 at memcpy instruction
+        val scalarAnalysis = ScalarAnalysis(slicedCfg, globals, memSummaries, ConstantSbfTypeFactory())
+        val regTypes = AnalysisRegisterTypes(scalarAnalysis)
+        for (b in slicedCfg.getBlocks().values) {
+            for (locInst in b.getLocatedInstructions()) {
+                val inst = locInst.inst
+                if (inst is SbfInstruction.Call && SolanaFunction.from(inst.name) == SolanaFunction.SOL_MEMCPY) {
+                    val ty = regTypes.typeAtInstruction(locInst, SbfRegister.R3_ARG)
+                    Assertions.assertEquals(false, (ty as? SbfType.NumType)?.value?.toLongOrNull() == 32L)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun test17() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(0) {
+                assume(CondOp.LE(r1, 10))
+                assume(CondOp.GE(r1, 10))
+                goto(1)
+            }
+            bb(1) {
+                assert(CondOp.EQ(r1, 10))
+                exit()
+            }
+        }
+        cfg.lowerBranchesIntoAssume()
+        println("$cfg")
+        ScalarAnalysisProver(cfg, ConstantSbfTypeFactory())
+    }
+
 }
 
 
