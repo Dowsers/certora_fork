@@ -38,6 +38,7 @@ import org.jetbrains.annotations.TestOnly
 import report.CVTAlertReporter
 import report.CVTAlertSeverity
 import report.CVTAlertType
+import sbf.cfg.*
 import utils.Range
 import spec.cvlast.RuleIdentifier
 import spec.rules.EcosystemAgnosticRule
@@ -167,7 +168,13 @@ private fun solanaRuleToTAC(rule: EcosystemAgnosticRule,
     }
 
     // 2. Slicing + PTA optimizations
-    val optProg = sliceAndPTAOptLoop(target, inlinedProg, memSummaries, start0)
+    val optProg = try {
+        sliceAndPTAOptLoop(target, inlinedProg, memSummaries, start0)
+    } catch (e: NoAssertionErrorAfterSlicer) {
+        sbfLogger.warn{"$e"}
+        vacuousProgram(target, "No assertions found after slicer")
+    }
+
     // Run an analysis to infer global variables by use
     val optProgExt = runGlobalInferenceAnalysis(optProg, memSummaries, globalsSymbolTable)
 
@@ -362,6 +369,30 @@ fun multiAssertChecks(rules: List<CompiledSolanaRule>): List<CompiledSolanaRule>
     } else {
         rules
     }
+}
+
+/**
+ * Return the vacuous program:
+ *
+ * ```
+ * assume(false)
+ * assert(false)
+ * ```
+ */
+private fun vacuousProgram(root: String, comment: String): SbfCallGraph {
+    val cfg = MutableSbfCFG(root)
+    val b = cfg.getOrInsertBlock(Label.fresh())
+    cfg.setEntry(b)
+    cfg.setExit(b)
+    val rx = Value.Reg(SbfRegister.R3_ARG)
+    val ry = Value.Reg(SbfRegister.R4_ARG)
+    b.add(SbfInstruction.Bin(BinOp.MOV, rx, Value.Imm(0UL), is64 = true))
+    b.add(SbfInstruction.Bin(BinOp.MOV, ry, Value.Imm(1UL), is64 = true))
+    val falseC = Condition(CondOp.GT, rx, ry)
+    b.add(SbfInstruction.Assume(falseC))
+    b.add(SbfInstruction.Assert(falseC, MetaData(SbfMeta.COMMENT to comment)))
+    b.add(SbfInstruction.Exit())
+    return MutableSbfCallGraph(mutableListOf(cfg), setOf(cfg.getName()), newGlobalVariableMap())
 }
 
 /**
