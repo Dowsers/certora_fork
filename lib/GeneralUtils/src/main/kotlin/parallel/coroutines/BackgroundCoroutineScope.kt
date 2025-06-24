@@ -175,9 +175,13 @@ internal class BackgroundCoroutineScope : CoroutineScope {
             // Rethrow any exception that happened.
             deferredResult.getCompleted()
 
-        } finally {
-            pool.close()
-            runningContext = null
+        }  finally {
+            try {
+                pool.close()
+                runningContext = null
+            } catch (_: Throwable) {
+                InjectedDependencies().alwaysLogError("Solver blaster pool did not properly finish running.")
+            }
         }
     }
 }
