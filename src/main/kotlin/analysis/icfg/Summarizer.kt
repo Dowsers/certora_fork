@@ -722,9 +722,10 @@ object Summarizer {
                 val callBlockId = patching.addBlock(where.ptr.block, callBlock)
                 val jumpVar: TACSymbol.Var
                 val patchingBlock = MutableCommandWithRequiredDecls<TACCmd.Simple>()
+                val contractAddress = m.getContainingContract().addressSym as TACSymbol
                 val funcCond: TACExpr = TACExpr.BinRel.Eq(
                     callSumm.origCallcore.to.asSym(),
-                    (m.getContainingContract().addressSym as TACSymbol).asSym()
+                    contractAddress.asSym()
                 ).letIf(callSumm.sigResolution.size != 1 && m.sigHash != null) {
                     val firstWord = TACExpr.BinOp.ShiftRightLogical(
                         callSumm.origCallcore.getSigHashExpr(),
@@ -737,11 +738,11 @@ object Summarizer {
                 }
                 patchingBlock.extend(
                     CommandWithRequiredDecls(
-                        TACCmd.Simple.AssigningCmd.AssignExpCmd(
+                        listOf(TACCmd.Simple.AssigningCmd.AssignExpCmd(
                             tmp,
                             funcCond
-                            ),
-                        tmp
+                        )),
+                        setOfNotNull(tmp, contractAddress as? TACSymbol.Var)
                     )
                 )
                 val clonedContract = m.getContainingContract() as? IClonedContract

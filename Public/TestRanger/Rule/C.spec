@@ -16,6 +16,7 @@
  */
 
 using C as c;
+using D as d;
 
 rule parametric(method f) {
     env e;
@@ -27,4 +28,10 @@ rule parametric(method f) {
 
 rule regular {
     assert c.n < 6;
+}
+
+rule autoDispatch {
+    env environ;
+    address ret = getD(environ);
+    assert ret == d;
 }
