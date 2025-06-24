@@ -20,6 +20,7 @@ package analysis.numeric.linear
 import com.certora.collect.*
 import datastructures.stdcollections.*
 import evm.EVM_BITWIDTH256
+import evm.inEVMRange
 import utils.*
 import vc.data.TACExpr
 import vc.data.TACSymbol
@@ -216,6 +217,8 @@ data class LinearEquality(val term: TreapMap<LVar, BigInteger>, val k: BigIntege
                 }
             }
             else -> treapSetOf()
+        }.retainAll {
+            it.k.abs().inEVMRange
         }
     }
 

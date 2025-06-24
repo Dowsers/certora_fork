@@ -527,6 +527,13 @@ class Decompiler private constructor(
         return frames.size
     }
 
+    private fun EVMStack.diagnosticStackTrace() =
+        asSequence()
+        .mapNotNull { it.immediateSource.stackFrame?.block }
+        .skipAdjacentDuplicates()
+        .joinToString("\n") { it.diagnosticSource() }
+
+
     private fun <T> iterateVisiting(start: T, work: (T) -> Iterable<T>) {
         val visited = ArrayHashSet<T>()
         val queue = ArrayDeque<T>()
@@ -816,12 +823,16 @@ class Decompiler private constructor(
                 val info = interpretBlock(block)
 
                 if (info !is InterpretedBlockInfo.Success) {
-                    logger.error { "Error interpreting block $block: $info" }
+                    logger.error {
+                        "Error interpreting block ${block.pc.diagnosticSource()}: $info\nBlocks on stack:\n${block.stackIn.diagnosticStackTrace()}"
+                    }
                     return@blockResult BlockInstanceResult.Error(info as InterpretedBlockInfo.Error)
                 }
 
                 if (info.stackOut.recursionCount(block.pc) > Config.RecursionEntryLimit.get()) {
-                    logger.warn { "Recursion limit reached in $block: $info" }
+                    logger.warn {
+                        "Recursion limit reached at ${block.pc.diagnosticSource()}.\nBlocks on stack:\n${info.stackOut.diagnosticStackTrace()}"
+                    }
                     return@blockResult BlockInstanceResult.Error(
                         InterpretedBlockInfo.RecursionLimitReached(block.pc)
                     )

@@ -450,8 +450,12 @@ def convert_pathname_to_posix(json_dict: Dict[str, Any], entry: str, smart_contr
             if path_obj.is_file():
                 json_dict_posix_paths[path_obj.as_posix()] = json_dict[entry][file_path]
             else:
+                json_dict_str = str(json_dict)
+                # protecting against long strings
+                if len(json_dict_str) > 200:
+                    json_dict_str = json_dict_str[:200] + '...'
                 fatal_error(compiler_logger, f"The path of the source file {file_path}"
-                                             f"in the standard json file {json_dict} does not exist")
+                                             f"in the standard json file {json_dict_str} does not exist")
         json_dict[entry] = json_dict_posix_paths
 
 
@@ -1361,46 +1365,48 @@ class CertoraBuildGenerator:
 
         return bytecode
 
-    def _handle_via_ir(self, contract_file_path: str, settings_dict: Dict[str, Any]) -> None:
-        if not self.context.solc_via_ir_map and not self.context.solc_via_ir:
-            return
-        if self.context.solc_via_ir_map:
-            match = Util.match_path_to_mapping_key(Path(contract_file_path), self.context.solc_via_ir_map)
-            if match:
-                settings_dict["viaIR"] = match
-        elif self.context.solc_via_ir:
+    def get_solc_via_ir_value(self, contract_file_path: Path) -> bool:
+        match = Ctx.get_map_attribute_value(self.context, contract_file_path, 'solc_via_ir')
+        assert isinstance(match, (bool, type(None))), f"Expected solc_via_ir to be bool or None, got {type(match)}"
+        return bool(match)
+
+    def get_solc_evm_version_value(self, contract_file_path: Path) -> Optional[str]:
+        match = Ctx.get_map_attribute_value(self.context, contract_file_path, 'solc_evm_version')
+        assert isinstance(match, (str, type(None))), f"Expected solc_evm_version to be string or None, got {type(match)}"
+        return match
+
+    def get_solc_optimize_value(self, contract_file_path: Path) -> Optional[str]:
+        match = Ctx.get_map_attribute_value(self.context, contract_file_path, 'solc_optimize')
+        assert isinstance(match, (str, type(None))), f"Expected solc_optimize to be string or None, got {type(match)}"
+        return match
+
+    def _handle_via_ir(self, contract_file_path: Path, settings_dict: Dict[str, Any]) -> None:
+        if self.get_solc_via_ir_value(contract_file_path):
             settings_dict["viaIR"] = True
 
-    def _handle_evm_version(self, contract_file_path: str, settings_dict: Dict[str, Any]) -> None:
-        if self.context.solc_evm_version_map:
-            match = Util.match_path_to_mapping_key(Path(contract_file_path), self.context.solc_evm_version_map)
-            if match:
-                settings_dict["evmVersion"] = match
-        elif self.context.solc_evm_version:
-            settings_dict["evmVersion"] = self.context.solc_evm_version
+    def _handle_evm_version(self, contract_file_path: Path, settings_dict: Dict[str, Any]) -> None:
+        match = self.get_solc_evm_version_value(contract_file_path)
+        if match:
+            settings_dict["evmVersion"] = match
 
-    def _handle_optimize(self, contract_file_path: str, settings_dict: Dict[str, Any],
+    def _handle_optimize(self, contract_file_path: Path, settings_dict: Dict[str, Any],
                          compiler_collector: CompilerCollector) -> None:
         """
         @param contract_file_path: the contract that we are working on
         @param settings_dict: data structure for sending to the solc compiler
         """
-        if self.context.solc_optimize_map:
-            match = Util.match_path_to_mapping_key(Path(contract_file_path), self.context.solc_optimize_map)
-            if match and int(match) > 0:
-                settings_dict["optimizer"] = {"enabled": True}
-                settings_dict["optimizer"]['runs'] = int(match)
-        elif self.context.solc_optimize:
+        match = self.get_solc_optimize_value(contract_file_path)
+        if match:
             settings_dict["optimizer"] = {"enabled": True}
-            if int(self.context.solc_optimize) > 0:
-                settings_dict["optimizer"]['runs'] = int(self.context.solc_optimize)
+            if int(match) > 0:
+                settings_dict["optimizer"]['runs'] = int(match)
 
         # if optimizer is true, we should also define settings_dict["optimizer"]["details"]
         # for both optimize map and optimize
         optimizer = settings_dict.get("optimizer")
         if optimizer and isinstance(optimizer, dict) and optimizer.get('enabled'):
             # if we are not disabling finder friendly optimizer specifically, enable it whenever viaIR is also enabled
-            if not self.context.strict_solc_optimizer and self.context.solc_via_ir:
+            if not self.context.strict_solc_optimizer and self.get_solc_via_ir_value(contract_file_path):
                 # The default optimizer steps (taken from libsolidity/interface/OptimiserSettings.h) but with the
                 # full inliner step removed
                 solc0_8_26_to_0_8_30 = ("dhfoDgvulfnTUtnIfxa[r]EscLMVcul[j]Trpeulxa[r]cLCTUca[r]LSsTFOtfDnca[r]" +
@@ -1433,6 +1439,8 @@ class CertoraBuildGenerator:
                     raise Util.CertoraUserInputError(err_msg)
                 elif minor < 6 or (minor == 6 and patch < 7):
                     raise Util.CertoraUserInputError(err_msg)
+                elif self.context.yul_optimizer_steps:
+                    yul_optimizer_steps = self.context.yul_optimizer_steps
                 elif (minor == 6 and patch >= 7) or (minor == 7 and 0 <= patch <= 1):
                     yul_optimizer_steps = solc0_6_7_to_0_7_1
                 elif minor == 7 and 2 <= patch <= 5:
@@ -1470,7 +1478,7 @@ class CertoraBuildGenerator:
                 for opt_pass in self.context.disable_solc_optimizers:
                     settings_dict["optimizer"]["details"][opt_pass] = False
 
-    def _fill_codegen_related_options(self, contract_file_path: str, settings_dict: Dict[str, Any],
+    def _fill_codegen_related_options(self, contract_file_path: Path, settings_dict: Dict[str, Any],
                                       compiler_collector: CompilerCollector) -> None:
         """
         Fills options that control how we call solc and affect the bytecode in some way
@@ -1551,7 +1559,7 @@ class CertoraBuildGenerator:
                 }
             }
 
-        self._fill_codegen_related_options(contract_file_as_provided, settings_dict, compiler_collector)
+        self._fill_codegen_related_options(Path(contract_file_as_provided), settings_dict, compiler_collector)
 
         result_dict = {"language": compiler_collector_lang.name, "sources": sources_dict, "settings": settings_dict}
         # debug_print("Standard json input")
@@ -2286,7 +2294,7 @@ class CertoraBuildGenerator:
 
         if compiler_lang == CompilerLangSol():
             settings_dict: Dict[str, Any] = {}
-            self._fill_codegen_related_options(build_arg_contract_file, settings_dict,
+            self._fill_codegen_related_options(Path(build_arg_contract_file), settings_dict,
                                                compiler_collector_for_contract_file)
             solc_optimizer_on, solc_optimizer_runs = self.solc_setting_optimizer_runs(settings_dict)
             solc_via_ir = self.solc_setting_via_ir(settings_dict)
@@ -2416,7 +2424,7 @@ class CertoraBuildGenerator:
                 # if no function finder mode set, determine based on viaIR enabled or not:
                 if self.context.function_finder_mode is None:
                     # in via-ir, should not compress
-                    if self.context.solc_via_ir:
+                    if self.get_solc_via_ir_value(Path(contract_file)):
                         should_compress = False
                     else:
                         should_compress = True
@@ -3614,7 +3622,7 @@ def build_source_tree(sources: Set[Path], context: CertoraContext, overwrite: bo
 
         try:
             if overwrite:
-                # expecting target path to exist.
+                # expecting the target path to exist.
                 if target_path.exists():
                     build_logger.debug(f"Overwriting {target_path} by copying from {source_path}")
                 else:
@@ -3632,7 +3640,7 @@ def build_source_tree(sources: Set[Path], context: CertoraContext, overwrite: bo
     cwd_file_path.parent.mkdir(parents=True, exist_ok=True)
     cwd_file_path.touch()
 
-    #  the empty file .project_directory is written in the source tree to denote the projecct directory
+    #  the empty file .project_directory is written in the source tree to denote the project directory
     rust_proj_dir = getattr(context, 'rust_project_directory', None)
     if rust_proj_dir:
         proj_dir_parent_relative = os.path.relpath(rust_proj_dir, os.getcwd())
@@ -3683,8 +3691,9 @@ def build_from_scratch(context: CertoraContext,
 
         # add to cache also source files that were found in the SDCs (e.g., storage extensions)
         paths_set = sdc.all_contract_files
-        for p in context.files:
-            paths_set.add(Path(p).absolute())
+        for f in context.files:
+            path = f.split(':')[0]  # `f` is either 'path/to/file.sol' or 'path/to/file.sol:ContractName'
+            paths_set.add(Path(path).absolute())
 
         # the contract files in SDCs are relative to .certora_sources. Which isn't good for us here.
         # Need to be relative to original paths
@@ -3724,8 +3733,7 @@ def build_from_scratch(context: CertoraContext,
 
 def build_from_cache_or_scratch(context: CertoraContext,
                                 certora_build_generator: CertoraBuildGenerator,
-                                certora_verify_generator: CertoraVerifyGenerator,
-                                certora_build_cache_manager: CertoraBuildCacheManager) \
+                                certora_verify_generator: CertoraVerifyGenerator) \
         -> Tuple[bool, bool, CachedFiles]:
     """
     Builds either from cache (fast path) or from scratch (slow path)
@@ -3742,10 +3750,10 @@ def build_from_cache_or_scratch(context: CertoraContext,
                                           False)
         return cache_hit, False, cached_files
 
-    build_cache_applicable = certora_build_cache_manager.cache_is_applicable(context)
+    build_cache_applicable = CertoraBuildCacheManager.cache_is_applicable(context)
 
     if not build_cache_applicable:
-        build_cache_disabling_options = certora_build_cache_manager.cache_disabling_options(context)
+        build_cache_disabling_options = CertoraBuildCacheManager.cache_disabling_options(context)
         build_logger.warning("Requested to enable the build cache, but the build cache is not applicable "
                              f"to this run because of the given options: {build_cache_disabling_options}")
         cached_files = build_from_scratch(context, certora_build_generator,
@@ -3753,7 +3761,7 @@ def build_from_cache_or_scratch(context: CertoraContext,
                                           False)
         return cache_hit, False, cached_files
 
-    cached_files = certora_build_cache_manager.build_from_cache(context)
+    cached_files = CertoraBuildCacheManager.build_from_cache(context)
     # if no match, will rebuild from scratch
     if cached_files is not None:
         # write to .certora_build.json
@@ -3792,7 +3800,7 @@ def build(context: CertoraContext, ignore_spec_syntax_check: bool = False) -> No
 
     try:
         input_config = InputConfig(context)
-
+        context.main_cache_key = CertoraBuildCacheManager.get_main_cache_key(context)
         # Create generators
         certora_build_generator = CertoraBuildGenerator(input_config, context)
 
@@ -3808,12 +3816,9 @@ def build(context: CertoraContext, ignore_spec_syntax_check: bool = False) -> No
             else:
                 Ctx.run_local_spec_check(False, context)
 
-        certora_build_cache_manager = CertoraBuildCacheManager()
-
         cache_hit, build_cache_enabled, cached_files = build_from_cache_or_scratch(context,
                                                                                    certora_build_generator,
-                                                                                   certora_verify_generator,
-                                                                                   certora_build_cache_manager)
+                                                                                   certora_verify_generator)
 
         # avoid running the same test over and over again for each split run, context.split_rules is true only for
         # the first run and is set to [] for split runs
@@ -3833,7 +3838,7 @@ def build(context: CertoraContext, ignore_spec_syntax_check: bool = False) -> No
 
         # save in build cache
         if not cache_hit and build_cache_enabled and cached_files.may_store_in_build_cache:
-            certora_build_cache_manager.save_build_cache(context, cached_files)
+            CertoraBuildCacheManager.save_build_cache(context, cached_files)
 
         certora_verify_generator.update_certora_verify_struct(True)
         certora_verify_generator.dump()  # second dump with properly rooted specs

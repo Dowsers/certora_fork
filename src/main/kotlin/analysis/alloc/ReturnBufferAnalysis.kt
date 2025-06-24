@@ -27,6 +27,7 @@ import datastructures.stdcollections.*
 import evm.EVM_WORD_SIZE
 import kotlinx.serialization.UseSerializers
 import log.*
+import normalizer.OptimisticSpillRewriter
 import tac.MetaKey
 import tac.NBId
 import tac.Tag
@@ -1359,6 +1360,7 @@ object ReturnBufferAnalysis {
             return rcStep.transitionReturnDataCopy(where.ptr)
         } else if(where.cmd is TACCmd.Simple.DirectMemoryAccessCmd || where.cmd is TACCmd.Simple.LongAccesses) {
             val isSafeAccess = SighashBinder.SAFE_INSTRUMENTED_READ in where.cmd.meta ||
+                OptimisticSpillRewriter.VALIDATION_READ in where.cmd.meta ||
                 (where.cmd is TACCmd.Simple.AssigningCmd.ByteLoad && where.cmd.base.let {
                     it != TACKeyword.RETURNDATA.toVar() && it != TACKeyword.MEMORY.toVar()
                 })

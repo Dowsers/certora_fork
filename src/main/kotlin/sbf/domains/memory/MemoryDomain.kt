@@ -24,6 +24,7 @@ import sbf.sbfLogger
 import sbf.support.SolanaInternalError
 import com.certora.collect.*
 import org.jetbrains.annotations.TestOnly
+import sbf.callgraph.SolanaFunction
 
 /**
  * Memory abstract domain to statically partition memory of SBF programs into disjoint memory subregions.
@@ -184,9 +185,9 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
                         scalars.widen(other.scalars, left)
                     }
             val outPtaGraph = if (isJoin) {
-                        ptaGraph.join(other.ptaGraph, scalars, other.scalars, left, right)
+                        ptaGraph.join(other.ptaGraph, scalars, other.scalars, outScalars, left, right)
                     } else {
-                        ptaGraph.widen(other.ptaGraph, scalars, other.scalars, left, right)
+                        ptaGraph.widen(other.ptaGraph, scalars, other.scalars, outScalars, left, right)
                     }
 
             return MemoryDomain(outScalars, outPtaGraph)
@@ -236,7 +237,44 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
         }
     }
 
+    /**
+     * Reduction from the scalar domain to the pointer domain.
+     *
+     * The scalar domain keeps a set of offsets in case of stack pointers while
+     * the pointer domain only keeps one offset per stack pointer.
+     */
+    fun reductionFromScalarsToPtaGraph(locInst: LocatedSbfInstruction) {
+        if (isBottom()) {
+            return
+        }
+
+        val readRegs = locInst.inst.readRegisters
+        readRegs.forEach { reg ->
+            val offsets = (scalars.getValue(reg).type() as? SbfType.PointerType.Stack<TNum, TOffset>)?.offset?.toLongList()
+            if (offsets != null && offsets.isNotEmpty()) {
+                // Scalar domain knows that `reg` points to some offset(s) in the stack
+                // but the Pointer domain does not know about `reg` or the stack offset(s)
+                val c = ptaGraph.getRegCell(reg)
+                if (c == null) {
+                    ptaGraph.setRegCell(reg, ptaGraph.getStack().createSymCell(PTASymOffset(offsets)))
+                } else if (!c.isConcrete()) {
+                    ptaGraph.setRegCell(reg, c.getNode().createSymCell(PTASymOffset(offsets)))
+                }
+            }
+        }
+    }
+
+    /**
+     * Reduction from the pointer domain to the scalar domain.
+     *
+     * The pointer domain might know that the content of some (non-stack) memory location contains a number.
+     * Recall that the scalar domain only knows about registers and stack.
+     */
     private fun reductionFromPtaGraphToScalars(b: SbfBasicBlock, locInst: LocatedSbfInstruction, reg: Value) {
+        if (isBottom()) {
+            return
+        }
+
         if (reg is Value.Reg) {
             val x = ptaGraph.getRegCell(reg)
             if (x != null && x.isConcrete()) {
@@ -301,6 +339,19 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
         if (scalars.isBottom()) {
             setToBottom()
         } else {
+            val inst = locInst.inst
+            check(inst is SbfInstruction.Call)
+            val solFunction = SolanaFunction.from(inst.name)
+            if (solFunction != null) {
+                when (solFunction) {
+                    SolanaFunction.SOL_MEMCMP,
+                    SolanaFunction.SOL_MEMCPY,
+                    SolanaFunction.SOL_MEMMOVE,
+                    SolanaFunction.SOL_MEMSET ->
+                        reductionFromScalarsToPtaGraph(locInst)
+                    else -> {}
+                }
+            }
             ptaGraph.doCall(locInst, globals, memSummaries, scalars)
         }
     }
@@ -357,31 +408,48 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
         }
     }
 
+    /**
+     * Transfer function for load and store.
+     *
+     * The function `reductionFromScalarsToPtaGraph` reconstructs PTA cells from scalar information (for stack).
+     *
+     * Moreover, PTA transfer functions `doLoad` and `doStore` take the scalar value of the base register as a parameter.
+     * This parameter is used to do further reduction by reconstructing PTA cells from globals/heap locations.
+     *
+     * To improve the design, we should do that second reduction also here so that when `doLoad` and `doStore` are called,
+     * all the cells have been reconstructed.
+     */
     private fun analyzeMem(locInst: LocatedSbfInstruction,
                            globals: GlobalVariableMap,
                            @Suppress("UNUSED_PARAMETER") memSummaries: MemorySummaries) {
         check(!isBottom()) {"called analyzeMem on bottom in memory domain"}
         val stmt = locInst.inst
         check(stmt is SbfInstruction.Mem) {"Memory domain expects a memory instruction instead of $stmt"}
-        val baseRegTypeBeforeKilled = scalars.analyzeMem(locInst, globals)
+
+
+        // This reduction must happen before the scalar transfer function because for load
+        // instructions the base register and the lhs can be the same register.
+        reductionFromScalarsToPtaGraph(locInst)
+
+        // In the case of a load instruction where base register and lhs are the same register,
+        // `baseValBeforeKilled` contains the type of the register **before** the lhs is processed but after
+        // potentially casting the abstract value of the base register from a number to a global/heap pointer.
+        val baseValBeforeKilled = scalars.analyzeMem(locInst, globals)
+
         if (scalars.isBottom()) {
             setToBottom()
         } else  {
-            val baseReg = stmt.access.baseReg
-            val offset = stmt.access.offset
-            val width = stmt.access.width
-            val value = stmt.value
+            val base = stmt.access.baseReg
             val isLoad = stmt.isLoad
-            // We ask for the type of baseReg after the transfer function of the
-            // scalar domain has been executed, because it can refine the abstract value
-            // of baseReg (e.g., implicit cast from an integer to a pointer)
             if (isLoad) {
-                val baseRegType = baseRegTypeBeforeKilled?.type() ?: scalars.getValue(baseReg).type()
-                ptaGraph.doLoad(locInst, value as Value.Reg, baseReg, offset, width, baseRegType, globals)
+                check(baseValBeforeKilled != null) {"Unexpected null scalar value for $stmt"}
+                val baseType = baseValBeforeKilled.type()
+                ptaGraph.doLoad(locInst, base, baseType, globals)
             } else {
-                val baseRegType = scalars.getValue(baseReg).type()
+                val value = stmt.value
+                val baseType = scalars.getValue(base).type()
                 val valueType = scalars.getValue(value).type()
-                ptaGraph.doStore(locInst, baseReg, offset, width, value, baseRegType, valueType, globals)
+                ptaGraph.doStore(locInst, base, value, baseType, valueType, globals)
             }
         }
     }

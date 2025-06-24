@@ -17,6 +17,7 @@
 
 contract C {
     uint n;
+    D public d;
 
     function foo() public {
         n += 1;
@@ -28,5 +29,15 @@ contract C {
 
     function baz() public {
         n += 3;
+    }
+
+    function getD() external returns (address) {
+        return d.getD();
+    }
+}
+
+contract D {
+    function getD() external returns (address) {
+        return address(this);
     }
 }

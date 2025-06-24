@@ -37,7 +37,11 @@ data class RedundantRequires(val assumeCmd: CVLCmd.Simple.AssumeCmd) :
             SanityCheckNodeType.SanityCheck(AssertsTautology),
             SanityCheckNodeType.SanityCheck(TrivialInvariant)
         )
-    override fun getRuleNotificationForResult(solverResult: SolverResult): RuleAlertReport {
+    override fun getRuleNotificationForResult(solverResult: SolverResult): RuleAlertReport? {
+        if (solverResult == SolverResult.SAT){
+            // In the case the check succeeded, i.e. SAT, don't output any rule notification
+            return null;
+        }
         val msg = "The require-redundancy sanity check ${solverResult.toSanityStatusString()}. " +
             if (solverResult == SolverResult.UNSAT) {
                 "There are require statements in the rule that are redundant and can be removed. " +

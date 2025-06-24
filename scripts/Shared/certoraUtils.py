@@ -14,7 +14,6 @@
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import csv
-import fnmatch
 import json
 import os
 import subprocess
@@ -97,6 +96,7 @@ EMV_JAR = Path("emv.jar")
 CERTORA_SOURCES = Path(".certora_sources")
 SOLANA_INLINING = "solana_inlining"
 SOLANA_SUMMARIES = "solana_summaries"
+CARGO_TOML_FILE = "cargo.toml"
 
 ALPHA_PACKAGE_NAME = 'certora-cli-alpha'
 ALPHA_PACKAGE_MASTER_NAME = ALPHA_PACKAGE_NAME + '-master'
@@ -1171,25 +1171,8 @@ class Singleton(type):
             cls.__instancesinstances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls.__instancesinstances[cls]
 
-
 class AbstractAndSingleton(Singleton, ABCMeta):
     pass
-
-
-def match_path_to_mapping_key(path: Path, m: Dict[str, str]) -> Optional[str]:
-    """
-    Matches the path to the best match in the dictionary's keys.
-    For example, given an absolute path `/Users/JohnDoe/Path/ToSolc/a.sol`, if the map contains
-    `b/a.sol` and `ToSolc/a.sol`, it will match on `ToSolc/a.sol`.
-    @param path: the path to match against
-    @param m: the map whose keys we're searching
-    @return: the value from the map that best matches the path, None if not found.
-    """
-    for k, v in m.items():
-        if fnmatch.fnmatch(str(path), k):
-            return v
-    return None
-
 
 def find_in(dir_path: Path, file_to_find: Path) -> Optional[Path]:
     """
@@ -1262,7 +1245,7 @@ class TestValue(NoValEnum):
     determines the chekpoint where the execution will halt. The exception TestResultsReady will be thrown. The value
     will also determine what object will be attached to the exception for inspection by the caller
     """
-    LOCAL_JAR = auto()
+    BEFORE_LOCAL_PROVER_CALL = auto()
     CHECK_ARGS = auto()
     AFTER_BUILD = auto()
     CHECK_SOLC_OPTIONS = auto()
@@ -1452,3 +1435,22 @@ def eq_by(f: Callable[[T, T], bool], a: Sequence[T], b: Sequence[T]) -> bool:
     check if Sequences a and b are equal according to function f.
     """
     return len(a) == len(b) and all(map(f, a, b))
+
+def find_nearest_cargo_toml() -> Optional[Path]:
+    current = Path.cwd()
+    for parent in [current] + list(current.parents):
+        candidate = parent / CARGO_TOML_FILE
+        if candidate.is_file():
+            return candidate
+    return None
+
+def file_in_source_tree(file_path: Path) -> bool:
+    # if the file is under .certora_source, return True
+    file_path = Path(file_path).absolute()
+    parent_dir = get_certora_sources_dir().absolute()
+
+    try:
+        file_path.relative_to(parent_dir)
+        return True
+    except ValueError:
+        return False

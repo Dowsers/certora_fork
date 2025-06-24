@@ -40,9 +40,9 @@ fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>>  havocByteMapLocation(i
 
 /** Emit TAC code for index = [base] + [offset] **/
 context(SbfCFGToTAC<TNum, TOffset>)
-fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>> computeTACMapIndex(base: TACSymbol.Var, offset: Long, cmds: MutableList<TACCmd.Simple>): TACSymbol.Var {
+fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>> computeTACMapIndex(base: TACSymbol.Var, offset: PTAOffset, cmds: MutableList<TACCmd.Simple>): TACSymbol.Var {
     val index = mkFreshIntVar(bitwidth = 256)
-    cmds.add(assign(index, exprBuilder.mkAddExpr(base.asSym(), exprBuilder.mkConst(offset).asSym(), useMathInt = false)))
+    cmds.add(assign(index, exprBuilder.mkAddExpr(base.asSym(), exprBuilder.mkConst(offset.v).asSym(), useMathInt = false)))
     return index
 }
 
@@ -92,7 +92,7 @@ fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>> mapLoads(
     val numOfWords = length.toInt() / wordSize
     val intVars = ArrayList<TACSymbol.Var>(numOfWords)
     for (i in 0 until numOfWords) {
-        val loc = computeTACMapIndex(base, wordSize.toLong() * i.toLong(), cmds)
+        val loc = computeTACMapIndex(base, PTAOffset(wordSize.toLong() * i.toLong()), cmds)
         val x = mkFreshIntVar()
         // REVISIT: ByteLoad assumes 32 bytes are read so the actual width (wordSize) is being ignored
         cmds.add(TACCmd.Simple.AssigningCmd.ByteLoad(x, loc, byteMap.tacVar))

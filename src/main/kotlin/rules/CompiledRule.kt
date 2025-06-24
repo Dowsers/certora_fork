@@ -188,7 +188,7 @@ open class CompiledRule protected constructor(val rule: CVLSingleRule, val tac: 
         private fun computeSanityAlerts(rule: CVLSingleRule, res: Verifier.JoinedResult): Iterable<RuleAlertReport> {
             val ruleType = rule.ruleType
             if (ruleType is SpecType.Single.GeneratedFromBasicRule.SanityRule) {
-                return listOf(SanityCheckSort(ruleType).getRuleNotificationForResult(res.finalResult))
+                return listOfNotNull(SanityCheckSort(ruleType).getRuleNotificationForResult(res.finalResult))
             }
             return listOf()
         }

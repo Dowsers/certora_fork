@@ -17,6 +17,7 @@
 
 package sbf.inliner
 
+import allocator.Allocator
 import sbf.callgraph.*
 import sbf.cfg.*
 import sbf.disassembler.*
@@ -62,6 +63,8 @@ private class InlinerSbfCallGraph(private val prog: SbfCallGraph) {
     // no existing CFG can call it.
     fun getRecursiveFunctions(): Set<String> = prog.getRecursiveFunctions()
     fun getStats(): CFGStats = prog.getStats()
+    fun getTransitivelyPreservedCFGs(): Set<String> = prog.getTransitivelyPreservedCFGs()
+    fun getPreservedCFGs(): Set<String> = prog.getPreservedCFGs()
 }
 
 
@@ -76,8 +79,6 @@ private class Inliner(val entry: String,
                       private val inlinerConfig: InlinerConfig) {
 
     val prog = InlinerSbfCallGraph(callgraph)
-    // To assign a unique identifier to each pair of CVT_save_scratch_registers/CVT_restore_scratch_registers
-    private var callId: ULong = 0UL
     // For debugging only
     private val numOfInsts = mutableMapOf<String, ULong>()
 
@@ -202,15 +203,16 @@ private class Inliner(val entry: String,
         // reset callee CFG
         calleeCFG.clear()
 
+        val callId = Allocator.getFreshId(Allocator.Id.INTERNAL_FUNC)
+        check(callId >= 0) {"expected non-negative call id"}
         val metaData = call.metaData.plus(
-            SbfMeta.CALL_ID to callId).plus(
+            SbfMeta.CALL_ID to callId.toULong()).plus(
             SbfMeta.INLINED_FUNCTION_NAME to calleeCFG.getName()).plus(
                 SbfMeta.INLINED_FUNCTION_SIZE to numCalleeInsts
             )
 
         val saveRegistersInst = SbfInstruction.Call(name = CVTCore.SAVE_SCRATCH_REGISTERS.function.name, metaData = metaData)
         val restoreRegistersInst = SbfInstruction.Call(name = CVTCore.RESTORE_SCRATCH_REGISTERS.function.name, metaData = metaData)
-        callId++
         // r10 += 4096
         val increaseFramePtrInst = SbfInstruction.Bin(BinOp.ADD, Value.Reg(SbfRegister.R10_STACK_POINTER),
                                                         Value.Imm(SBF_STACK_FRAME_SIZE.toULong()), true)
@@ -311,7 +313,8 @@ private class Inliner(val entry: String,
         for (b in cfg.getBlocks().values) {
             for (inst in b.getInstructions()) {
                 if (inst is SbfInstruction.Call) {
-                    if (!inst.isExternalFn()) {
+                    // If the instruction is in the preserved CFGs, we do not add any empty stub.
+                    if (!inst.isExternalFn() && inst.name !in prog.getTransitivelyPreservedCFGs()) {
                         worklist.add(inst.name)
                     }
                 }
@@ -355,6 +358,7 @@ private class Inliner(val entry: String,
 
     fun inline(): MutableSbfCallGraph {
         val entryCFG = prog.getCFG(entry)?.clone(newEntry)
+        val preservedCFGs: Set<SbfCFG> = prog.getTransitivelyPreservedCFGs().mapNotNull { prog.getCFG(it) }.toSet()
         check(entryCFG != null) {"Inliner expects a callgraph with a single root"}
         val statsBefore = prog.getStats()
         // Start inlining from entry point
@@ -381,8 +385,11 @@ private class Inliner(val entry: String,
         )
 
         cfgs.add(entryCFG)
-        return MutableSbfCallGraph(cfgs, setOf(entryCFG.getName()), prog.getGlobals())
+        // Add back the preservedCFGs.
+        cfgs.addAll(preservedCFGs.map { it.clone(it.getName()) })
+        return MutableSbfCallGraph(cfgs, setOf(entryCFG.getName()), prog.getGlobals(), preservedCFGs = prog.getPreservedCFGs())
     }
+
 }
 
 

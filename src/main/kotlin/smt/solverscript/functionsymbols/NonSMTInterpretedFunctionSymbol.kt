@@ -58,7 +58,14 @@ sealed class NonSMTInterpretedFunctionSymbol : InterpretedFunctionSymbol() {
         data class BitwiseNot(val tag: Tag.Bits) : Unary("~", tag, tag)
 
         @KSerializable
-        data class Extract(val l: Int, val r: Int) : Unary("extract", Tag.Int, Tag.Int)
+        data class Extract(val l: Int, val r: Int, val paramSort : Tag.Bits, val resultSort: Tag.Bits):
+            Unary("extract", paramSort, resultSort) {
+                init {
+                    check(r >= 0 && l <= paramSort.bitwidth && l - r + 1 == resultSort.bitwidth) {
+                        "Bad parameters for extract: l = $l, r = $r, paramSort = $paramSort, resultSort = $resultSort"
+                    }
+                }
+            }
 
         /** Sign-extend to [i] bits. */
         @KSerializable

@@ -18,6 +18,7 @@
 package sbf.analysis
 
 import datastructures.stdcollections.*
+import sbf.SolanaConfig
 import sbf.callgraph.*
 import sbf.cfg.*
 import sbf.disassembler.*
@@ -26,17 +27,19 @@ import sbf.sbfLogger
 import sbf.fixpoint.*
 import sbf.support.printToFile
 
+private typealias MemoryAnalysisT = MemoryAnalysis<ConstantSet, ConstantSet>
+
 /**
  *  Run a whole-program analysis on the SBF program using the memory domain.
  *
  *  The analysis is flow-sensitive but it is INTRA-PROCEDURAL.
  *  Therefore, call functions should be INLINED to get reasonable results.
 **/
-class WholeProgramMemoryAnalysis<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>>(
+class WholeProgramMemoryAnalysis(
         val program: SbfCallGraph,
-        val memSummaries: MemorySummaries,
-        val sbfTypesFac: ISbfTypeFactory<TNum, TOffset>) {
-    private val results : MutableMap<String, MemoryAnalysis<TNum, TOffset>> = mutableMapOf()
+        val memSummaries: MemorySummaries) {
+    private val sbfTypesFac = ConstantSetSbfTypeFactory(SolanaConfig.ScalarMaxVals.get().toULong())
+    private val results : MutableMap<String, MemoryAnalysisT> = mutableMapOf()
 
     fun inferAll() {
         val cfg = program.getCallGraphRootSingleOrFail()
@@ -46,11 +49,11 @@ class WholeProgramMemoryAnalysis<TNum: INumValue<TNum>, TOffset: IOffset<TOffset
         results[cfg.getName()] = analysis
     }
 
-    fun getResults(): Map<String, MemoryAnalysis<TNum, TOffset>> = results
+    fun getResults(): Map<String, MemoryAnalysisT> = results
 
     override fun toString(): String {
         val printInvariants = true
-        class PrettyPrinter(val analysis: MemoryAnalysis<TNum, TOffset>, val sb: StringBuilder): DfsVisitAction {
+        class PrettyPrinter(val analysis: MemoryAnalysisT, val sb: StringBuilder): DfsVisitAction {
             override fun applyBeforeChildren(b: SbfBasicBlock) {
                 val pre = analysis.getPre(b.getLabel())
                 sb.append("/** PRE-invariants \n")

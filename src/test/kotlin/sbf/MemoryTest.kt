@@ -56,8 +56,8 @@ class MemoryTest {
         n1.mkLink(0, 4, n2.createCell(0))
         n1.mkLink(4, 4, n3.createCell(0))
         n1.mkLink(8, 4, n4.createCell(0))
-        g1.setRegCell(r2, n2.createSymCell(PTASymOffset(0)))
-        g1.setRegCell(r3, n3.createSymCell(PTASymOffset(0)))
+        g1.setRegCell(r2, n2.createSymCell(0))
+        g1.setRegCell(r3, n3.createSymCell(0))
 
         //printToFile("PTATest-01-1.dot", g1.toDot(false, "before"))
 
@@ -90,7 +90,7 @@ class MemoryTest {
         val stack2 = absVal2.getRegCell(r10, newGlobalVariableMap())
         check(stack2 != null) { "memory domain cannot find the stack node" }
 
-        val c4 = stack2.getNode().getSucc(PTAField(4040, 4))
+        val c4 = stack2.getNode().getSucc(PTAField(PTAOffset(4040), 4))
         check(c4 != null) { "Stack at offset 4040 should have a link" }
         PTANode.smash(c4.getNode())
 
@@ -108,7 +108,7 @@ class MemoryTest {
 
         val n5 = g2.mkNode()
         n5.setWrite()
-        g2.setRegCell(r3, n2.createSymCell(PTASymOffset(0)))
+        g2.setRegCell(r3, n2.createSymCell(0))
         val check3 = absVal1.lessOrEqual(absVal2) && absVal2.lessOrEqual(absVal1)
         println("##Whether absVal1 == absVal2 --> res=$check3##")
         Assertions.assertEquals(true, check3)
@@ -139,9 +139,9 @@ class MemoryTest {
         n1.mkLink(0, 4, n2.createCell(0))
         n1.mkLink(4, 4, n3.createCell(0))
         n1.mkLink(8, 4, n4.createCell(0))
-        g1.setRegCell(r2, n2.createSymCell(PTASymOffset(0)))
-        g1.setRegCell(r3, n3.createSymCell(PTASymOffset(0)))
-        g1.setRegCell(r4, n4.createSymCell(PTASymOffset(0)))
+        g1.setRegCell(r2, n2.createSymCell(0))
+        g1.setRegCell(r3, n3.createSymCell(0))
+        g1.setRegCell(r4, n4.createSymCell(0))
 
         ////////////////////
 
@@ -253,9 +253,9 @@ class MemoryTest {
         n1.mkLink(0, 4, n2.createCell(0))
         n1.mkLink(4, 4, n3.createCell(0))
         n1.mkLink(8, 4, n4.createCell(0))
-        g1.setRegCell(r2, n2.createSymCell(PTASymOffset(0)))
-        g1.setRegCell(r3, n3.createSymCell(PTASymOffset(0)))
-        g1.setRegCell(r4, n4.createSymCell(PTASymOffset(0)))
+        g1.setRegCell(r2, n2.createSymCell(0))
+        g1.setRegCell(r3, n3.createSymCell(0))
+        g1.setRegCell(r4, n4.createSymCell(0))
 
 
         ////////////////////
@@ -410,12 +410,12 @@ class MemoryTest {
         n1.mkLink(0, 4, n2.createCell(0))
         n1.mkLink(4, 4, n3.createCell(0))
         n1.mkLink(8, 4, n4.createCell(0))
-        g1.setRegCell(r1, n1.createSymCell(PTASymOffset(0)))
+        g1.setRegCell(r1, n1.createSymCell(0))
         stack1.getNode().mkLink(4000, 4, n5.createCell(0))
 
         val absVal2 = absVal1.deepCopy()
         val g2 = absVal2.getPTAGraph()
-        g2.setRegCell(r1, n5.createSymCell(PTASymOffset(0)))
+        g2.setRegCell(r1, n5.createSymCell(0))
 
         sbfLogger.info{"\nAbsVal1=$absVal1\nAbsVal2=$absVal2"}
         val absVal3 = absVal1.join(absVal2)
@@ -498,8 +498,8 @@ class MemoryTest {
         val g1 = absVal1.getPTAGraph()
         val n1 = g1.mkNode()  // Created by g1 but it will be shared by g2
         val n2 = g1.mkNode()
-        g1.setRegCell(r1, n1.createSymCell(PTASymOffset(856)))
-        g1.setRegCell(r2, n2.createSymCell(PTASymOffset(0)))
+        g1.setRegCell(r1, n1.createSymCell(856))
+        g1.setRegCell(r2, n2.createSymCell(0))
 
         val absVal2 = MemoryDomain(nodeAllocator, sbfTypesFac, true)
         val stack2 = absVal2.getRegCell(r10, newGlobalVariableMap())
@@ -507,8 +507,8 @@ class MemoryTest {
         stack2.getNode().setRead()
         val g2 = absVal2.getPTAGraph()
 
-        g2.setRegCell(r1, n1.createSymCell(PTASymOffset(872)))
-        g2.setRegCell(r2, n1.createSymCell(PTASymOffset(872)))
+        g2.setRegCell(r1, n1.createSymCell(872))
+        g2.setRegCell(r2, n1.createSymCell(872))
 
         sbfLogger.info{"\nAbsVal1=$absVal1\nAbsVal2=$absVal2"}
         val absVal3 = absVal1.join(absVal2)
@@ -533,17 +533,17 @@ class MemoryTest {
         n3.mkLink(4, 4, n4.createCell(0))
         val r1 = Value.Reg(SbfRegister.R1_ARG)
         val r2 = Value.Reg(SbfRegister.R2_ARG)
-        g.setRegCell(r1, n1.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r2, n3.createSymCell(PTASymOffset(4)))
+        g.setRegCell(r1, n1.createSymCell(0))
+        g.setRegCell(r2, n3.createSymCell(4))
         println("\nBefore unification of $n1 and ($n3,0):\n$g")
-        n1.unify(n3, 0)
+        n1.unify(n3, PTAOffset(0))
         println("\nAfter unification:\n$g")
 
         val c1 = g.getRegCell(r1)
         val c2 = g.getRegCell(r2)
         check(c1 != null && c2 != null)
-        val f1 = PTAField(c1.getOffset().toLongOrNull()!!, 4)
-        val f2 = PTAField(c2.getOffset().toLongOrNull()!!, 4)
+        val f1 = PTAField(PTAOffset(c1.getOffset().toLongOrNull()!!), 4)
+        val f2 = PTAField(PTAOffset(c2.getOffset().toLongOrNull()!!), 4)
         val x = c1.getNode().getSucc(f1)
         val y = c2.getNode().getSucc(f2)
         sbfLogger.warn{"$x"}
@@ -572,7 +572,7 @@ class MemoryTest {
         stack1.getNode().mkLink(4096, 4, n1.createCell(0))
         n1.mkLink(0, 4, n1_f1.createCell(0))
         n1.mkLink(4, 4, n1_f2.createCell(0))
-        g1.setRegCell(r1, stack1.getNode().createSymCell(PTASymOffset(8192)))
+        g1.setRegCell(r1, stack1.getNode().createSymCell(8192))
 
 
         val absVal2 = MemoryDomain(nodeAllocator, sbfTypesFac, true)
@@ -586,7 +586,7 @@ class MemoryTest {
         stack2.getNode().mkLink(4096, 4, n2.createCell(0))
         n2.mkLink(0, 4, n2_f1.createCell(0))
         n2.mkLink(4, 4, n2_f2.createCell(0))
-        g2.setRegCell(r1, n2.createSymCell(PTASymOffset(0)))
+        g2.setRegCell(r1, n2.createSymCell(0))
 
         sbfLogger.info{"\nAbsVal1=$absVal1\nAbsVal2=$absVal2"}
         val absVal3 = absVal1.join(absVal2)
@@ -675,7 +675,7 @@ class MemoryTest {
         stack2.getNode().setRead()
         stack2.getNode().mkLink(4040, 4, stack2.getNode().createCell(4036))
         // R1 points to (stack, 4040)
-        absVal2.getPTAGraph().setRegCell(Value.Reg(SbfRegister.R1_ARG), stack2.getNode().createSymCell(Constant(4040)))
+        absVal2.getPTAGraph().setRegCell(Value.Reg(SbfRegister.R1_ARG), stack2.getNode().createSymCell(4040))
 
         sbfLogger.warn{"\nAbsVal1=$absVal1\nAbsVal2=$absVal2"}
         ConfigScope(SolanaConfig.OptimisticPTAJoin, false).use {
@@ -711,7 +711,7 @@ class MemoryTest {
         stack2.getNode().setRead()
         stack2.getNode().mkLink(4040, 4, stack2.getNode().createCell(4036))
         // R1 points to (stack, 4040)
-        absVal2.getPTAGraph().setRegCell(Value.Reg(SbfRegister.R1_ARG), stack2.getNode().createSymCell(Constant(4040)))
+        absVal2.getPTAGraph().setRegCell(Value.Reg(SbfRegister.R1_ARG), stack2.getNode().createSymCell(4040))
         absVal2.getScalars().setRegister(Value.Reg(SbfRegister.R1_ARG), ScalarValue(SbfType.PointerType.Stack(Constant(4040))))
 
         sbfLogger.warn{"\nAbsVal1=$absVal1\nAbsVal2=$absVal2"}
@@ -746,7 +746,7 @@ class MemoryTest {
 
         absVal1.getScalars().forget(Value.Reg(SbfRegister.R1_ARG))
         val integerNode = absVal1.getPTAGraph().mkIntegerNode()
-        absVal1.getPTAGraph().setRegCell(Value.Reg(SbfRegister.R1_ARG), integerNode.createSymCell(Constant(0)))
+        absVal1.getPTAGraph().setRegCell(Value.Reg(SbfRegister.R1_ARG), integerNode.createSymCell(0))
 
         val absVal2 = MemoryDomain(nodeAllocator, sbfTypesFac, true)
         val stack2 = absVal2.getRegCell(r10, newGlobalVariableMap())
@@ -754,7 +754,7 @@ class MemoryTest {
         stack2.getNode().setRead()
         stack2.getNode().mkLink(4040, 4, stack2.getNode().createCell(4036))
         // R1 points to (stack, 4040)
-        absVal2.getPTAGraph().setRegCell(Value.Reg(SbfRegister.R1_ARG), stack2.getNode().createSymCell(Constant(4040)))
+        absVal2.getPTAGraph().setRegCell(Value.Reg(SbfRegister.R1_ARG), stack2.getNode().createSymCell(4040))
         absVal2.getScalars().setRegister(Value.Reg(SbfRegister.R1_ARG), ScalarValue(SbfType.PointerType.Stack(Constant(4040))))
 
         sbfLogger.warn{"\nAbsVal1=$absVal1\nAbsVal2=$absVal2"}
@@ -786,8 +786,8 @@ class MemoryTest {
         stack1.getNode().setRead()
         stack1.getNode().mkLink(4040, 4, n1.createCell(0))
         stack1.getNode().mkLink(4044, 4, n2.createCell(0))
-        g1.setRegCell(Value.Reg(SbfRegister.R2_ARG), stack1.getNode().createSymCell(Constant(4040)))
-        g1.setRegCell(Value.Reg(SbfRegister.R3_ARG), stack1.getNode().createSymCell(Constant(4044)))
+        g1.setRegCell(Value.Reg(SbfRegister.R2_ARG), stack1.getNode().createSymCell(4040))
+        g1.setRegCell(Value.Reg(SbfRegister.R3_ARG), stack1.getNode().createSymCell(4044))
         absVal1.getScalars().setStackContent(4040, 4,  ScalarValue(sbfTypesFac.toNum(0)))
         absVal1.getScalars().setStackContent(4044, 4,  ScalarValue(sbfTypesFac.toNum(0)))
 
@@ -832,7 +832,7 @@ class MemoryTest {
         n2.setWrite()
         stack1.getNode().setRead()
         stack1.getNode().mkLink(4040, 8, n1.createCell(0))
-        g1.setRegCell(Value.Reg(SbfRegister.R2_ARG), stack1.getNode().createSymCell(Constant(4040)))
+        g1.setRegCell(Value.Reg(SbfRegister.R2_ARG), stack1.getNode().createSymCell(4040))
         absVal1.getScalars().setStackContent(4040, 8,  ScalarValue(sbfTypesFac.toNum(0)))
 
         val absVal2 = MemoryDomain(nodeAllocator, sbfTypesFac, true)
@@ -876,8 +876,8 @@ class MemoryTest {
         stack.getNode().setWrite()
         stack.getNode().mkLink(4040,8, n1.createCell(0))
         stack.getNode().mkLink(4048, 8, n2.createCell(0))
-        g.setRegCell(r1, n1.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r2, n2.createSymCell(PTASymOffset(0)))
+        g.setRegCell(r1, n1.createSymCell(0))
+        g.setRegCell(r2, n2.createSymCell(0))
         println("\nBefore select(r1, *, r1, r2):\n$g")
         g.doSelect(LocatedSbfInstruction(Label.fresh(), 0, SbfInstruction.Select(r1, Condition(CondOp.EQ, Value.Reg(SbfRegister.R3_ARG), Value.Imm(0UL)), r1, r2)),
                                          newGlobalVariableMap(),
@@ -888,17 +888,64 @@ class MemoryTest {
             val c1 = g.getRegCell(r1)
             val c2 = g.getRegCell(r2)
             check(c1 != null && c2 != null)
-            val f1 = PTAField(c1.getOffset().toLongOrNull()!!, 8)
-            val f2 = PTAField(c2.getOffset().toLongOrNull()!!, 8)
+            val f1 = PTAField(PTAOffset(c1.getOffset().toLongOrNull()!!), 8)
+            val f2 = PTAField(PTAOffset(c2.getOffset().toLongOrNull()!!), 8)
             Assertions.assertEquals(true, c1.getNode().getSucc(f1) == c2.getNode().getSucc(f2))
         }
 
         run {
-            val c1 = stack.getNode().getSucc(PTAField(4040, 8))
-            val c2 = stack.getNode().getSucc(PTAField(4048, 8))
+            val c1 = stack.getNode().getSucc(PTAField(PTAOffset(4040), 8))
+            val c2 = stack.getNode().getSucc(PTAField(PTAOffset(4048), 8))
             check(c1 != null && c2 != null)
             Assertions.assertEquals(true, c1 == c2)
         }
+    }
+
+    @Test
+    fun test19() {
+        println("====== TEST 19: reconstructFromIntegerCells =======")
+
+        val r10 = Value.Reg(SbfRegister.R10_STACK_POINTER)
+        val absVal = MemoryDomain(PTANodeAllocator(), sbfTypesFac, true)
+        val stack = absVal.getRegCell(r10, newGlobalVariableMap())
+        check(stack != null) { "memory domain cannot find the stack node" }
+        stack.getNode().setRead()
+        val g = absVal.getPTAGraph()
+        val n1 = g.mkIntegerNode()
+        n1.setRead()
+        val n2 = g.mkIntegerNode()
+        n2.setWrite()
+        val n3 = g.mkIntegerNode()
+        n3.setWrite()
+        val n4 = g.mkIntegerNode()
+        n4.setWrite()
+        stack.getNode().mkLink(4000, 8, n3.createCell(0))
+        stack.getNode().mkLink(4032, 8, n3.createCell(0))
+        stack.getNode().mkLink(4040, 4, n1.createCell(0))
+        stack.getNode().mkLink(4044, 4, n2.createCell(0))
+        stack.getNode().mkLink(4048, 8, n4.createCell(0))
+        g.setRegCell(r10,stack.getNode().createSymCell(PTAOffset(4096)))
+        sbfLogger.warn{"PTAGraph=$g" }
+        val dummyLocInst = LocatedSbfInstruction(Label.fresh(), 1, SbfInstruction.Exit())
+
+
+        /** We should reconstruct a cell from (4040,4) and (4044,4) **/
+        val c1 = g.reconstructFromIntegerCells(dummyLocInst, stack.getNode().createCell(4040), 8)
+        Assertions.assertEquals(true, c1 != null)
+        sbfLogger.warn{"ReconstructFromIntegerCells(4040,8)=$c1\nPTAGraph=$g" }
+
+        /** We should reconstruct a cell from (4048,8) **/
+        val c2 = g.reconstructFromIntegerCells(dummyLocInst, stack.getNode().createCell(4048), 4)
+        Assertions.assertEquals(true, c2 != null)
+        sbfLogger.warn{"ReconstructFromIntegerCells(4048,4)=$c2\nPTAGraph=$g" }
+
+        /** We cannot reconstruct a cell from (4064,8) **/
+        val c3 = g.reconstructFromIntegerCells(dummyLocInst, stack.getNode().createCell(4064), 8)
+        Assertions.assertEquals(true, c3 == null)
+
+        /** We cannot reconstruct a cell from (4044,8) **/
+        val c4 = g.reconstructFromIntegerCells(dummyLocInst, stack.getNode().createCell(4044), 8)
+        Assertions.assertEquals(true, c4 == null)
     }
 
 }

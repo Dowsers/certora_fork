@@ -17,6 +17,7 @@
 
 package normalizer
 
+import datastructures.stdcollections.*
 import analysis.*
 import normalizer.UnoptimizeFreeMem.doWork
 import tac.Tag
@@ -58,66 +59,72 @@ object UnoptimizeFreeMem {
     fun doWork(c: CoreTACProgram): CoreTACProgram {
 
         val g = c.analysisCache.graph
-        val def = NonTrivialDefAnalysis(g)
         val matcher = PatternMatcher.compilePattern(g, patt)
+        val gvn = c.analysisCache.gvn
 
         /**
-         * Check that the free pointer at candidateToRewrite.use is defined as
-         * fp := c + fp
-         * where this assignment occurs *after* the read of the free pointer at candidateToRewrite.origFreeMemDef and
-         * *before* the use site of candidateToRewrite.use. Further, there must be no intervening writes to the free pointer
-         * between the definition site found and the read in [candidateToRewrite] (if there is, then we treat
-         * the addition as pointer arithmetic for a previous allocation).
+         * Check that, at [candidateToRewrite].use, we have seen an update of the free pointer
+         * `fp@new := c' + fp@old`, where `c'` > [candidateToRewrite].c and `fp@old` is the same
+         * value read at [candidateToRewrite].origFreeMemDef, and that there exists an alias of `fp@new` at [candidateToRewrite].use.
+         * NB that at [candidateToRewrite].use the free pointer may not actually equal `fp@new` due to yet more allocations.
+         * However, using `fp@old` to access a field past the (known) end of an allocation struct is almost
+         * certainly never right, so we rewrite accordingly.
          *
-         * If it does, return `c`, i.e., the amount the free pointer is incremented
-         * between the free pointer read at origFreeMemDef and the addition at use.
+         * This returns a pair of c' and the alias of `fp@new` that is in scope at [candidateToRewrite].use
          */
-        fun findRewriteOffset(candidateToRewrite: FreeMemPlusConst): BigInteger? {
-            val newFreeMemDef = def.nontrivialDefSingleOrNull(freememPtr, candidateToRewrite.use)
-                ?.takeIf {
-                    it.block == candidateToRewrite.use.block
-                            && it.block == candidateToRewrite.origFreeMemDef.block
-                            && candidateToRewrite.use.pos > it.pos && it.pos > candidateToRewrite.origFreeMemDef.pos &&
-                            c.analysisCache.graph.iterateUntil(it).reversed().takeWhile {
-                                it.ptr != candidateToRewrite.origFreeMemDef
-                            }.none {
-                                it.cmd is TACCmd.Simple.AssigningCmd && it.cmd.lhs == TACKeyword.MEM64.toVar()
-                            }
-                }?.let {
-                    g.elab(it).maybeNarrow<TACCmd.Simple.AssigningCmd.AssignExpCmd>()
+        fun findRewriteOffset(candidateToRewrite: FreeMemPlusConst): Pair<BigInteger, TACSymbol.Var>? {
+            if(candidateToRewrite.use.block != candidateToRewrite.origFreeMemDef.block ||
+                candidateToRewrite.origFreeMemDef.pos >= candidateToRewrite.use.pos) {
+                return null
+            }
+            for(lc in g.iterateBlock(candidateToRewrite.origFreeMemDef, excludeStart = true)) {
+                if(lc.cmd !is TACCmd.Simple.AssigningCmd || lc.cmd.lhs != TACKeyword.MEM64.toVar()) {
+                    continue
+                }
+                val m = matcher.queryFrom(lc.narrow()).toNullableResult() ?: return null
+                if(m.origFreeMemDef != candidateToRewrite.origFreeMemDef) {
+                    return null
+                }
+                val postFpUpdate = g.succ(lc.ptr).singleOrNull() ?: return null
+                val which = gvn.findCopiesAt(candidateToRewrite.use, postFpUpdate to freememPtr)
+                val newFpVal = lc.maybeExpr<TACExpr.Sym.Var>()?.exp?.s
+                val base = which.firstOrNull {
+                    it != freememPtr && newFpVal != it
+                } ?: which.firstOrNull {
+                    it != newFpVal
                 } ?: return null
-
-
-            return matcher.queryFrom(newFreeMemDef).toNullableResult()?.c
+                if(candidateToRewrite.c <= m.c) {
+                    return null
+                }
+                return m.c to base
+            }
+            return null
         }
 
         val patch = c.toPatchingProgram()
 
-        g.commands
-            .filter { cmd -> cmd.maybeNarrow<TACCmd.Simple.AssigningCmd.AssignExpCmd>()?.cmd?.rhs is TACExpr.Vec.Add }
-            .forEach { cmd ->
-                matcher.queryFrom(cmd.narrow<TACCmd.Simple.AssigningCmd.AssignExpCmd>()).toNullableResult()?.let {
-                    val rewriteC1 = findRewriteOffset(it)
-                    if (rewriteC1 != null && it.c > rewriteC1) {
-                        val lhs = g.elab(it.use).narrow<TACCmd.Simple.AssigningCmd.AssignExpCmd>().cmd.lhs
-                        val tmp = TACKeyword.TMP(Tag.Bit256,"freemem").toUnique()
-                        patch.addVarDecl(tmp)
-                        patch.replaceCommand(
-                            it.use,
-                            listOf(
-                                TACCmd.Simple.AssigningCmd.AssignExpCmd(
-                                    tmp,
-                                    freememPtr.asSym()
-                                ),
-                                TACCmd.Simple.AssigningCmd.AssignExpCmd(
-                                    lhs,
-                                    TACExpr.Vec.Add(tmp.asSym(), (it.c - rewriteC1).asTACSymbol().asSym())
-                                )
-                            )
-                        )
-                    }
-                }
-            }
+        g.commands.filter { cmd ->
+            cmd.maybeNarrow<TACCmd.Simple.AssigningCmd.AssignExpCmd>()?.cmd?.rhs is TACExpr.Vec.Add
+        }.forEach { cmd ->
+            val fpPlusConst = matcher.queryFrom(cmd.narrow<TACCmd.Simple.AssigningCmd.AssignExpCmd>()).toNullableResult() ?: return@forEach
+            val (rewriteC1, base) = findRewriteOffset(fpPlusConst) ?: return@forEach
+            val lhs = g.elab(fpPlusConst.use).narrow<TACCmd.Simple.AssigningCmd.AssignExpCmd>().cmd.lhs
+            val tmp = TACKeyword.TMP(Tag.Bit256,"freemem").toUnique()
+            patch.addVarDecl(tmp)
+            patch.replaceCommand(
+                fpPlusConst.use,
+                listOf(
+                    TACCmd.Simple.AssigningCmd.AssignExpCmd(
+                        tmp,
+                        base.asSym()
+                    ),
+                    TACCmd.Simple.AssigningCmd.AssignExpCmd(
+                        lhs,
+                        TACExpr.Vec.Add(tmp.asSym(), (fpPlusConst.c - rewriteC1).asTACSymbol().asSym())
+                    )
+                )
+            )
+        }
 
         return patch.toCode(c)
     }

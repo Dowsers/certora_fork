@@ -1220,3 +1220,20 @@ infix fun <T: Comparable<T>> ClosedRange<T>.subsumes(that: ClosedRange<T>): Bool
 }
 
 fun <K, V> Stream<Pair<K, V>>.toMap(): Map<K, V> = this.collect(Collectors.toMap({it.first}, {it.second}))
+
+/**
+    Returns a sequence of elements from this sequence, skipping adjacent duplicates.
+
+    For example, `sequnenceOf(1, 1, 2, 2, 3, 3, 3, 2).skipAdjacentDuplicates()` yields `(1, 2, 3, 2)`.
+ */
+fun <T> Sequence<T>.skipAdjacentDuplicates() = sequence<T> {
+    var isFirst = true
+    var previous: T? = null
+    forEach {
+        if (isFirst || it != previous) {
+            yield(it)
+            previous = it
+            isFirst = false
+        }
+    }
+}

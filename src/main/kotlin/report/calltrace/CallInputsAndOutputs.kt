@@ -36,6 +36,7 @@ import spec.cvlast.CVLType
 import spec.cvlast.typedescriptors.EVMTypeDescriptor
 import spec.cvlast.typedescriptors.VMTypeDescriptor
 import tac.NBId
+import utils.mapValuesNotNull
 import utils.`to?`
 import utils.tryAs
 import vc.data.*
@@ -345,8 +346,9 @@ private data class InternalFunctionStrategy(val dump: Dump, val tacValues: Map<I
     val firstMissingIndex: Int? = (0..dump.types.size).find { idx -> idx !in tacValues }
 
     override fun asMap(): Map<Int, CallTraceValue> =
-        tacValues.mapValues { (idx, tv) ->
-            CallTraceValue.VMType(tv, dump.types[idx], paramName = prefix(idx))
+        tacValues.mapValuesNotNull { (idx, tv) ->
+            val type = dump.types.getOrNull(idx) ?: return@mapValuesNotNull null
+            CallTraceValue.VMType(tv, type, paramName = prefix(idx))
         }
 
     fun prefix(idx: Int): String? {

@@ -34,7 +34,7 @@ sealed class TACVariable(open val tacVar: TACSymbol.Var)
  * Represent a physical 32 wide-byte at [offset] on the stack.
  * The choice of 32 bytes is enforced by TAC.
  * **/
-data class TACByteStackVariable(override val tacVar: TACSymbol.Var, val offset: Long):
+data class TACByteStackVariable(override val tacVar: TACSymbol.Var, val offset: PTAOffset):
     TACVariable(tacVar), Comparable<TACByteStackVariable> {
     init {
         check(tacVar.tag == Tag.Bit256) {"TACByteStackVariable must have Bit256 tag"}
@@ -56,8 +56,8 @@ class TACVariableFactory {
     // State for the TAC translation
     private val declaredVars = ArrayList<TACSymbol.Var>()
 
-    private fun mkByteStackVar(offset: Long): TACByteStackVariable {
-        val suffix = "$offset"
+    private fun mkByteStackVar(offset: PTAOffset): TACByteStackVariable {
+        val suffix = "${offset.v}"
         val name = "Stack_B_$suffix"
         @Suppress("ForbiddenComment")
         // FIXME: 256-bit integer is hardcoded.
@@ -69,7 +69,7 @@ class TACVariableFactory {
     fun getDeclaredVariables(): List<TACSymbol.Var> = declaredVars
 
     /** Map physical stack memory at [offset] to a TAC scalar variable **/
-    fun getByteStackVar(offset: Long): TACByteStackVariable {
+    fun getByteStackVar(offset: PTAOffset): TACByteStackVariable {
         val v = byteStackCache[offset]
         return if (v == null) {
             val newV = mkByteStackVar(offset)

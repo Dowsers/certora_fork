@@ -33,10 +33,13 @@ data object Vacuity : SanityCheckSort.FunctionDependent<RuleCheckResult.Single, 
     override val mode = SanityValues.BASIC
 
     override val preds: List<SanityCheckNodeType> = listOf(SanityCheckNodeType.None)
-    override fun getRuleNotificationForResult(solverResult: SolverResult): RuleAlertReport {
+    override fun getRuleNotificationForResult(solverResult: SolverResult): RuleAlertReport? {
         val msg =  "The rule vacuity sanity check ${solverResult.toSanityStatusString()}."
         return if(solverResult == SolverResult.UNSAT) {
             RuleAlertReport.Warning(msg + " Even when ignoring all user asserts, the end of the rule is not reachable. See ${CheckedUrl.SANITY_VACUITY}")
+        } else if (solverResult == SolverResult.SAT){
+            // In the case the check succeeded, i.e. SAT, don't output any rule notification
+            null
         } else {
             RuleAlertReport.Info(msg)
         }

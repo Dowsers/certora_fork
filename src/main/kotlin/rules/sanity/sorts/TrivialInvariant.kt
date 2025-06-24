@@ -36,11 +36,14 @@ object TrivialInvariant :
     override val preds: List<SanityCheckNodeType> =
         listOf(SanityCheckNodeType.None)
 
-    override fun getRuleNotificationForResult(solverResult: SolverResult): RuleAlertReport {
+    override fun getRuleNotificationForResult(solverResult: SolverResult): RuleAlertReport? {
         if(solverResult == SolverResult.UNSAT){
             return RuleAlertReport.Warning("The trivial invariant sanity check failed. " +
                 "The invariant condition is trivially true - it's verified also without assuming it first, or calling any contract function. " +
                 "See ${CheckedUrl.SANITY_TRIVIAL_INVARIANT_CHECKS}")
+        } else if (solverResult == SolverResult.SAT){
+            // In the case the check succeeded, i.e. SAT, don't output any rule notification
+            return null;
         }
         val status = when (solverResult) {
             SolverResult.SAT -> "succeeded"

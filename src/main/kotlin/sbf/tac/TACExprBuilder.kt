@@ -111,7 +111,7 @@ class TACExprBuilder(private val regVars: ArrayList<TACSymbol.Var>) {
     }
 
     /** Return the equivalent TAC expression of [op1] - [op2]  **/
-    private fun mkSubExpr(op1: TACExpr.Sym, op2: TACExpr.Sym, useMathInt: Boolean): TACExpr {
+    fun mkSubExpr(op1: TACExpr.Sym, op2: TACExpr.Sym, useMathInt: Boolean): TACExpr {
         checkBinExprArgs(op1, op2, useMathInt, "mkSubExpr")
         val op2C = op2.evalAsConst()
         return if (op2C != null && op2C < BigInteger.ZERO) {

@@ -69,4 +69,132 @@ class InlinerTest {
         println("Inlined program\n$inlinedProg")
     }
 
+    @Test
+    fun test02() {
+        println("====== TEST 2 =======")
+        /**
+         * Check that the preserved function `foo` is preserved by the Inliner.
+         */
+        val entrypoint = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                exit()
+            }
+        }
+
+        val foo = SbfTestDSL.makeCFG("foo") {
+            bb(0) {
+                exit()
+            }
+        }
+        entrypoint.normalize()
+        foo.normalize()
+        entrypoint.verify(true)
+        foo.verify(true)
+
+        val globals = newGlobalVariableMap()
+        val prog = MutableSbfCallGraph(mutableListOf(entrypoint, foo), setOf("entrypoint"), globals, preservedCFGs = setOf("foo"))
+        val inlinerConfig = InlinerConfigFromFile(listOf(), listOf())
+        val memSummaries = MemorySummaries()
+        println("Program\n$prog\n")
+        val inlinedProg = inline("entrypoint", prog, memSummaries, inlinerConfig)
+        println("Inlined program\n$inlinedProg")
+        assert(inlinedProg.getCFG("foo") != null) { "CFG `foo` has not been preserved" }
+    }
+
+    @Test
+    fun test03() {
+        println("====== TEST 3 =======")
+        /**
+         * Check that the preserved function `bar` is preserved by the Inliner.
+         * `bar` will not be in the set of preserved functions, but it will be transitively reachable from `foo`.
+         */
+        val entrypoint = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                exit()
+            }
+        }
+
+        val foo = SbfTestDSL.makeCFG("foo") {
+            bb(0) {
+                "bar"()
+                exit()
+            }
+        }
+
+        val bar = SbfTestDSL.makeCFG("bar") {
+            bb(0) {
+                exit()
+            }
+        }
+        entrypoint.normalize()
+        foo.normalize()
+        bar.normalize()
+        entrypoint.verify(true)
+        foo.verify(true)
+        bar.verify(true)
+
+        val globals = newGlobalVariableMap()
+        val prog = MutableSbfCallGraph(
+            mutableListOf(entrypoint, foo, bar),
+            setOf("entrypoint"),
+            globals,
+            preservedCFGs = setOf("foo") // Observe that bar is not preserved, but it is transitively reachable from foo.
+        )
+        val inlinerConfig = InlinerConfigFromFile(listOf(), listOf())
+        val memSummaries = MemorySummaries()
+        println("Program\n$prog\n")
+        val inlinedProg = inline("entrypoint", prog, memSummaries, inlinerConfig)
+        println("Inlined program\n$inlinedProg")
+        assert(inlinedProg.getCFG("foo") != null) { "CFG `foo` has not been preserved" }
+        assert(inlinedProg.getCFG("bar") != null) { "CFG `bar` has not been preserved" }
+    }
+
+    @Test
+    fun test04() {
+        println("====== TEST 4 =======")
+        /**
+         * Check that the preserved function `bar` is *not* preserved by the Inliner.
+         * `bar` will not be in the set of preserved functions, and it is not reachable from entrypoint or any preserved
+         * function.
+         */
+        val entrypoint = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                exit()
+            }
+        }
+
+        val foo = SbfTestDSL.makeCFG("foo") {
+            bb(0) {
+                exit()
+            }
+        }
+
+        val bar = SbfTestDSL.makeCFG("bar") {
+            bb(0) {
+                exit()
+            }
+        }
+        entrypoint.normalize()
+        foo.normalize()
+        bar.normalize()
+        entrypoint.verify(true)
+        foo.verify(true)
+        bar.verify(true)
+
+        val globals = newGlobalVariableMap()
+        val prog = MutableSbfCallGraph(
+            mutableListOf(entrypoint, foo, bar),
+            setOf("entrypoint"),
+            globals,
+            preservedCFGs = setOf("foo") // Bar is not preserved, and it is also not reachable from any preserved CFG.
+        )
+        val inlinerConfig = InlinerConfigFromFile(listOf(), listOf())
+        val memSummaries = MemorySummaries()
+        println("Program\n$prog\n")
+        val inlinedProg = inline("entrypoint", prog, memSummaries, inlinerConfig)
+        println("Inlined program\n$inlinedProg")
+        assert(inlinedProg.getCFG("foo") != null) { "CFG `foo` has not been preserved" }
+        assert(inlinedProg.getCFG("bar") == null) { "CFG `bar` has been preserved" }
+    }
+
 }

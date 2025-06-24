@@ -348,10 +348,12 @@ sealed class TheoryFunctionSymbol : InterpretedFunctionSymbol() {
             BV("concat", IFixedFunctionSignatures.FixedFunctionSignatures(listOf(left, right), Tag.Bits(left.bitwidth + right.bitwidth)))
 
         @utils.KSerializable
-        data class Extract(val l: Int, val r: Int) :
-            BV("extract", IFixedFunctionSignatures.IntToInt) {
+        data class Extract(val l: Int, val r: Int, val paramSort : Tag.Bits, val resultSort : Tag.Bits) :
+            BV("extract", IFixedFunctionSignatures.FixedFunctionSignatures(listOf(paramSort), resultSort)) {
             init {
-                check(l >= r && r >= 0) { "Extract($l, $r) does not satisfy SMT-LIB definition" }
+                check(r >= 0 && l <= paramSort.bitwidth && l - r + 1 == resultSort.bitwidth) {
+                    "Bad parameters for extract: l = $l, r = $r, paramSort = $paramSort, resultSort = $resultSort"
+                }
             }
         }
 
@@ -389,7 +391,7 @@ sealed class TheoryFunctionSymbol : InterpretedFunctionSymbol() {
         }
         companion object {
             val BvConcatTwo256s = Concat(Tag.Bit256, Tag.Bit256)
-            val BvExtractLower256From512 get() = Extract(255, 0)
+            val BvExtractLower256From512 get() = Extract(255, 0, Tag.Bit512, Tag.Bit256)
         }
     }
 

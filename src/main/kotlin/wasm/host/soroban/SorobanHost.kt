@@ -39,6 +39,7 @@ import wasm.ir.ImportFunc
 import wasm.ir.WasmImport
 import wasm.ir.WasmName
 import wasm.ir.WasmProgram
+import wasm.transform.PropagateRevertConditions
 
 /** Provide implementation details of the Soroban host environment */
 object SorobanHost : WasmHost {
@@ -65,6 +66,7 @@ object SorobanHost : WasmHost {
         tac
         .mapIfAllowed(CoreToCoreTransformer(ReportTypes.OPTIMIZE) { ConstantPropagator.propagateConstants(it, setOf()) })
         .mapIfAllowed(CoreToCoreTransformer(ReportTypes.OPTIMIZE_SOROBAN_MEMORY) { optimizeSorobanMemory(it) })
+        .mapIfAllowed(CoreToCoreTransformer(ReportTypes.WASM_PROPAGATE_REVERT_CONDITIONS, PropagateRevertConditions::transform))
         .mapIfAllowed(CoreToCoreTransformer(ReportTypes.CANONICALIZE_SCALARSET, CanonicalizeObjectValAllocations::canonicalize))
 
     private data class SorobanImport(

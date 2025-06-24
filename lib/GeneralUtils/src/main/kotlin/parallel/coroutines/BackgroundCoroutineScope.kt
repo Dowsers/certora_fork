@@ -37,6 +37,12 @@ fun launchBackground(
 ): Job = mainCoroutineScope.launch(context + CoroutineName(name)) { block() }
 
 /**
+ * This method can be used to check if the mainCoroutineScope is active
+ * for instance to prevent calling [launchBackground] in Unit test.
+ */
+fun canLaunchBackground() = mainCoroutineScope.isActive
+
+/**
     Like [launchBackground], but does not require a main coroutine scope to be active.  In that case we'll just run
     the coroutine directly on this thread.  This is useful for code that may run inside of unit tests.
  */
@@ -169,9 +175,13 @@ internal class BackgroundCoroutineScope : CoroutineScope {
             // Rethrow any exception that happened.
             deferredResult.getCompleted()
 
-        } finally {
-            pool.close()
-            runningContext = null
+        }  finally {
+            try {
+                pool.close()
+                runningContext = null
+            } catch (_: Throwable) {
+                InjectedDependencies().alwaysLogError("Solver blaster pool did not properly finish running.")
+            }
         }
     }
 }

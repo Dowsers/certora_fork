@@ -238,10 +238,14 @@ class ContractClass(
             }
 
             transforms.add(ReportTypes.SPURIOUS_FP_UPDATE_REMOVAL, SpuriousFreePointerUpdateRemoval::transform)
+            if(Config.EnableOptimisticSpillLocations.get()) {
+                transforms.add(ReportTypes.OPTIMISTIC_SPILL_REWRITE, OptimisticSpillRewriter::rewrite)
+            }
 
             // these passes are directed at helping PTA not fail
             transforms.add(ReportTypes.NOTE_MODIFIER_REWRITER, NoteModifierRewriter::transform)
             transforms.add(ReportTypes.DEOPTIMIZE_MULTI_STRUCTS, StructAllocationDeoptimizer::rewrite)
+            transforms.add(ReportTypes.DEOPTIMIZE_STRUCT_ARRAYS, StructArrayAllocationDeoptimizer::rewrite)
             transforms.add(ReportTypes.OBJECT_REORDERING_FENCE, ReorderObjectInitialization::reorderingFenceInstrumentation)
             transforms.add(ReportTypes.REORDER_OBJECT_INITIALIZATION, ReorderObjectInitialization::rewrite)
             transforms.add(ReportTypes.NORMALIZE_STORAGE_PACKING, EnumPackingNormalizer::normalize)

@@ -17,6 +17,7 @@
 
 package analysis.opt.overflow
 
+import analysis.dataflow.OverApproxUseAnalysis
 import analysis.maybeExpr
 import analysis.numeric.MAX_UINT
 import analysis.opt.ConstantPropagatorAndSimplifier
@@ -183,6 +184,8 @@ class OverflowPatternRewriter(code1: CoreTACProgram) {
 
     fun go(): CoreTACProgram {
         //TACProgramPrinter.standard().print(code)
+        val useAnalysis = OverApproxUseAnalysis(code)
+
         g.commands.mapNotNull { it.maybeExpr<TACExpr>() }.forEach { lcmd ->
             val ptr = lcmd.ptr
             val rhs = lcmd.exp
@@ -192,7 +195,7 @@ class OverflowPatternRewriter(code1: CoreTACProgram) {
             }
 
             fun handle(context: OverflowContext): Boolean {
-                val match = Matcher(code, context).go()
+                val match = Matcher(code, context, useAnalysis).go()
                     ?: return false
                 Replacer(code, patcher, context, match).go()
                 return true

@@ -32,6 +32,7 @@ import spec.CVLKeywords
 import spec.toVar
 import tac.NBId
 import utils.*
+import utils.ModZm.Companion.inBounds
 import vc.data.*
 import vc.data.tacexprutil.TACExprFreeVarsCollector
 import java.math.BigInteger
@@ -494,9 +495,11 @@ object PointerSimplification {
                         }
                         check(d.relates(stmt.cmd.lhs))
                         when(exp) {
-                            is TACExpr.Sym.Const -> updateCand(Rewrite.Const(
+                            is TACExpr.Sym.Const -> if(exp.s.value.inBounds(modZ256)) {
+                                updateCand(Rewrite.Const(
                                     exp.s.value
-                            ))
+                                ))
+                            }
                             is TACExpr.Sym.Var -> updateCand(Rewrite.Direct(
                                     x = exp.s
                             ))

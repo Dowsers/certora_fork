@@ -30,6 +30,7 @@ import tac.NBId
 import utils.*
 import vc.data.*
 import java.math.BigInteger
+import java.util.stream.Stream
 
 private val logger = Logger(LoggerTypes.ABSTRACT_INTERPRETATION)
 
@@ -66,6 +67,30 @@ class IntervalAnalysis private constructor(private val graph: TACCommandGraph) {
         }
         throw IllegalArgumentException("No in state for $ptr")
     }
+
+    fun parallelStreamStates(): Stream<Pair<CmdPointer, State>> {
+        return inState.keys.parallelStream().flatMap { b ->
+            inStates(b).parallelStream()
+        }
+    }
+
+    private fun inStates(b: NBId): Sequence<Pair<CmdPointer, State>> = sequence {
+        var theState: State? = inState[b]
+        for (c in graph.elab(b).commands) {
+            if (theState == null) {
+                break
+            }
+            yield(c.ptr to theState)
+            theState = stepOrNull(c, theState)
+        }
+    }
+
+    private fun stepOrNull(lcmd: LTACCmd, state: State): State? =
+        try {
+            interpreter.step(lcmd, state)
+        } catch (_ : UnreachableState) {
+            null
+        }
 
     fun outState(ptr: CmdPointer): State? {
         var st = inState[ptr.block] ?: return null
@@ -141,7 +166,9 @@ class IntervalAnalysis private constructor(private val graph: TACCommandGraph) {
                 val prevState = inState[succ]!!
                 val isBackJump = loopsByHead[succ]?.any { block in it.body } == true
 
-                val joined = prevState.join(nextWithGuessedInvariants, widen = isBackJump)
+                val joined = prevState
+                    .join(nextWithGuessedInvariants, widen = isBackJump)
+                    .retainAllValues { it != SimpleQualifiedInt.nondet }
 
                 if (joined != prevState) {
                     inState[succ] = joined

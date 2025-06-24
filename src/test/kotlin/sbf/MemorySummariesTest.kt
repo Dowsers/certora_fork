@@ -36,7 +36,7 @@ class MemorySummariesTest {
         check(baseR != lhs)
         val inst = SbfInstruction.Mem(Deref(width, baseR, offset, null), lhs, true, null)
         val locInst = LocatedSbfInstruction(Label.fresh(), 0, inst)
-        g.doLoad(locInst, lhs, baseR, offset, width, SbfType.top(), newGlobalVariableMap())
+        g.doLoad(locInst, baseR, SbfType.top(), newGlobalVariableMap())
         val sc = g.getRegCell(lhs)
         check(sc != null)
         return sc.getNode()
@@ -72,8 +72,8 @@ class MemorySummariesTest {
         n2.mkLink(0, 8, n3.createCell(0))
 
 
-        g.setRegCell(r1, n1.createSymCell(PTASymOffset(0)))
-        g.setRegCell(r2, n2.createSymCell(PTASymOffset(0)))
+        g.setRegCell(r1, n1.createSymCell(0))
+        g.setRegCell(r2, n2.createSymCell(0))
 
         val configFileContents = arrayListOf("#[type((*i64)(r1+0):num)]", "^foo$")
         val memSummaries = MemorySummaries.readSpecFile(configFileContents,"unknown")
@@ -94,7 +94,7 @@ class MemorySummariesTest {
         // *(r1+0) changed
         Assertions.assertEquals(true, getNode(g, r1, 0, 8).mustBeInteger())
         // This assertion is provable after commit "fix(sbf): do not remove predecessors when applying summary (pta domain)"
-        Assertions.assertEquals(true, stackC.getNode().getSucc(PTAField(4040, 8)) != null)
+        Assertions.assertEquals(true, stackC.getNode().getSucc(PTAField(PTAOffset(4040), 8)) != null)
     }
 
     @Test

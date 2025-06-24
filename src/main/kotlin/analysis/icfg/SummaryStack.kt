@@ -97,8 +97,7 @@ object SummaryStack {
             override val callSiteSrc: TACMetaInfo?,
             val methodSignature: QualifiedMethodSignature,
             override val callResolutionTableInfo: CallResolutionTableSummaryInfo,
-            override val appliedSummary: Summarization.AppliedSummary,
-            val rets: List<InternalFuncRet>
+            override val appliedSummary: Summarization.AppliedSummary
         ) : SummaryStart() {
 
             override val support: Set<TACSymbol.Var> = setOf()
@@ -124,11 +123,15 @@ object SummaryStack {
 
         }
 
-        data class Internal(val rets: List<InternalFuncRet>, val methodSignature: QualifiedMethodSignature) : SummaryEnd(),
+        /**
+         * Marks the end of an internal summary - on the normal return path, [rets] should not be null, if there are no returns it should be an empty list.
+         * It is nullable to encode undefined return values when we exit the summary with a revert.
+         */
+        data class Internal(val rets: List<InternalFuncRet>?, val methodSignature: QualifiedMethodSignature) : SummaryEnd(),
             TransformableVarEntityWithSupport<Internal> {
-            override fun transformSymbols(f: (TACSymbol.Var) -> TACSymbol.Var): Internal = this.copy(rets = rets.map { it.copy(s = f(it.s)) })
+            override fun transformSymbols(f: (TACSymbol.Var) -> TACSymbol.Var): Internal = this.copy(rets = rets?.map { it.transformSymbols(f) })
 
-            override val support: Set<TACSymbol.Var> = rets.map { it.s }.toSet()
+            override val support: Set<TACSymbol.Var> = rets?.map { it.s }?.toSet().orEmpty()
         }
     }
 

@@ -156,7 +156,9 @@ class CommonAttributes(AttrUtil.Attributes):
             'action': AttrUtil.NotAllowed
         },
         affects_build_cache_key=False,
-        disables_build_cache=False
+        disables_build_cache=False,
+        # Avoiding presentation of this attribute in Config Tab
+        config_data=None
     )
 
     RUN_SOURCE = AttrUtil.AttributeDefinition(
@@ -340,7 +342,7 @@ class EvmAttributes(AttrUtil.Attributes):
         default_desc="do not set via_ir during compilation unless solc_via_ir is set",
         argparse_args={
             'action': AttrUtil.UniqueStore,
-            'type': lambda value: Vf.parse_dict('solc_via_ir_map', value, bool)
+            'type': lambda value: Vf.parse_ordered_dict('solc_via_ir_map', value, bool)
         },
         affects_build_cache_key=True,
         disables_build_cache=False,
@@ -382,7 +384,7 @@ class EvmAttributes(AttrUtil.Attributes):
         default_desc="Uses the same Solidity EVM version for all contracts",
         argparse_args={
             'action': AttrUtil.UniqueStore,
-            'type': lambda value: Vf.parse_dict('solc_evm_version_map', value)
+            'type': lambda value: Vf.parse_ordered_dict('solc_evm_version_map', value)
         },
         affects_build_cache_key=True,
         disables_build_cache=False,
@@ -405,7 +407,7 @@ class EvmAttributes(AttrUtil.Attributes):
         default_desc="Uses the same Solidity compiler version for all contracts",
         argparse_args={
             'action': AttrUtil.UniqueStore,
-            'type': lambda value: Vf.parse_dict('solc_map', value)
+            'type': lambda value: Vf.parse_ordered_dict('solc_map', value)
         },
         affects_build_cache_key=True,
         disables_build_cache=False,
@@ -428,7 +430,7 @@ class EvmAttributes(AttrUtil.Attributes):
         default_desc="Uses the same compiler version for all contracts",
         argparse_args={
             'action': AttrUtil.UniqueStore,
-            'type': lambda value: Vf.parse_dict('compiler_map', value)
+            'type': lambda value: Vf.parse_ordered_dict('compiler_map', value)
         },
         affects_build_cache_key=True,
         disables_build_cache=False,
@@ -481,7 +483,7 @@ class EvmAttributes(AttrUtil.Attributes):
         default_desc="Compiles all contracts with the same optimization settings",
         argparse_args={
             'action': AttrUtil.UniqueStore,
-            'type': lambda value: Vf.parse_dict('solc_optimize_map', value)
+            'type': lambda value: Vf.parse_ordered_dict('solc_optimize_map', value)
         },
         affects_build_cache_key=True,
         disables_build_cache=False,
@@ -582,6 +584,16 @@ class EvmAttributes(AttrUtil.Attributes):
         affects_build_cache_key=True,
         disables_build_cache=True
     )
+
+    YUL_OPTIMIZER_STEPS = AttrUtil.AttributeDefinition(
+        # overrides the hardcoded yul optimizer steps, set in certoraBuild.py
+        argparse_args={
+            'action': AttrUtil.UniqueStore
+        },
+        affects_build_cache_key=True,
+        disables_build_cache=False
+    )
+
     CACHE = AttrUtil.AttributeDefinition(
         argparse_args={
             'action': AttrUtil.UniqueStore
@@ -740,8 +752,7 @@ class EvmAttributes(AttrUtil.Attributes):
             'action': AttrUtil.UniqueStore
         },
         affects_build_cache_key=False,
-        disables_build_cache=False,
-        config_data=None
+        disables_build_cache=False
     )
 
     BUILD_CACHE = AttrUtil.AttributeDefinition(
@@ -1719,7 +1730,7 @@ class RangerAttributes(EvmProverAttributes):
     @classmethod
     def ranger_unsupported_attributes(cls) -> List[AttrUtil.AttributeDefinition]:
         return [cls.PROJECT_SANITY, cls.RULE_SANITY, cls.COVERAGE_INFO, cls.FOUNDRY, cls.INDEPENDENT_SATISFY,
-                cls.MULTI_ASSERT_CHECK, cls.MULTI_EXAMPLE]
+                cls.MULTI_ASSERT_CHECK, cls.MULTI_EXAMPLE, cls.VYPER]
 
     @classmethod
     def ranger_true_by_default_attributes(cls) -> List[AttrUtil.AttributeDefinition]:

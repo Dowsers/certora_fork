@@ -38,7 +38,7 @@ import org.jetbrains.annotations.TestOnly
 import report.CVTAlertReporter
 import report.CVTAlertSeverity
 import report.CVTAlertType
-import sbf.domains.ConstantSbfTypeFactory
+import sbf.cfg.*
 import utils.Range
 import spec.cvlast.RuleIdentifier
 import spec.rules.EcosystemAgnosticRule
@@ -168,7 +168,13 @@ private fun solanaRuleToTAC(rule: EcosystemAgnosticRule,
     }
 
     // 2. Slicing + PTA optimizations
-    val optProg = sliceAndPTAOptLoop(target, inlinedProg, memSummaries, start0)
+    val optProg = try {
+        sliceAndPTAOptLoop(target, inlinedProg, memSummaries, start0)
+    } catch (e: NoAssertionErrorAfterSlicer) {
+        sbfLogger.warn{"$e"}
+        vacuousProgram(target, "No assertions found after slicer")
+    }
+
     // Run an analysis to infer global variables by use
     val optProgExt = runGlobalInferenceAnalysis(optProg, memSummaries, globalsSymbolTable)
 
@@ -192,8 +198,7 @@ private fun solanaRuleToTAC(rule: EcosystemAgnosticRule,
             sbfLogger.info { "[$target] Started whole-program memory analysis " }
 
             val start = System.currentTimeMillis()
-            val sbfTypesFac = ConstantSbfTypeFactory()
-            val analysis = WholeProgramMemoryAnalysis(analyzedProg, memSummaries, sbfTypesFac)
+            val analysis = WholeProgramMemoryAnalysis(analyzedProg, memSummaries)
             try {
                 analysis.inferAll()
             } catch (e: PointerAnalysisError) {
@@ -261,8 +266,6 @@ private fun attachRangeToRule(
     optCoreTAC: CoreTACProgram,
     isSatisfyRule: Boolean
 ): CompiledSolanaRule {
-    val ruleRange: Range = getRuleRange(optCoreTAC)
-
     return if (rule.ruleType is SpecType.Single.GeneratedFromBasicRule) {
         // If the rule has been generated from a basic rule, then we have to update the parent rule range.
         // It would be more elegant to generate the original rule with the correct range, but [getRuleRange] relies on
@@ -270,6 +273,10 @@ private fun attachRangeToRule(
         // In fact, those annotations need the value and pointer analysis to be executed to be able to infer the compile
         // time constants that represent the file name and the line number.
         val parentRule = rule.ruleType.getOriginatingRule() as EcosystemAgnosticRule
+        // Since this rule has been generated, we need to first get the name of the parent rule, and resolve the range
+        // based on that.
+        val ruleRange = DebugInfoReader.findFunctionRangeInSourcesDir(parentRule.ruleIdentifier.displayName)
+            ?: getRuleRange(optCoreTAC) // If debug information is not available, reads the range from CVT_rule_location
         val newBaseRule = parentRule.copy(range = ruleRange)
         val ruleType = (rule.ruleType as SpecType.Single.GeneratedFromBasicRule).copyWithOriginalRule(newBaseRule)
         CompiledSolanaRule(
@@ -277,6 +284,9 @@ private fun attachRangeToRule(
             rule = rule.copy(ruleType = ruleType, isSatisfyRule = isSatisfyRule, range = ruleRange)
         )
     } else {
+        val ruleRange: Range =
+            DebugInfoReader.findFunctionRangeInSourcesDir(rule.ruleIdentifier.displayName)
+                ?: getRuleRange(optCoreTAC) // If debug information is not available, reads the range from CVT_rule_location
         CompiledSolanaRule(
             code = optCoreTAC,
             rule = rule.copy(isSatisfyRule = isSatisfyRule, range = ruleRange)
@@ -359,6 +369,30 @@ fun multiAssertChecks(rules: List<CompiledSolanaRule>): List<CompiledSolanaRule>
     } else {
         rules
     }
+}
+
+/**
+ * Return the vacuous program:
+ *
+ * ```
+ * assume(false)
+ * assert(false)
+ * ```
+ */
+private fun vacuousProgram(root: String, comment: String): SbfCallGraph {
+    val cfg = MutableSbfCFG(root)
+    val b = cfg.getOrInsertBlock(Label.fresh())
+    cfg.setEntry(b)
+    cfg.setExit(b)
+    val rx = Value.Reg(SbfRegister.R3_ARG)
+    val ry = Value.Reg(SbfRegister.R4_ARG)
+    b.add(SbfInstruction.Bin(BinOp.MOV, rx, Value.Imm(0UL), is64 = true))
+    b.add(SbfInstruction.Bin(BinOp.MOV, ry, Value.Imm(1UL), is64 = true))
+    val falseC = Condition(CondOp.GT, rx, ry)
+    b.add(SbfInstruction.Assume(falseC))
+    b.add(SbfInstruction.Assert(falseC, MetaData(SbfMeta.COMMENT to comment)))
+    b.add(SbfInstruction.Exit())
+    return MutableSbfCallGraph(mutableListOf(cfg), setOf(cfg.getName()), newGlobalVariableMap())
 }
 
 /**

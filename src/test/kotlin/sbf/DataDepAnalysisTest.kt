@@ -28,6 +28,7 @@ import sbf.support.PtrExprErrReg
 import sbf.support.PtrExprErrStackDeref
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
+import sbf.domains.PTAOffset
 
 class DataDepAnalysisTest {
     private fun runDDAWithSingleSource(cfg: SbfCFG, targetI: LocatedSbfInstruction, targetE: PointerExpressionError): LocatedSbfInstruction {
@@ -80,7 +81,7 @@ class DataDepAnalysisTest {
             // Target is the content of stack location 3846 at instruction 13
             val target = cfg.getBlock(Label.Address(0))?.getLocatedInstructions()?.get(13)
             check(target != null) { "Target instruction not found" }
-            val source = runDDAWithSingleSource(cfg, target, PtrExprErrStackDeref(PTAField(3846, 8)))
+            val source = runDDAWithSingleSource(cfg, target, PtrExprErrStackDeref(PTAField(PTAOffset(3846), 8)))
             Assertions.assertEquals(true, source.pos == 5)
         }
     }

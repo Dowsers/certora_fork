@@ -24,6 +24,7 @@ import sbf.sbfLogger
 import sbf.SolanaConfig
 import datastructures.stdcollections.*
 import sbf.analysis.AnalysisRegisterTypes
+import utils.*
 import java.math.BigInteger
 
 class NPDomainError(msg: String): RuntimeException("NPDomain error:$msg")
@@ -161,29 +162,91 @@ data class NPDomain<D, TNum, TOffset>(private val csts: SetDomain<SbfLinearConst
         return csts.contains(cst)
     }
 
-    /// Very limited propagation. For now, only equalities between variables and constants.
-    private fun propagate(maxNumSteps: Int = 5): SetDomain<SbfLinearConstraint> {
-        var outCsts = csts.removeAll { cst -> cst.isTautology()}
+    /**
+     * Very limited propagation.
+     *  - only equalities between variables and constants.
+     **/
+    private fun propagateOneStep(csts: SetDomain<SbfLinearConstraint>): SetDomain<SbfLinearConstraint> {
+        if (csts.isBottom()) {
+            return csts
+        }
 
+        /// Split `csts` into several kind of constraints
+        val eqs = mutableListOf<SbfLinearConstraint>()
+        val nonEqs = mutableListOf<SbfLinearConstraint>()
+        val intervalIneqs = mutableListOf<SbfLinearConstraint>()
+        for (c in csts.iterator()) {
+            when (c.op) {
+                CondOp.EQ -> eqs.add(c)
+                CondOp.SLE, CondOp.LE, CondOp.SGE, CondOp.GE -> {
+                    nonEqs.add(c)
+                    if (c.e1.getVariable() != null && c.e2.getConstant() != null) {
+                        intervalIneqs.add(c)
+                    }
+                }
+                CondOp.NE -> nonEqs.add(c)
+                CondOp.SLT, CondOp.LT, CondOp.SGT, CondOp.GT -> {
+                    check(false) {"After preprocessing no strict inequalities are expected"}
+                }
+            }
+        }
+
+        /// Find trivial inconsistencies: if cst and not(cst) then false
+        for (cst in nonEqs) {
+            for (other in csts.iterator()) {
+                if (other.negate() == cst) {
+                    return SetIntersectionDomain.mkBottom()
+                }
+            }
+        }
+
+        /// Find inconsistencies between interval constraints
+        val solver = IntervalSolver(intervalIneqs, UnsignedIntervalFactory())
+        val intervals = solver.run() ?: return SetIntersectionDomain.mkBottom()
+        /// Extract equalities from the interval solver
+        for ( (v, i) in intervals) {
+           if (i.lb == i.ub) {
+               eqs.add(SbfLinearConstraint(CondOp.EQ, v, ExpressionNum(i.lb.toLong())))
+           }
+        }
+
+        /// Propagate all equalities
+        var outCsts = csts
+        for (eq in eqs) {
+            outCsts = evalEquality(outCsts as SetIntersectionDomain<SbfLinearConstraint>, eq)
+        }
+        return outCsts
+    }
+
+    private fun preprocess(csts: SetDomain<SbfLinearConstraint>): SetDomain<SbfLinearConstraint> {
+        val nonTrivialCsts = csts.removeAll { it.isTautology()}
+        var out = SetIntersectionDomain<SbfLinearConstraint>()
+        for (c in nonTrivialCsts.iterator()) {
+            if (c.isContradiction()) {
+                return SetIntersectionDomain.mkBottom()
+            }
+            out = out.add(c.normalize()) as SetIntersectionDomain<SbfLinearConstraint>
+        }
+        return out
+    }
+
+    private fun propagate(maxNumSteps: Int = 5): SetDomain<SbfLinearConstraint> {
+        var newCsts = preprocess(csts)
+        if (newCsts.isBottom()) {
+            return newCsts
+        }
         var change = true
         var i = 0
         while (change && i < maxNumSteps) {
-            val oldCsts = outCsts
-            /// Extract equalities
-            val equalities = mutableListOf<SbfLinearConstraint>()
-            for (c in outCsts.iterator()) {
-                if (c.op == CondOp.EQ) {
-                    equalities.add(c)
-                }
+            val oldCsts = newCsts
+            newCsts = propagateOneStep(oldCsts)
+            if (newCsts.isBottom()) {
+                return newCsts
             }
-            /// Propagate each equality
-            for (eq in equalities) {
-                outCsts = evalEquality(outCsts as SetIntersectionDomain<SbfLinearConstraint>, eq)
-            }
-            change = !(oldCsts.lessOrEqual(outCsts) && outCsts.lessOrEqual(oldCsts))
+            change = !(oldCsts.lessOrEqual(newCsts) && newCsts.lessOrEqual(oldCsts))
             i++
         }
-        return outCsts
+        return newCsts
     }
 
     fun normalize(): NPDomain<D, TNum, TOffset> {
@@ -191,7 +254,7 @@ data class NPDomain<D, TNum, TOffset>(private val csts: SetDomain<SbfLinearConst
             mkBottom()
         } else {
             val outCsts = propagate()
-            if (isFalse(outCsts)) {
+            if (outCsts.isBottom() || isFalse(outCsts)) {
                 mkBottom()
             } else {
                 NPDomain(outCsts)
@@ -740,102 +803,5 @@ data class NPDomain<D, TNum, TOffset>(private val csts: SetDomain<SbfLinearConst
         val vis = NPDomainSummaryVisitor(this)
         memSummaries.visitSummary(locInst, vis)
         return vis.absVal
-    }
-}
-
-/**
- * [SbfLinearConstraint] represents [e1] [op] [e2]
- * [op] can be a signed or unsigned comparison operator
- */
-data class SbfLinearConstraint(val op: CondOp, val e1: LinearExpression, val e2: LinearExpression)
-    : Comparable<SbfLinearConstraint>{
-
-    override fun toString() = "$e1 ${toString(op)} $e2"
-
-    override fun compareTo(other: SbfLinearConstraint): Int {
-        return if (op < other.op) {
-            -1
-        } else if (op > other.op) {
-            1
-        } else {
-            val x = e1.compareTo(other.e1)
-            if (x == 0) {
-                e2.compareTo(other.e2)
-            } else {
-                x
-            }
-        }
-    }
-
-    // Whether v1 op v2 evaluates to true or false
-    private fun eval(v1: ExpressionNum, v2: ExpressionNum, op: CondOp): Boolean {
-        val x = v1.n
-        val y = v2.n
-        return when (op) {
-            CondOp.EQ -> x == y
-            CondOp.NE -> x != y
-            CondOp.SGE -> x >= y
-            CondOp.SGT -> x > y
-            CondOp.SLE -> x <= y
-            CondOp.SLT -> x < y
-            CondOp.GE, CondOp.GT -> {
-                // If both operands are positive or negative then we can use signed interpretation.
-                // Otherwise, we need to look at case-by-case.
-                if (x >= BigInteger.ZERO) {
-                    if (y >= BigInteger.ZERO) {
-                        if (op == CondOp.GE) {x >= y} else {x > y}
-                    } else {
-                        false
-                    }
-                } else {
-                    if (y >= BigInteger.ZERO) {
-                        true
-                    } else {
-                        if (op == CondOp.GE) {x >= y} else {x > y}
-                    }
-                }
-            }
-            CondOp.LE, CondOp.LT -> {
-                // This is a recursive call but the next call will match CondOp.GE, CondOp.GT case
-                val newOp = op.swap()
-                check(newOp == CondOp.GE || newOp == CondOp.GT)
-                eval(v2, v1, newOp)
-            }
-        }
-    }
-
-    fun isContradiction(): Boolean {
-        val v1 = e1.getConstant()
-        val v2 = e2.getConstant()
-        return if (v1 != null && v2 != null) {
-            !eval(v1, v2, op)
-        } else {
-            false
-        }
-    }
-
-    fun isTautology(): Boolean {
-        val v1 = e1.getConstant()
-        val v2 = e2.getConstant()
-        return if (v1 != null && v2 != null) {
-            eval(v1, v2, op)
-        } else {
-            false
-        }
-    }
-
-    // Check that + does not perform extra allocations
-    fun getVariables(): List<Variable> = e1.getVariables() + e2.getVariables()
-
-    fun contains(v: ExpressionVar): Boolean {
-        return e1.contains(v) || e2.contains(v)
-    }
-
-    fun substitute(oldV: ExpressionVar, newE: LinearExpression): SbfLinearConstraint {
-        return SbfLinearConstraint(op, e1.substitute(oldV, newE), e2.substitute(oldV, newE))
-    }
-
-    fun eval(v: ExpressionVar, n: ExpressionNum): SbfLinearConstraint {
-        return SbfLinearConstraint(op, e1.eval(v, n), e2.eval(v, n))
     }
 }

@@ -972,7 +972,7 @@ class CVLCompiler(
             sub.block
         }
         val compiledBody = if (body.isEmpty()) {
-            CVLTACProgram.empty("empty function").asSimple()
+            CommandWithRequiredDecls(TACCmd.Simple.NopCmd).toProg("empty block", compilationEnvironment).toSimple()
         } else {
             /**
              * usually, we would wrap [CVLCmd]s with labels early-on at [compileRule],
@@ -1484,6 +1484,10 @@ class CVLCompiler(
         allocatedTACSymbols: TACSymbolAllocation,
         env: CompilationEnvironment
     ): ParametricInstantiation<CVLTACProgram> {
+        if (cmd.block.isEmpty()) {
+            return CommandWithRequiredDecls(TACCmd.Simple.NopCmd).toProg("empty block", env).toSimple()
+        }
+
         val bodyAllocatedTACSymbols = allocatedTACSymbols.nestedScope()
         val compiledBlock = cmd.block.map { b -> compileCommand(b, bodyAllocatedTACSymbols, compilationEnvironment = env) }
         return ParametricMethodInstantiatedCode.merge(compiledBlock, name)
@@ -1616,7 +1620,7 @@ class CVLCompiler(
             CVLCmd.Simple.AssumeCmd.Assume(
                 cmd.range,
                 convertedExp,
-                null,
+                "compileAssumeInvariant",
                 cmd.scope
             ),
             allocatedTACSymbols,
@@ -1663,10 +1667,9 @@ class CVLCompiler(
                 ?: error("Failed to find invariant ${cmd.id}")
 
         check(cmd.params.size == inv.params.size){ "The number of parameters of the invariant and the number of parameters of the command don't match." }
-        val havocedInvParams = cmd.params.mapIndexed { i, exp ->
-            val toHavocType = exp.getOrInferPureCVLType();
+        val havocedInvParams = inv.params.mapIndexed { i, p ->
             val havocParameterName = symbolTable.freshName("initiallyHavocedParam_${i}")
-            val (havocedInvParam, _) = allocatedTACSymbols.generateTransientUniqueCVLParam(symbolTable, havocParameterName, toHavocType)
+            val (havocedInvParam, _) = allocatedTACSymbols.generateTransientUniqueCVLParam(symbolTable, havocParameterName, p.type)
             havocedInvParam
         }
 
@@ -1695,7 +1698,7 @@ class CVLCompiler(
             val left = CVLExp.VariableExp(havocedInvParam.id, tag = CVLExpTag(cmd.scope, havocedInvParam.type, cmd.range))
             val right = CVLExp.VariableExp(globalRequireInvVarCVL.id, tag = CVLExpTag(cmd.scope, globalRequireInvVarCVL.type, cmd.range))
             val eqExp = CVLExp.RelopExp.EqExp(left, right, tag = CVLExpTag(cmd.scope, globalRequireInvVarCVL.type, cmd.range))
-            val assumeCmd = CVLCmd.Simple.AssumeCmd.Assume(cmd.range, eqExp, null, cmd.scope)
+            val assumeCmd = CVLCmd.Simple.AssumeCmd.Assume(cmd.range, eqExp, "compileAssumeInvariantGlobally", cmd.scope)
 
             // compiling the assumption that the assigned global is equal to the initially havoc'ed variable
             val compiledAssume = compileCommand(assumeCmd, allocatedTACSymbols, CompilationEnvironment())
@@ -1743,7 +1746,10 @@ class CVLCompiler(
         allocatedTACSymbols: TACSymbolAllocation,
         env: CompilationEnvironment
     ): ParametricInstantiation<CVLTACProgram> {
-        var meta = MetaMap(TACMeta.CVL_USER_DEFINED_ASSUME to (cmd.description != null))
+        var meta = MetaMap()
+        if (cmd.comesFromSpec) {
+            meta += TACMeta.CVL_USER_DEFINED_ASSUME to (cmd.description != null)
+        }
         if (cmd.range !is Range.Empty) meta += MetaMap(TACMeta.CVL_RANGE to cmd.range)
         return assumeExp(cmd.exp, cmd.descriptionOrDefault, allocatedTACSymbols, compilerEnv = env, meta = meta)
     }
@@ -2626,7 +2632,7 @@ class CVLCompiler(
     private val assertModifier = object : CVLCmdTransformer<Nothing>(castExprModifier) {
 
         override fun assertCmd(cmd: CVLCmd.Simple.Assert): CollectingResult<CVLCmd, Nothing> {
-            return cmd.copy(description = "${cmd.description} (uid ${Allocator.getFreshId(Allocator.Id.ASSERT_IN_CVL_BLOCK)})").lift()
+            return cmd.copy(description = "${cmd.descriptionOrDefault} (uid ${Allocator.getFreshId(Allocator.Id.ASSERT_IN_CVL_BLOCK)})").lift()
         }
     }
 

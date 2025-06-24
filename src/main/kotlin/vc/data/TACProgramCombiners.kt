@@ -124,6 +124,10 @@ object TACProgramCombiners {
         rootId = rootId,
         cmdsWithDecls = this
     )
+
+    infix fun <T: TACCmd, U: CommandWithRequiredDecls<T>> T.andThen(crd: U) : CommandWithRequiredDecls<T> = crd.copy(
+        cmds = listOf(this) + crd.cmds
+    )
 }
 
 /** Another apt name would be "sequentialComposition" (for [CoreTACProgram]s) */

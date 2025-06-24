@@ -147,6 +147,11 @@ object Val {
 
         val isInteger get() = signed != null
         val isObjectTag get() = value.isObjectTagValue
+
+        companion object {
+            private val lookupTable = entries.associateBy { it.value }
+            operator fun invoke(v: Int): Tag? = lookupTable[v]
+        }
     }
 
     val Int.isObjectTagValue
@@ -159,6 +164,7 @@ object Val {
 
     // The tag is the low 8 bits of the 64-bit Val
     const val TAG_MUL = 0x100
+    const val TAG_MASK = 0xFF
     const val TAG_BITS = 8
 
     // u32/i32 are encded in the upper 32 bits of the Val

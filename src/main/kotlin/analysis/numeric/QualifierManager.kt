@@ -32,9 +32,9 @@ import vc.data.TACSymbol
  * variables (among other things) to instances of type [I]
  */
 abstract class QualifierManager<Q: SelfQualifier<Q>, I: WithQualifiers<Q, I>, S>(val me: IMustEqualsAnalysis) {
-    fun killLHS(lhs: TACSymbol.Var, lhsVal: I, s: S, narrow: LTACCmdView<TACCmd.Simple.AssigningCmd>) : S {
+    fun killLHS(lhs: TACSymbol.Var, lhsVal: I?, s: S, narrow: LTACCmdView<TACCmd.Simple.AssigningCmd>) : S {
         val (lhsEquiv, equiv) = mkEquiv(narrow.wrapped, lhs)
-        val toPropagate = lhsVal.qual.flatMap {
+        val toPropagate = lhsVal?.qual?.flatMap {
             if(!it.relates(lhs)) {
                 listOf(it)
             } else {
@@ -50,25 +50,31 @@ abstract class QualifierManager<Q: SelfQualifier<Q>, I: WithQualifiers<Q, I>, S>
                 } else {
                     null
                 }
-                val identity by lazy {
+                val noLHSQuals by lazy {
                     i.qual.filter {
                         !it.relates(lhs)
                     }
                 }
                 val upd = mutableSetOf<Q>()
+                var relatesLHS = false
                 for(q in i.qual) {
                     if(!q.relates(lhs)) {
                         continue
                     }
+                    relatesLHS = true
                     upd.addAll(q.saturateWith(equiv))
                 }
                 if(newQual == null && upd.isEmpty()) {
-                    return@mapValues i
+                    return@mapValues if (relatesLHS) {
+                        i.withQualifiers(noLHSQuals)
+                    } else {
+                        i
+                    }
                 }
                 val quals =
                         (newQual ?: emptyList()) +
                                 if(upd.isNotEmpty()) {
-                                    identity + upd
+                                    noLHSQuals + upd
                                 } else {
                                     i.qual
                                 }

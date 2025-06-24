@@ -481,8 +481,7 @@ class InternalCVLSummarizer private constructor(
                                 callSiteSrc = callSite.callSiteSrc,
                                 methodSignature = callSite.methodSignature,
                                 callResolutionTableInfo = result.summarizationInfo,
-                                appliedSummary = Summarization.AppliedSummary.MethodsBlock(specCallSumm, summSignature),
-                                rets = retAnnot.rets
+                                appliedSummary = Summarization.AppliedSummary.MethodsBlock(specCallSumm, summSignature)
                             )
                         )
                     )).appendToSinks(

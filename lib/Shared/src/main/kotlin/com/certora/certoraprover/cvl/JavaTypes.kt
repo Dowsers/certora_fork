@@ -89,8 +89,14 @@ class ArrayLhs(range: Range, val baseType: TypeOrLhs, val index: Exp) : TypeOrLh
 }
 
 class TupleType(private val types: List<TypeOrLhs>, range: Range) : TypeOrLhs(range) {
-    override fun toCVLType(resolver: TypeResolver, scope: CVLScope): CollectingResult<PureCVLType, CVLError>
-        = types.map { it.toCVLType(resolver, scope) }.flatten().map { PureCVLType.TupleType(it) }
+    override fun toCVLType(resolver: TypeResolver, scope: CVLScope): CollectingResult<PureCVLType, CVLError> {
+        return if (types.size == 1) {
+            types.single().toCVLType(resolver, scope)
+        } else {
+            check(types.size > 1) { "empty tuple!" }
+            types.map { it.toCVLType(resolver, scope) }.flatten().map { PureCVLType.TupleType(it) }
+        }
+    }
 
     override fun toVMType(resolver: TypeResolver, location: String?, scope: CVLScope) = TupleTypesAreCVLOnly(this).asError()
 

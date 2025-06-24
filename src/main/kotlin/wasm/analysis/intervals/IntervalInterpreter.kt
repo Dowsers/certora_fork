@@ -296,7 +296,7 @@ class IntervalInterpreter(
         operator fun invoke(graph: TACCommandGraph): IntervalInterpreter {
             val qualifierManager = object : QualifierManager<SimpleIntQualifier, SimpleQualifiedInt, State>(me = graph.cache.gvn) {
                 override fun mapValues(s: State, mapper: (TACSymbol.Var, SimpleQualifiedInt) -> SimpleQualifiedInt): State {
-                    return s.updateValues(mapper)
+                    return s.updateValues(transform = mapper)
                 }
 
                 override fun assignVar(toStep: State, lhs: TACSymbol.Var, toWrite: SimpleQualifiedInt, where: LTACCmd): State {
@@ -403,8 +403,6 @@ class IntervalInterpreter(
         w: State,
         narrow: LTACCmdView<TACCmd.Simple.AssigningCmd>
     ): State {
-        return s[lhs]?.let { idx ->
-            qualifierManager.killLHS(lhs = lhs, lhsVal = idx, narrow = narrow, s = s)
-        } ?: s
+        return qualifierManager.killLHS(lhs = lhs, lhsVal = s[lhs], narrow = narrow, s = s)
     }
 }

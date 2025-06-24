@@ -10,6 +10,7 @@
         "master"
     ],
     "python.analysis.extraPaths": [
-        "./build_out"
+        "./build_out",
+        "./scripts"
     ]
 }

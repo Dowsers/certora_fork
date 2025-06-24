@@ -217,6 +217,7 @@ enum class ReportTypes(val loggerCategory: LoggerTypes) : DumpType, CategoryName
     NORMALIZE_TRY_CATCH(LoggerTypes.NORMALIZER),
     EXTCODECOPY_HANDLE(LoggerTypes.NORMALIZER),
     DEOPTIMIZE_MULTI_STRUCTS(LoggerTypes.INITIALIZATION),
+    DEOPTIMIZE_STRUCT_ARRAYS(LoggerTypes.INITIALIZATION),
     SPURIOUS_JUMP_NORMALIZATION(LoggerTypes.WHOLE_CONTRACT_TRANSFORMATION),
     EARLY_SUMMARIZATION(LoggerTypes.PER_FUNCTION_SIMPLIFICATION),
     FREE_POINTER_PROPAGATION(LoggerTypes.WHOLE_CONTRACT_TRANSFORMATION),
@@ -242,6 +243,7 @@ enum class ReportTypes(val loggerCategory: LoggerTypes) : DumpType, CategoryName
     DYNAMIC_CREATION(LoggerTypes.INLINER),
     WASM_INIT_LOOP_SUMMARIZATION(LoggerTypes.SUMMARIZATION),
     WASM_INIT_LOOP_REWRITE(LoggerTypes.OPTIMIZE),
+    WASM_PROPAGATE_REVERT_CONDITIONS(LoggerTypes.OPTIMIZE),
     MATERIALIZE_CONDITIONAL_TRAPS(LoggerTypes.WHOLE_CONTRACT_TRANSFORMATION),
     REWRITE_ASSERTS(LoggerTypes.WASM),
     MATERIALIZE_CONTROL_FLOW(LoggerTypes.WHOLE_CONTRACT_TRANSFORMATION),
@@ -271,7 +273,8 @@ enum class ReportTypes(val loggerCategory: LoggerTypes) : DumpType, CategoryName
     OPTIMIZE_WASM_BITOPS(LoggerTypes.OPTIMIZE),
     LOG_FP_REUSE_NORMALIZATION(LoggerTypes.ALLOC),
     BMC_FUNC(LoggerTypes.BOUNDED_MODEL_CHECKER),
-    DEFINITE_BUFFER_ANALYSIS(LoggerTypes.EQUIVALENCE)
+    DEFINITE_BUFFER_ANALYSIS(LoggerTypes.EQUIVALENCE),
+    OPTIMISTIC_SPILL_REWRITE(LoggerTypes.PER_FUNCTION_SIMPLIFICATION)
     ;
 
     override fun isEnabled(): Boolean = this == NONE || Config.isEnabledLogger(this.loggerCategory) || Config.isEnabledReport(this)

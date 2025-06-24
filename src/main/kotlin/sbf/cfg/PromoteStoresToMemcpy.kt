@@ -17,9 +17,9 @@
 
 package sbf.cfg
 
+import allocator.Allocator
 import sbf.domains.FiniteInterval
 import sbf.SolanaConfig
-import sbf.callgraph.CVTFunction
 import sbf.callgraph.SolanaFunction
 import sbf.disassembler.*
 import sbf.domains.*
@@ -49,38 +49,14 @@ fun <D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> promoteStoresToMemcpy(
     where D: AbstractDomain<D>, D: ScalarValueProvider<TNum, TOffset> {
     val scalarsAtInst = AnalysisRegisterTypes(scalarAnalysis)
     var numOfInsertedMemcpy = 0
-    var callId = getMaxCallId(cfg)
-    callId++
     for (b in cfg.getMutableBlocks().values) {
-        val (memcpyList, nextCallId) = findStoresToBePromoted(b, scalarsAtInst, callId)
-        callId = nextCallId
+        val memcpyList = findStoresToBePromoted(b, scalarsAtInst)
         numOfInsertedMemcpy += memcpyList.size
         replaceStoresWithMemcpy(b, memcpyList)
     }
     sbfLogger.debug{"Number of memcpy instructions inserted by promoting stores: $numOfInsertedMemcpy"}
 }
 
-/**
- *  Scan all instructions in [cfg] to extract the maximum call id.
- *  There is a global invariant ensuring that all call ids are generated increasingly.
- *  Therefore, we can know the next available id just by looking at the max call id used so far.
- **/
-private fun getMaxCallId(cfg: SbfCFG): ULong {
-    var nextId = 0UL
-    for (bb in cfg.getBlocks().values) {
-        for (inst in bb.getInstructions()) {
-            if (inst is SbfInstruction.Call ) {
-                if (CVTFunction.from(inst.name) == CVTFunction.Core(CVTCore.SAVE_SCRATCH_REGISTERS)) {
-                    val id = inst.metaData.getVal(SbfMeta.CALL_ID)
-                    check(id != null ) {"promoteStoresToMemcpy expects that CVT_save_scratch_registers to have an ID"}
-                    nextId = kotlin.math.max(nextId, id)
-                }
-            }
-
-        }
-    }
-    return nextId
-}
 
 private fun addMemcpyPromotionAnnotation(bb: MutableSbfBasicBlock, locInst: LocatedSbfInstruction) {
     val inst = locInst.inst
@@ -156,12 +132,11 @@ private fun replaceStoresWithMemcpy(bb: MutableSbfBasicBlock, memcpyInfos: List<
  */
 private fun <D, TNum, TOffset> findStoresToBePromoted(
     bb: SbfBasicBlock,
-    scalarsAtInst: AnalysisRegisterTypes<D, TNum, TOffset>,
-    callId: ULong): Pair<List<MemcpyRanges>, ULong>
+    scalarsAtInst: AnalysisRegisterTypes<D, TNum, TOffset>
+): List<MemcpyRanges>
 where TNum: INumValue<TNum>,
       TOffset: IOffset<TOffset>,
       D: AbstractDomain<D>, D: ScalarValueProvider<TNum, TOffset> {
-    var nextCallId = callId
     // used to find the definition of a value to be stored
     val defLoads = mutableMapOf<SbfRegister, LocatedSbfInstruction>()
     // sequence of stores to be promoted to memcpy
@@ -189,7 +164,7 @@ where TNum: INumValue<TNum>,
                     // the pairs we have so far.
                     val memcpyInfoToEmit = curMemcpy.canBePromoted()
                     if (memcpyInfoToEmit != null ){
-                        curMemcpy.emitMemcpy(memcpyInfoToEmit, nextCallId++)
+                        curMemcpy.emitMemcpy(memcpyInfoToEmit)
                         memcpyInfos.add(curMemcpy)
 
                     }
@@ -206,7 +181,7 @@ where TNum: INumValue<TNum>,
             // the store-of-load pairs we have
             val memcpyInfoToEmit = curMemcpy.canBePromoted()
             if (memcpyInfoToEmit != null) {
-                curMemcpy.emitMemcpy(memcpyInfoToEmit, nextCallId++)
+                curMemcpy.emitMemcpy(memcpyInfoToEmit)
                 memcpyInfos.add(curMemcpy)
                 curMemcpy = MemcpyRanges.initialize()
             }
@@ -221,7 +196,7 @@ where TNum: INumValue<TNum>,
     // Important: we sort memcpyInfos by the position of its first load that appears in the block
     // We need this because we need to adjust the insertion points while we will insert the emitted memcpy code.
     // If memcpyInfos are not sorted then the adjustment becomes unnecessarily complicated.
-    return Pair(memcpyInfos.sortedBy { getPosOfFirstLoad(it) }, nextCallId)
+    return memcpyInfos.sortedBy { getPosOfFirstLoad(it) }
 }
 
 /** Return the position of the first load of [x] within the block to be promoted **/
@@ -746,7 +721,7 @@ private data class MemcpyRanges(private val loads: ArrayList<MemAccess>, private
      *   CVT_restore_scratch_registers
      * ```
      **/
-    fun emitMemcpy(memcpyInfo: MemcpyToEmitInfo, callId: ULong) {
+    fun emitMemcpy(memcpyInfo: MemcpyToEmitInfo) {
         val srcReg = memcpyInfo.srcReg
         val dstReg = memcpyInfo.dstReg
         check(dstReg == SbfRegister.R10_STACK_POINTER || srcReg == SbfRegister.R10_STACK_POINTER)
@@ -778,7 +753,9 @@ private data class MemcpyRanges(private val loads: ArrayList<MemAccess>, private
         val temp3 = scratchRegs[2]
 
         val oldMetaData = memcpyInfo.metadata
-        val metaData = oldMetaData.plus(Pair(SbfMeta.CALL_ID, callId)).plus(Pair(SbfMeta.MEMCPY_PROMOTION, ""))
+        val callId = Allocator.getFreshId(Allocator.Id.INTERNAL_FUNC)
+        check(callId >= 0) {"expected non-negative call id"}
+        val metaData = oldMetaData.plus(Pair(SbfMeta.CALL_ID, callId.toULong())).plus(Pair(SbfMeta.MEMCPY_PROMOTION, ""))
 
         emittedInsts.add(SbfInstruction.Call(name = CVTCore.SAVE_SCRATCH_REGISTERS.function.name, metaData = metaData))
 

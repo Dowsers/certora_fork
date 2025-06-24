@@ -268,8 +268,18 @@ fun main(args: Array<String>) {
 
                 fileName != null -> when {
                     ArtifactFileUtils.isTAC(fileName) -> handleTACFlow(fileName)
-                    ArtifactFileUtils.isSolana(fileName) -> handleSolanaFlow(fileName)
-                    ArtifactFileUtils.isWasm(fileName) -> handleSorobanFlow(fileName)
+                    ArtifactFileUtils.isSolana(fileName) -> {
+                        val (_, ruleCheckResults) = handleSolanaFlow(fileName)
+                        if (ruleCheckResults.anyDiagnosticErrors()) {
+                            finalResult = FinalResult.DIAGNOSTIC_ERROR
+                        }
+                    }
+                    ArtifactFileUtils.isWasm(fileName) -> {
+                        val ruleCheckResults = handleSorobanFlow(fileName)
+                        if (ruleCheckResults.anyDiagnosticErrors()) {
+                            finalResult = FinalResult.DIAGNOSTIC_ERROR
+                        }
+                    }
                     SpecFile.getOrNull() != null -> handleCVLFlow(fileName, SpecFile.get())
                     else -> handleSolidityOrHexFlow(fileName)
                 }
@@ -371,14 +381,6 @@ fun main(args: Array<String>) {
         if (!HTMLReporter.isDisabledPopup() && Config.isRunningInLocalEnv()) {
             HTMLReporter.open()
         }
-        // finalResult determines the exitcode of the java process
-        // note that it currently depends on the ConsoleReporter and we may want to change that in the future.
-        finalResult =
-            if (finalResult == FinalResult.SUCCESS && Config.getUseVerificationResultsForExitCode() && ConsoleReporter.finalVerificationResult != FinalResult.NONE) {
-                ConsoleReporter.finalVerificationResult
-            } else {
-                finalResult
-            }
 
         finalResult = checkTreeViewState(finalResult)
 
@@ -402,11 +404,11 @@ fun main(args: Array<String>) {
 }
 
 /** Sanity checks on tree view state on lockdown, including comparing it with [FinalResult]. */
-private fun checkTreeViewState(finalResultOld: FinalResult): FinalResult {
+private fun checkTreeViewState(finalResult: FinalResult): FinalResult {
     if (!Config.getUseVerificationResultsForExitCode() || Config.BoundedModelChecking.getOrNull() != null) {
         // we're in test configuration that might clash with this check (exit codes can be bogus then) -- not checking
         // or we are in BMC mode in which the reporting works differently as we manually construct the tree.
-        return finalResultOld
+        return finalResult
     }
 
     val stillRunning = TreeViewReporter.instance?.topLevelRulesStillRunning()
@@ -415,19 +417,11 @@ private fun checkTreeViewState(finalResultOld: FinalResult): FinalResult {
             stillRunning.joinToString(separator = "\n") { it.second })
     }
 
-    var finalResultNew = finalResultOld
     val treeViewViolationOrErrors = TreeViewReporter.instance?.topLevelRulesWithViolationOrErrorOrRunning()
-    if (finalResultNew == FinalResult.SUCCESS && treeViewViolationOrErrors?.isNotEmpty() == true) {
-        // Report an error that will be visible in the logs; the "code -1" fakes the infra we have when reporting
-        // CertoraException -- the parsing check for the cloudwatch logs is, as of now, `parse @message '* ERROR * code *' as worker,content,errcode`
-        Logger.alwaysError("Internally got SUCCESS as a final result when not all rules have been successfully " +
-            "verified (according to tree view report), should not happen; changing it to ERROR (code -1)\n" +
-            "violated or error rules:\n" +
-            treeViewViolationOrErrors.joinToString(separator = "\n") { it.second }
-        )
-        finalResultNew = FinalResult.ERROR
+    if (treeViewViolationOrErrors?.isNotEmpty() == true) {
+        return FinalResult.FAIL
     }
-    return finalResultNew
+    return finalResult
 }
 
 /**
@@ -543,11 +537,12 @@ suspend fun handleTACFlow(fileName: String) {
     when (val reportType = Config.TacEntryPoint.get()) {
         ReportTypes.PRESOLVER_RULE -> TACVerifier.verifyPresolver(scene, fileName, rule)
         ReportTypes.GENERIC_FLOW -> {
-            val parsedTACCode = runInterruptible {
-                CoreTACProgram.fromStream(FileInputStream(fileName), ArtifactFileUtils.getBasenameOnly(fileName))
+            treeView.use {
+                val parsedTACCode = runInterruptible {
+                    CoreTACProgram.fromStream(FileInputStream(fileName), ArtifactFileUtils.getBasenameOnly(fileName))
+                }
+                handleGenericFlow(scene, reporter, treeView, listOf(rule to parsedTACCode))
             }
-            handleGenericFlow(scene, reporter, treeView, listOf(rule to parsedTACCode))
-            treeView.writeOutputJson()
         }
 
         ReportTypes.PRESIMPLIFIED_RULE -> TACVerifier.verify(scene, fileName, rule)
@@ -566,7 +561,6 @@ fun createSceneReporterAndTreeview(fileName: String, contractName: String): Trip
             ConsoleReporter
         )
     )
-
     val treeView = TreeViewReporter(
         contractName,
         "",
@@ -634,42 +628,44 @@ suspend fun handleGenericFlow(
 
         // Signal termination of the fake rule and persist result to TreeView JSON for the web UI to pick it up.
         treeView.signalEnd(rule, rcrs)
-        treeView.hotUpdate()
         reporterContainer.hotUpdate(scene)
         rcrs
     }
 }
 
-suspend fun handleSorobanFlow(fileName: String) {
+suspend fun handleSorobanFlow(fileName: String): List<RuleCheckResult.Single> {
     val (scene, reporterContainer, treeView) = createSceneReporterAndTreeview(fileName, "SorobanMainProgram")
-    val wasmRules = WasmEntryPoint.webAssemblyToTAC(
-        inputFile = File(fileName),
-        selectedRules = Config.WasmEntrypoint.getOrNull().orEmpty(),
-        env = SorobanHost,
-        optimize = true
-    )
-    handleGenericFlow(
-        scene,
-        reporterContainer,
-        treeView,
-        wasmRules.map { it.rule to it.code }
-    )
-    treeView.writeOutputJson()
-    reporterContainer.toFile(scene)
+    treeView.use {
+        val wasmRules = WasmEntryPoint.webAssemblyToTAC(
+            inputFile = File(fileName),
+            selectedRules = Config.WasmEntrypoint.getOrNull().orEmpty(),
+            env = SorobanHost,
+            optimize = true
+        )
+        val result = handleGenericFlow(
+            scene,
+            reporterContainer,
+            treeView,
+            wasmRules.map { it.rule to it.code }
+        )
+        reporterContainer.toFile(scene)
+        return result
+    }
 }
 
 suspend fun handleSolanaFlow(fileName: String): Pair<TreeViewReporter,List<RuleCheckResult.Single>> {
     val (scene, reporterContainer, treeView) = createSceneReporterAndTreeview(fileName, "SolanaMainProgram")
-    val solanaRules = sbf.solanaSbfToTAC(fileName)
-    val result = handleGenericFlow(
-        scene,
-        reporterContainer,
-        treeView,
-        solanaRules.map { it.rule to it.code }
-    )
-    treeView.writeOutputJson()
-    reporterContainer.toFile(scene)
-    return treeView to result
+    treeView.use {
+        val solanaRules = sbf.solanaSbfToTAC(fileName)
+        val result = handleGenericFlow(
+            scene,
+            reporterContainer,
+            treeView,
+            solanaRules.map { it.rule to it.code }
+        )
+        reporterContainer.toFile(scene)
+        return treeView to result
+    }
 }
 
 fun getContractFile(fileName: String): IContractSource =

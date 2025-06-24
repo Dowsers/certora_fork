@@ -50,7 +50,9 @@ data class CVLLabelStackPushRecord(val ptr: CmdPointer, val annot: TACCmd.Simple
         is CVLReportLabel -> TACCmd.Simple.AnnotationCmd(TACMeta.CVL_LABEL_END, id)
         is SummaryStack.SummaryStart.Internal -> TACCmd.Simple.AnnotationCmd(
             SummaryStack.END_INTERNAL_SUMMARY,
-            SummaryStack.SummaryEnd.Internal(annot.v.rets, annot.v.methodSignature)
+            // we pass null for rets here since we use this to reconstruct end annotations for revert paths,
+            // where the return values would not be well-defined
+            SummaryStack.SummaryEnd.Internal(rets = null, annot.v.methodSignature)
         )
         is SummaryStack.SummaryStart.External -> TACCmd.Simple.AnnotationCmd(
             SummaryStack.END_EXTERNAL_SUMMARY,

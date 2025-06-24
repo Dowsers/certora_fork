@@ -15,6 +15,11 @@ parameters:
   release_prod_version:
     default: false
     type: boolean
+    description: "Whether to release the production version of certora-cli"
+  release_tag_name:
+    default: ""
+    type: string
+    description: "The tag name to use for the release"
 
 commands:
   proper_checkout:
@@ -156,11 +161,14 @@ commands:
             cd publish
             python3 ../scripts/certora_cli_publish.py
       - run:
-          name: Test the just now released version
+          name: Test pypi package
           command: |
             cd publish
-            chmod +x test.sh
-            ./test.sh
+            PACKAGE_NAME=$(cat PACKAGE.txt)
+            PACKAGE_VERSION=$(cat VERSION.txt | sed 's/\+.*//')
+            echo "Testing package $PACKAGE_NAME with version $PACKAGE_VERSION"
+            ../scripts/certora_cli_pypi_test.sh "$PACKAGE_NAME" "$PACKAGE_VERSION"
+
 
 jobs:
   build:
@@ -417,6 +425,24 @@ jobs:
       - attach_workspace:
           at: ~/
       - release_certora_cli
+  
+  release_production_with_api:
+    parameters:
+      tag_name:
+        type: string
+        description: the tag name to trigger the workflow with
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    working_directory: ~/repo/
+    steps:
+      - run:
+          name: Trigger workflow
+          command: |
+            curl --request POST --url https://circleci.com/api/v2/project/gh/Certora/CertoraProver/pipeline \
+            --header "Circle-Token: $CIRCLE_TOKEN" \
+            --header "content-type: application/json" \
+            --data '{"tag":"<< parameters.tag_name >>", "parameters": {"release_prod_version": true}}'
 
 workflows:
   prover-sanity:
@@ -538,3 +564,13 @@ workflows:
             branches:
               ignore:
                 - *all
+
+  release_prod_with_ui:
+      when: 
+        and: 
+          - << pipeline.parameters.release_prod_version >> 
+          - << pipeline.parameters.release_tag_name >>
+      jobs:
+        - release_production_with_api:
+            context: opscertora
+            tag_name: << pipeline.parameters.release_tag_name >>

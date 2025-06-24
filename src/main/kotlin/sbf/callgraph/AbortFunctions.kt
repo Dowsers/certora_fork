@@ -27,7 +27,13 @@ object AbortFunction {
      **/
     private val functions = listOf(
         "__rg_oom",
+
         "alloc::alloc::handle_alloc_error",
+        "alloc::raw_vec::handle_error",
+        "alloc::raw_vec::capacity_overflow",
+
+        "borsh::de::unexpected_eof_to_unexpected_length_of_input",
+
         "core::slice::index::slice_start_index_len_fail",
         "core::slice::index::slice_end_index_len_fail",
         "core::slice::index::slice_index_order_fail",
@@ -35,8 +41,6 @@ object AbortFunction {
         "core::cell::panic_already_mutably_borrowed",
         "core::option::unwrap_failed",
         "core::result::unwrap_failed",
-        "alloc::raw_vec::handle_error",
-        "alloc::raw_vec::capacity_overflow",
         "core::option::expect_failed",
         "core::result::expect_failed",
 
@@ -58,7 +62,6 @@ object AbortFunction {
         "core::panicking::panic_const::panic_const_async_fn_resumed_panic",
         "core::panicking::panic_const::panic_const_async_gen_fn_resumed_panic",
         "core::panicking::panic_const::panic_const_gen_fn_none_panic",
-
         "core::panicking::panic_bounds_check",
         "core::panicking::panic_misaligned_pointer_dereference",
         "core::panicking::panic_fmt",

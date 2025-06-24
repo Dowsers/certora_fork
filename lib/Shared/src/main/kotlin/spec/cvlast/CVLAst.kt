@@ -1895,7 +1895,8 @@ sealed class CVLCmd : AmbiSerializable {
                 val description: String?,
                 override val scope: CVLScope,
                 // is this assume command used as an invariant's precondition
-                val invariantPreCond: Boolean = false
+                val invariantPreCond: Boolean = false,
+                val comesFromSpec: Boolean = false
             ) :
                 AssumeCmd() {
                 override fun toPrintString() = "require $exp"

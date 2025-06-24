@@ -18,6 +18,7 @@
 package analysis.ip
 
 import allocator.Allocator
+import allocator.SuppressRemapWarning
 import analysis.*
 import analysis.dataflow.VariableLookupComputation
 import analysis.ip.InternalFunctionHint.Companion.META_KEY
@@ -141,6 +142,791 @@ object FunctionFlowAnnotator {
         return p.toCodeNoTypeCheck(c)
     }
 
+    /**
+     * Pick the symbol in [this] (expected to be non-empty) which is closest to [expectedStackHeight], breaking
+     * ties according to (intentionally undocumented) heuristics
+     */
+    private fun Set<TACSymbol>.pickBest(expectedStackHeight: Int): TACSymbol {
+        return this.filter {
+            it.stackHeight() != null
+        }.takeIf { it.isNotEmpty() }?.let outer@{ stkHeightVars ->
+            stkHeightVars.singleOrNull {
+                it.stackHeight()!! == expectedStackHeight
+            }?.let { return@outer it }
+            val minDistance = stkHeightVars.minOf {
+                (it.stackHeight()!! - expectedStackHeight).absoluteValue
+            }
+            stkHeightVars.singleOrNull {
+                (it.stackHeight()!! - expectedStackHeight).absoluteValue == minDistance
+            }?.let {
+                return@outer it
+            }
+            return stkHeightVars.minBy {
+                it.stackHeight()!!
+            }
+        } ?: this.first()
+    }
+
+    /**
+     * In the return address analysis, records that an alias of [retSym] at the start
+     * of the function was used to jump out of a function; this jump occured in [blockId]
+     */
+    private data class RetInBlock(
+        val retSym: TACSymbol.Var,
+        val blockId: NBId
+    )
+
+    /**
+     * The core of the algorithm described in [alternativeAnalysis]; it looks for the start annotations and tries
+     * to infer the function boundaries based on this information.
+     */
+    context(TACCommandGraph, Worker)
+    private fun tryAnalyzeStart(
+        functionSeed: TACBlock,
+        blockByStartPC: Map<Int, Collection<TACBlock>>,
+        source: ContractInstanceInSDC
+    ) : Either<GenerationResult.Success, String> {
+        val callSource = pred(functionSeed.id).singleOrNull() ?: return "No singular caller block".toRight()
+        if(succ(callSource).singleOrNull() != functionSeed.id) {
+            return "Inferred caller block doesn't have ${functionSeed.id} as singular successor".toRight()
+        }
+        val gvn = cache.gvn
+
+        /**
+         * Try to extract the function hints, using [functionSeed] (which the compiler tells us is a function start)
+         * as the function start)
+         */
+        val res = tryResolveHints(
+            functionSeed,
+            g = this@TACCommandGraph,
+            w = this@Worker
+        )
+        val embeded = when(res) {
+            is ResolutionHints.EmbeddedInfo -> res
+            is ResolutionHints.FailureFor,
+            /**
+             * Why not allow [analysis.ip.FunctionFlowAnnotator.ResolutionHints.ModifierInfo]; it is must less
+             * precise, and given the sensitivity to stack positions that we'll soon see, it is
+             * considered unlikely to work.
+             */
+            is ResolutionHints.ModifierInfo,
+            ResolutionHints.None -> return "Annotation resolution didn't return embedded info: $res".toRight()
+        }
+        val argSymbols = mutableListOf<TACSymbol.Var>()
+
+        /**
+         * This is *not* the same implementation found in the [generateAnnotations] implementation; rather we try to relocate
+         * a function argument to a variable that is as close as possible to the top of the stack (that is, the smallest
+         * value of [TACBasicMeta.STACK_HEIGHT]). This is heuristic of course, but we expect that compilers will pass their values
+         * as close as possible to the top of the stack, so such an alias is *most likely* to be the "true" identity of a
+         * function argument.
+         */
+        fun relocateOrNull(v: TACSymbol.Var): TACSymbol.Var? {
+            val aliasesOnStack = gvn.findCopiesAt(functionSeed.commands.first().ptr, embeded.startLocation to v).filter {
+                TACBasicMeta.STACK_HEIGHT in it.meta
+            }
+            return aliasesOnStack.minByOrNull {
+                it.meta[TACBasicMeta.STACK_HEIGHT]!!
+            }
+        }
+        /**
+         * Now try to match the logged symbols to their positions on the stack at the start of the function.
+         * This uses the heuristic described in [relocateOrNull] above to try to get
+         * as plausible a description of the function arguments positions on the stack as possible.
+         */
+        for(a in embeded.args) {
+            when(a) {
+                StackArg.ScalarPlaceHolder,
+                StackArg.CalldataPointerPlaceHolder,
+                StackArg.ArrayPlaceHolder -> {
+                    // can't do anything with placeholders
+                    return "Cannot support placeholder types".toRight()
+                }
+                is ScalarOnStack -> {
+                    argSymbols.add(relocateOrNull(a.v) ?: return "Failed to relocate $a".toRight())
+                }
+                is StackArg.ConstantValue -> {
+                    // this is fine, but not helpful for determining stack passing
+                    continue
+                }
+                is StackArg.DecomposedArray -> {
+                    argSymbols.add(relocateOrNull(a.lenSym) ?: return "Failed to relocate len ${a.lenSym}".toRight())
+                    if(a.offsetSym is TACSymbol.Var) {
+                        argSymbols.add(relocateOrNull(a.offsetSym) ?: return "Failed to relocate offset ${a.offsetSym}".toRight())
+                    }
+                }
+            }
+        }
+        /**
+         * We now have arguments that appear at plausible positions on the stack. Let's see if we can
+         * infer variables which hold the return address.
+         *
+         * Such a return sym:
+         * 1. is "close by" to the arguments,
+         * 2. Must be constant at function entry, and
+         * 3. This constant must be a valid jump PC target, and
+         * 4. Must be live at function entry
+         *
+         * 3 is checked by finding all blocks with the [NBId.origStartPc] equal to this constant value
+         * and checking if the block starts with a [vc.data.TACCmd.Simple.JumpdestCmd]. If so, we conclude
+         * that this value is very likely to be a potential jump target.
+         *
+         * The process to infer 1 is much more "heuristic". We scan the stack at entrance to the
+         * function starting from the top. This scan continues until:
+         * a. We have visited every stack slot known to contain a function argument, and
+         * b. We have seen a stack slot which is *NOT* a function argument and which
+         * satisfies criteria 2 -- 4 above
+         *
+         * If the above process runs out of stack before satisfying both a & b, the process abort.
+         * Once the above scan is complete, we will have identified a stack slot which is not an argument
+         * but which is on the stack with the arguments and which has a plausible return address. Call
+         * this variable `p`, and the stack slot at which the scan stopped `e`.
+         * Because solidity likes to mix up return addresses, we also collect the longest sequence of stack
+         * slots *after* `e` such that each stack slot in this sequence satisfies criteria 2 -- 4. In other words,
+         * if we see a whole bunch of return addresses pushed onto the stack, and then all of the
+         * function arguments, we don't necessarily know that the top-most return address is the "real" one; we have
+         * to disambiguate between all these possibilities.
+         *
+         * After this scan complets normally, we will have found *at least* the return slot that is closest to the
+         * function arguments. Note however, that this measure of "closeness" is relative not absolute:
+         * it is possible for there to be, e.g., 100 stack slots between the function arguments and this discovered
+         * return address. We have explicitly rejected some arbitrarily chosen cut-off, because the minute we choose cut-off
+         * `k` for maximum distance, we guarantee that we will see entirely legitimate bytecode with distance `k + 1`; it's how
+         * these things go...
+         *
+         * The process above can collect multiple possible return slots; we infer the "real" one by tracing forward
+         * and seeing which candidate is jumped to first. If this analysis fails (different return addresses are jumped to
+         * along different paths, all of the return addresses are consumed without being jumped to, etc.)
+         * this entire function aborts.
+         */
+        val knownArgs = argSymbols.toSet()
+        // we now have all of the arguments as they appeared on the stack
+        // see if we can infer the value which holds the return slot
+        var heightIt = functionSeed.id.stkTop
+        var seenKnownArgs = 0
+        val seenReturns = mutableSetOf<TACSymbol.Var>()
+
+        val lva = cache.lva
+
+        /**
+         * Checks criteria 2 - 4
+         */
+        fun isReturnAddress(v: TACSymbol.Var) : Boolean {
+            val mca = cache[MustBeConstantAnalysis]
+            if(!lva.isLiveBefore(v = v, ptr = functionSeed.commands.first().ptr)) {
+                return false
+            }
+            val asConst = mca.mustBeConstantAt(functionSeed.commands.first().ptr, v)?.toIntOrNull() ?: return false
+            val blocks = blockByStartPC[asConst] ?: return false
+            return blocks.any {
+                it.commands.first().cmd is TACCmd.Simple.JumpdestCmd
+            }
+        }
+
+        /**
+         * Implements the stack scan, terminating if we run out of stack *or* we have seen all
+         * the function arguments and at least one return slot
+         */
+        while(heightIt <= 1024 && (seenKnownArgs < knownArgs.size || seenReturns.isEmpty())) {
+            val asStackVar = TACSymbol.Var.stackVar(heightIt++)
+            if(asStackVar in knownArgs) {
+                seenKnownArgs++
+            }
+
+            if(isReturnAddress(asStackVar,)) {
+                seenReturns.add(asStackVar)
+            }
+        }
+        if(seenKnownArgs != knownArgs.size || seenReturns.isEmpty()) {
+            return "Sanity fail: seen $seenKnownArgs on stack (expected ${knownArgs.size} and have $seenReturns".toRight()
+        }
+        /**
+         * Collect the sequence of return slots that might be on the stack after our scan completed, we need to cast
+         * a wide net
+         */
+        while(heightIt <= 1024 && isReturnAddress(TACSymbol.Var.stackVar(heightIt),)) {
+            seenReturns.add(TACSymbol.Var.stackVar(heightIt))
+            heightIt++
+        }
+        check(knownArgs.size == seenKnownArgs && seenReturns.isNotEmpty()) {
+            "Invariant broke"
+        }
+        val contextFn = embeded.internalId.let(
+            source.internalFunctions::get
+        )?.let { nmString ->
+            getMethodReferenceSignature(nmString)
+        } ?: "unknown function?"
+
+        /**
+         * We need to know the return address' identity at the function start, so we have a domain
+         * which associates variables to the return address slot to which it aliases.
+         *
+         * There *might* be a way to implement this check with the GVN? I'd prefer the explicit
+         * but less efficient approach...
+         */
+        val seed = seenReturns.associateWith { it }.toTreapMap()
+        val state = mutableMapOf(
+            functionSeed.id to seed
+        )
+        fun String.toError(where: LTACCmd?) = "During analysis of $contextFn started at ${functionSeed.id}${where?.let {" while stepping $it" }.orEmpty()}: $this".toRight()
+        val returnInference = object : MonadicStatefulParallelWorklistIteration<NBId, (MutableCollection<Either<RetInBlock, String>>, MutableCollection<NBId>) -> Unit, Either<RetInBlock, String>, Either<Pair<TACSymbol.Var, Set<NBId>>, String>>(
+            inheritPool = (Thread.currentThread() as? ParallelPool.ParallelPoolWorkerThread)?.parallelPool
+        ) {
+            override fun commit(
+                c: (MutableCollection<Either<RetInBlock, String>>, MutableCollection<NBId>) -> Unit,
+                nxt: MutableCollection<NBId>,
+                res: MutableCollection<Either<RetInBlock, String>>
+            ) {
+                c(res, nxt)
+            }
+
+            override fun reduce(results: List<Either<RetInBlock, String>>): Either<Pair<TACSymbol.Var, Set<NBId>>, String> {
+                val errors = mutableListOf<String>()
+                if(results.isEmpty()) {
+                    return "Analysis returned no results".toError(null)
+                }
+                val exits = mutableSetOf<NBId>()
+                val candSyms = mutableSetOf<TACSymbol.Var>()
+                for(r in results) {
+                    when(r) {
+                        is Either.Left -> {
+                            candSyms.add(r.d.retSym)
+                            exits.add(r.d.blockId)
+                        }
+                        is Either.Right -> errors.add(r.d)
+                    }
+                }
+                if(errors.isNotEmpty()) {
+                    val prefix = errors.subList(0, Math.min(5, errors.size))
+                    val suffix = if(errors.size > 5) {
+                        "; ... ]"
+                    } else {
+                        "]"
+                    }
+                    return "Analysis returned multiple errors: ${prefix.joinToString("; ", prefix = "[", postfix = suffix)}".toError(null)
+                }
+                val uniq = candSyms.uniqueOrNull() ?: return "Multiple candidate returns inferred: $candSyms".toError(null)
+                return (uniq to exits).toLeft()
+            }
+
+            override fun process(it: NBId): ParallelStepResult<(MutableCollection<Either<RetInBlock, String>>, MutableCollection<NBId>) -> Unit, Either<RetInBlock, String>, Either<Pair<TACSymbol.Var, Set<NBId>>, String>> {
+                var stateIt = state[it] ?: error("No state for $it")
+                val blockBody = elab(it).commands
+                for(lc in blockBody) {
+                    if(stateIt.isEmpty()) {
+                        return this.result("Lost track of all return addresses".toError(lc))
+                    }
+                    if(lc.cmd is TACCmd.Simple.AssigningCmd) {
+                        val rhsSym = lc.maybeExpr<TACExpr.Sym.Var>()?.exp?.s
+                        if(rhsSym != null && rhsSym in stateIt) {
+                            stateIt += (lc.cmd.lhs to rhsSym)
+                            continue
+                        }
+                        stateIt -= lc.cmd.lhs
+                    } else if(lc.cmd.maybeAnnotation(JUMP_SYM)?.v?.let(stateIt::containsKey) == true) {
+                        val mappedReturnSym = stateIt[lc.cmd.maybeAnnotation(JUMP_SYM)!!.v]!!
+                        return this.result(RetInBlock(mappedReturnSym, lc.ptr.block).toLeft())
+                    } else if(lc.cmd is TACCmd.Simple.ReturnCmd) {
+                        // it is plausible that an internal function could, via inline assembly,
+                        // return the outer call. however it is much more likely that we simply failed to find
+                        // the return address
+                        return this.result("Hit external function exit".toError(lc))
+                    }
+                }
+                val finalCmd = blockBody.last()
+                val postProcessState = stateIt.retainAllKeys {
+                    lva.isLiveAfter(finalCmd.ptr, it)
+                }
+                if(postProcessState.isEmpty()) {
+                    if(it in cache.revertBlocks) {
+                        return this.result(listOf())
+                    }
+                    return this.result("After executing final command, no return addresses remain".toError(blockBody.last()))
+                }
+                return this.cont { res, nxt ->
+                    for(succ in succ(it)) {
+                        if(succ in state) {
+                            if(state[succ]!! != postProcessState) {
+                                res.add("Along path to successor $succ, have conflicting states: $postProcessState vs ${state[succ]}".toError(finalCmd))
+                            }
+                            return@cont
+                        }
+                        state[succ] = postProcessState
+                        nxt.add(succ)
+                    }
+                }
+            }
+        }.submit(listOf(functionSeed.id))
+        val (returnSym, returnSites) = when(returnInference) {
+            is Either.Left -> {
+                returnInference.d
+            }
+            is Either.Right -> {
+                return returnInference.mapRight {
+                    "Return inference failed: $it"
+                }
+            }
+        }
+        val uniqueExit = returnSites.monadicMap {
+            succ(it).singleOrNull()
+        }?.uniqueOrNull() ?: return "No confluence point for $returnSites".toRight()
+        val functionBoundary = FunctionBoundary(
+            returnSym = returnSym,
+            exitBlocks = returnSites,
+            functionStartBlock = functionSeed.id,
+            callBlock = callSource,
+            uniqueExit = uniqueExit
+        )
+        val r = with(functionBoundary) {
+            generateAnnotations(embeded, graph = this@TACCommandGraph, source = source)
+        }
+        return when(r) {
+            is GenerationResult.Failure -> {
+                "Annotation generation failed for ${r.which}: ${r.message}".toRight()
+            }
+            is GenerationResult.Success -> r.toLeft()
+        }
+    }
+
+    /**
+     * Run an alternative function detection analysis which uses the known function starts reported by
+     * solidity (recorded in [ContractInstanceInSDC.internalFunctionStarts]) and attempts to infer
+     * function boundaries.
+     *
+     * The rough idea is follows: for each such function start if we haven't already found it (as recorded
+     * in [handledStarts]) we see if this block "looks like" an internal function start. This determination
+     * is made by querying [tryResolveHints] on the start block to see if we can extract function finder hints.
+     * If we do, we try to infer the return address by looking at stack variables "near by" to the arguments on the stack
+     * that contain return addresses. We collect all such return sym candidates R,
+     * and then run a forward analysis from the inferred function start to see if our hypothesized function always
+     * exits by jumping to the address held in candidate `r \in R`. Note that all jump outs must use the same choice of `r`
+     * (we don't let a function "choose" its return address, can you imagine?)
+     * To emphasize, we assume that the first time the function jumps to a PC that was pushed on the stack before entering a function
+     * that that jump corresponds to a return; you can construct a example program where this heuristic is wrong, but
+     * it is assumed that such programs will not come out of a "well-behaved" compiler.
+     *
+     * If we find such a return sym candidate `r`, we take this `r` to be the return address and the blocks
+     * at which these jump outs occur to be the exit blocks of the function, and then generate the function start/end
+     * annotations with [generateAnnotations].
+     *
+     * Because this is a alternative (and as of writing, rather untested analysis) most failures in this process
+     * are logged at the info level to avoid clogging up logs with unreliable messages.
+     */
+    private fun alternativeAnalysis(
+        c: CoreTACProgram,
+        source: ContractInstanceInSDC,
+        w: Worker,
+        handledStarts: Set<NBId>,
+        toAnnotateAsHandled: MutableSet<CmdPointer>
+    ) : List<GenerationResult.Success> {
+        val graph = c.analysisCache.graph
+        val blockByStartPC = graph.blocks.groupBy {
+            it.id.origStartPc
+        }
+        val toRet = mutableListOf<GenerationResult.Success>()
+        for(s in source.internalFunctionStarts) {
+            /*
+             extremely weird if this set is empty, but we aren't going to throw an exception if solidity/the decompiler gives us
+             nonsense metadata
+             */
+            val seeds = blockByStartPC[s] ?: continue
+            for(functionSeed in seeds) {
+                if(functionSeed.id in handledStarts) {
+                    continue
+                }
+                val analysisRes = with(graph) {
+                    with(w) {
+                        tryAnalyzeStart(
+                            functionSeed, blockByStartPC, source
+                        )
+                    }
+                }
+                when(analysisRes) {
+                    is Either.Left -> {
+                        if(analysisRes.d.sourceAnnotation in toAnnotateAsHandled) {
+                            logger.warn {
+                                "Apparent double detection of call, conservatively ignoring"
+                            }
+                            continue
+                        }
+                        toAnnotateAsHandled.add(analysisRes.d.sourceAnnotation)
+                        toRet.add(analysisRes.d)
+                    }
+                    is Either.Right -> {
+                        logger.info {
+                            "Fallback analysis failed on ${functionSeed.id}: ${analysisRes.d}"
+                        }
+                    }
+                }
+            }
+        }
+        return toRet
+    }
+
+    /**
+     * All of the "control flow" information about a function:
+     * the [callBlock] from which it was called, the [functionStartBlock] which
+     * [callBlock] jumps into, the [returnSym] that, at the start of [functionStartBlock]
+     * holds the PC to which the function should return. This return happens in [exitBlocks], all
+     * of which jump to [uniqueExit].
+     *
+     * NB that given [exitBlocks] and [callBlock] and a [TACCommandGraph], [functionStartBlock] and [uniqueExit]
+     * can be easily computed, but we save the lookups by including all of this information.
+     * It is thus an (unchecked) invariant of this class that [functionStartBlock] should be the single successor
+     * block of [callBlock], [uniqueExit] should be the singleton successor of all of the [exitBlocks].
+     */
+    data class FunctionBoundary(
+        val callBlock: NBId,
+        val functionStartBlock: NBId,
+        val returnSym: TACSymbol.Var,
+        val exitBlocks: Collection<NBId>,
+        val uniqueExit: NBId
+    ) {
+        val returnAddressHeight get() = returnSym.meta[TACBasicMeta.STACK_HEIGHT]!!
+    }
+
+    /**
+     * The result of generating annotations.
+     */
+    private sealed interface GenerationResult {
+        /**
+         * For the function found at [functionStart] with the signature [which], [message] describes why annotation
+         * generation failed.
+         *
+         * [which] may be null if we resolved an internal function id but couldn't resolve that via the [ContractInstanceInSDC]
+         * to a function signature.
+         */
+        data class Failure(val which: QualifiedMethodSignature?, val message: String, val functionStart: NBId) : GenerationResult {
+            companion object
+        }
+
+        /**
+         * A successfully resolved function, whose entry annotation should be prepended at [entryAnnot],
+         * and whose exit annotations should be prepended at [exit]. [sourceAnnotation] indicates the [InternalFunctionHint]
+         * annotation that is the "source" of these function annotations; it is used for finding unprocessed annotations.
+         */
+        @SuppressRemapWarning
+        data class Success(
+            val sourceAnnotation: CmdPointer,
+            val entryAnnot: Pair<CmdPointer, InternalFuncStartAnnotation>,
+            val exit: Map<CmdPointer, InternalFuncExitAnnotation>
+        ) : GenerationResult
+    }
+
+
+    /**
+     * Given a [FunctionBoundary] as context, and a resolved function found within said function,
+     * try to extract the function start and end annotations, as represented by a [GenerationResult.Success].
+     *
+     * If this process fails (because we couldn't find values for the argument symbols, the [ResolutionHints]
+     * was actually a [ResolutionHints.FailureFor], etc.) this returns [GenerationResult.Failure] with
+     * appropriately descriptive metadata
+     */
+    context(FunctionBoundary)
+    private fun generateAnnotations(
+        resolved: ResolutionWithId,
+        graph: TACCommandGraph,
+        source: ContractInstanceInSDC
+    ): GenerationResult {
+        val stackHeightAtExit = uniqueExit.stkTop
+        val numReturn = (returnAddressHeight - stackHeightAtExit) + 1
+        val functionId = source.internalFunctions[resolved.internalId]?.let { nmString ->
+            getMethodReferenceSignature(nmString)
+        } ?: return GenerationResult.Failure(null, message = "Unrecognized internal id: ${resolved.internalId}", functionStartBlock)
+        operator fun GenerationResult.Failure.Companion.invoke(which: QualifiedMethodSignature, message: String) = GenerationResult.Failure(
+            which, message, functionStartBlock
+        )
+        val success : ResolutionSuccess = when(resolved) {
+            is ResolutionHints.FailureFor -> {
+                return GenerationResult.Failure(
+                    which = functionId, message = "Failed parsing hint: ${resolved.msg}"
+                )
+            }
+            is ResolutionSuccess -> resolved
+        }
+
+        val annotationLocation = graph.elab(functionStartBlock).commands.first().ptr
+
+        fun fail(msg: () -> String) = GenerationResult.Failure(functionId, msg())
+
+        /**
+         * Finds the set of symbols equivalent to `this` at the annotation site (annotation location).
+         * This handles the case where argument symbols have been swapped around on the stack between
+         * the "start" of the function and where the actual annotations have occurred.
+         */
+        fun TACSymbol.relocateOrNull(): Either<Set<TACSymbol>, String> = when(this) {
+            is TACSymbol.Const -> setOf(this).toLeft()
+            is TACSymbol.Var -> {
+                graph.cache.gvn.findCopiesAt(annotationLocation, resolved.startLocation to this).takeIf { it.isNotEmpty() }?.toLeft() ?:
+                    "For argument symbol $this at ${resolved.startLocation}, could not find copy at function start $annotationLocation".toRight()
+            }
+        }
+
+        fun Either<Nothing, String>.fail() = fail {
+            this.right()
+        }
+        val thisId = Allocator.getFreshId(Allocator.Id.INTERNAL_FUNC)
+
+        val (stackArgOffsets, argSymbols) = when(success) {
+            is ResolutionHints.EmbeddedInfo -> {
+                val stackOffsetToArgPos = treapMapOf<Int, Int>().mutate { res ->
+                    var stackOffset = 1
+                    success.args.forEachIndexed { argOffset, arg ->
+                        res[stackOffset] = argOffset
+                        when (arg) {
+                            is StackArg.ConstantValue,
+                            is StackArg.Scalar, is StackArg.ScalarPlaceHolder,
+                            is StackArg.CalldataPointer, StackArg.CalldataPointerPlaceHolder -> {
+                                stackOffset++
+                            }
+
+                            is StackArg.DecomposedArray, is StackArg.ArrayPlaceHolder -> {
+                                // two [InternalFuncArgs] are corresponding to [argOffset], of sort
+                                // [CALLDATA_ARRAY_LENGTH], [CALLDATA_ARRAY_ELEMS]
+                                res[stackOffset + 1] = argOffset
+                                stackOffset += 2
+                            }
+                        }
+                    }
+                }
+
+                val resolvedArgs = mutableListOf<InternalFuncArg>()
+                var stackPassingStyle = true
+                var hasPlaceholder = false
+                var expectedHeight = returnAddressHeight - 1
+                var sumOffset = 0
+                success.args.forEachIndexed { argIndex, arg ->
+                    when (arg) {
+                        StackArg.ArrayPlaceHolder -> {
+                            if (!stackPassingStyle) {
+                                return fail {
+                                    "for $functionId argument #$argIndex, requested computation of calldata offsets, but stack passing " +
+                                        "convention appears violated"
+                                }
+                            }
+                            hasPlaceholder = true
+                            resolvedArgs.add(
+                                InternalFuncArg(
+                                    s = TACSymbol.Var.stackVar(expectedHeight - 1),
+                                    sort = InternalArgSort.CALLDATA_ARRAY_ELEMS,
+                                    offset = ++sumOffset,
+                                    logicalPosition = stackOffsetToArgPos[sumOffset]
+                                        ?: error("No position for $sumOffset"),
+                                    location = null
+                                )
+                            )
+                            resolvedArgs.add(
+                                InternalFuncArg(
+                                    s = TACSymbol.Var.stackVar(expectedHeight),
+                                    sort = InternalArgSort.CALLDATA_ARRAY_LENGTH,
+                                    offset = ++sumOffset,
+                                    logicalPosition = stackOffsetToArgPos[sumOffset]
+                                        ?: error("No position for $sumOffset"),
+                                    location = null
+                                )
+                            )
+                            expectedHeight -= 2
+                        }
+
+                        StackArg.CalldataPointerPlaceHolder,
+                        StackArg.ScalarPlaceHolder -> {
+                            if (!stackPassingStyle) {
+                                return fail {
+                                    "For argument #$argIndex, requested placeholder argument, but stack passing convention " +
+                                        "appears violated"
+                                }
+                            }
+                            resolvedArgs.add(
+                                InternalFuncArg(
+                                    s = TACSymbol.Var.stackVar(expectedHeight),
+                                    sort = if (arg is StackArg.ScalarPlaceHolder) {
+                                        InternalArgSort.SCALAR
+                                    } else {
+                                        check(arg is StackArg.CalldataPointerPlaceHolder)
+                                        InternalArgSort.CALLDATA_POINTER
+                                    },
+                                    offset = ++sumOffset,
+                                    logicalPosition = stackOffsetToArgPos[sumOffset]
+                                        ?: error("No position for $sumOffset"),
+                                    location = null
+                                )
+                            )
+                            hasPlaceholder = true
+                            expectedHeight--
+                        }
+
+                        is StackArg.DecomposedArray -> {
+                            val relocLen = arg.lenSym.relocateOrNull().leftOr { return it.fail() }
+                            val relocOffset = arg.offsetSym.relocateOrNull().leftOr { return it.fail() }
+                            if (relocLen.none { it.stackHeight() == expectedHeight } || relocOffset.none { it.stackHeight() == expectedHeight - 1 }) {
+                                logger.debug {
+                                    "For $functionId argument #$argIndex $arg, violated stack convention at height $expectedHeight"
+                                }
+                                stackPassingStyle = false
+                            }
+                            resolvedArgs.add(
+                                InternalFuncArg(
+                                    s = relocOffset.pickBest(expectedHeight),
+                                    offset = ++sumOffset,
+                                    sort = InternalArgSort.CALLDATA_ARRAY_ELEMS,
+                                    location = null,
+                                    logicalPosition = stackOffsetToArgPos[sumOffset]
+                                        ?: error("No position for $sumOffset")
+                                )
+                            )
+                            resolvedArgs.add(
+                                InternalFuncArg(
+                                    s = relocLen.first(),
+                                    sort = InternalArgSort.CALLDATA_ARRAY_LENGTH,
+                                    offset = ++sumOffset,
+                                    logicalPosition = stackOffsetToArgPos[sumOffset]
+                                        ?: error("No position for $sumOffset"),
+                                    location = null
+                                )
+                            )
+                            expectedHeight -= 2
+                        }
+
+                        is StackArg.Scalar,
+                        is StackArg.CalldataPointer -> {
+                            check(arg is ScalarOnStack)
+                            val relocV = arg.v.relocateOrNull().leftOr { return it.fail() }
+                            if (relocV.none { it.stackHeight() == expectedHeight }) {
+                                stackPassingStyle = false
+                            }
+                            resolvedArgs.add(
+                                InternalFuncArg(
+                                    s = relocV.pickBest(expectedHeight),
+                                    offset = ++sumOffset,
+                                    sort = when (arg) {
+                                        is StackArg.CalldataPointer -> InternalArgSort.CALLDATA_POINTER
+                                        is StackArg.Scalar -> InternalArgSort.SCALAR
+                                    },
+                                    logicalPosition = stackOffsetToArgPos[sumOffset]
+                                        ?: error("No position for $sumOffset"),
+                                    location = null
+                                )
+                            )
+                            expectedHeight--
+                        }
+
+                        is StackArg.ConstantValue -> {
+                            resolvedArgs.add(
+                                InternalFuncArg(
+                                    s = arg.v,
+                                    offset = ++sumOffset,
+                                    sort = InternalArgSort.SCALAR,
+                                    location = null,
+                                    logicalPosition = stackOffsetToArgPos[sumOffset]
+                                        ?: error("No position for $sumOffset")
+                                )
+                            )
+                        }
+                    }
+                }
+                if (!stackPassingStyle && hasPlaceholder) {
+                    return fail {
+                        "Found argument array placeholder for $functionId @ $functionStartBlock but stack passing style was violated"
+                    }
+                }
+                stackOffsetToArgPos to resolvedArgs
+            }
+
+            is ResolutionHints.ModifierInfo -> {
+                var expectedHeight = returnAddressHeight - 1
+                val args = mutableListOf<InternalFuncArg>()
+                val stackOffsetToArgPos = treapMapOf<Int, Int>().mutate { res ->
+                    var argPos = 0
+                    success.typeLayout.forEachIndexed { stackOffsetMinusOne, typ ->
+                        res[stackOffsetMinusOne + 1] = argPos
+                        when (typ) {
+                            InternalArgSort.CALLDATA_POINTER,
+                            InternalArgSort.SCALAR -> {
+                                argPos++
+                            }
+
+                            InternalArgSort.CALLDATA_ARRAY_ELEMS -> {
+                                check(success.typeLayout.getOrNull(stackOffsetMinusOne + 1) == InternalArgSort.CALLDATA_ARRAY_LENGTH) {
+                                    "Expected $typ at stack offset ${stackOffsetMinusOne + 1} to have ${
+                                        InternalArgSort.CALLDATA_ARRAY_LENGTH
+                                    } at the next stack offset, but found ${
+                                        success.typeLayout.getOrNull(
+                                            stackOffsetMinusOne + 1
+                                        )
+                                    } "
+                                }
+                                // Do not increment [argPos] (referring to the same [argPos] as the
+                                // InternalArgSort of sort[CALLDATA_ARRAY_ELEMS]) coming after
+                            }
+
+                            InternalArgSort.CALLDATA_ARRAY_LENGTH -> {
+                                argPos++
+                            }
+                        }
+                    }
+                }
+                success.typeLayout.forEachIndexed { indexTypeLayout, typeLayout ->
+                    val sym = TACSymbol.Var.stackVar(expectedHeight)
+                    val arg = InternalFuncArg(
+                        s = sym,
+                        sort = typeLayout,
+                        offset = indexTypeLayout + 1,
+                        location = null,
+                        logicalPosition = stackOffsetToArgPos[indexTypeLayout + 1]
+                            ?: error("Incorrect offset without an argument position for $functionId")
+                    )
+                    args.add(arg)
+                    if (success.resolvedHint != null && indexTypeLayout == success.resolvedHint.first) {
+                        val relocated = success.resolvedHint.third.relocateOrNull().leftOr {
+                            return fail {
+                                "couldn't find alias for logged value ${success.resolvedHint}"
+                            }
+                        }
+                        if (!relocated.any { sym == it } || success.resolvedHint.second != typeLayout) {
+                            return fail {
+                                "Stack layout mismatch for, expected $sym to be argument $indexTypeLayout " +
+                                    " but the hint says it is actually ${success.resolvedHint.third} for $functionId"
+                            }
+                        }
+                    }
+                    expectedHeight--
+                }
+                stackOffsetToArgPos to args.toList()
+            }
+        }
+
+        val callSiteSrc = graph.elab(callBlock).commands.last().cmd.metaSrcInfo
+        val calleeSrc = graph.elab(uniqueExit).commands.first().cmd.metaSrcInfo
+
+        val returnVals = (0 until numReturn).map {
+            InternalFuncRet(
+                offset = it,
+                s = TACSymbol.Var.stackVar(returnAddressHeight - it),
+                location = null
+            )
+        }
+
+        return GenerationResult.Success(
+            entryAnnot = annotationLocation to InternalFuncStartAnnotation(
+                id = thisId,
+                stackOffsetToArgPos = stackArgOffsets,
+                args = argSymbols,
+                startPc = functionStartBlock.origStartPc,
+                callSiteSrc = callSiteSrc,
+                calleeSrc = calleeSrc,
+                methodSignature = functionId
+            ),
+            sourceAnnotation = success.handledAnnotation,
+            exit = exitBlocks.associate {
+                val lastCommand = graph.elab(it).commands.last().ptr
+                lastCommand to InternalFuncExitAnnotation(
+                    id = thisId,
+                    rets = returnVals.toList(),
+                    methodSignature = functionId
+                )
+            }
+        )
+    }
 
     fun doAnalysis(uninstrumented: CoreTACProgram, source: ContractInstanceInSDC) : CoreTACProgram {
         val c = instrumentInternalFunctionHints(uninstrumented)
@@ -191,28 +977,15 @@ object FunctionFlowAnnotator {
             return c
         }
 
-        val didNotFind = mutableSetOf<QualifiedMethodSignature>()
-        /*
-         XXX(jtoman): the previous iteration of function finders would have a list of functions that we DEFINITELY
-         expected to find: exactly those that we generated the auto-finders for. These names were also exactly names that
-          were passed along in internalFunctions.
-
-          The new version just instruments everything, and passes along all such names via internalFunctions. Now,
-          if a function is never called as internal function anywhere in the contract, then we won't see an instance of
-          that function, but that's not necessarily an error. Thus, the old mechanism of *expecting* to find all
-          functions listed in internalFunctions doesn't work, and in fact leads to a loooot of spurious errors. This
-          (now pointless) didNotFind set is here as a reminder of this deficiency, and a hope that we can revisit
-          this question later.
-         */
-        didNotFind.clear() // TODO(jtoman): how do we know we missed one?
         val unresolved = mutableSetOf<QualifiedMethodSignature>()
         val handled = mutableSetOf<NBId>()
         val edgesByDest = w.complete.groupBy {
             it.dest.node
         }
-        edgesByDest.forEach { (callSrc, v_) ->
+        val toInstrument = mutableListOf<GenerationResult.Success>()
+        for((callSrc, v_) in edgesByDest) {
             if(callSrc in handled) {
-                return@forEach
+                continue
             }
             val retSymPre = v_.map {
                 it.dest.exitSym
@@ -229,24 +1002,24 @@ object FunctionFlowAnnotator {
                  */
                 val minStackHeight = v_.monadicMap {
                     it.dest.exitSym.stackHeight()
-                }?.minOrNull() ?: return@forEach
+                }?.minOrNull() ?: continue
                 val exitSymEdges = v_.filterToSet {
                     it.dest.exitSym.stackHeight() == minStackHeight
-                }.takeIf { it.isNotEmpty() } ?: return@forEach
+                }.takeIf { it.isNotEmpty() } ?: continue
                 val exitPoint = if(exitSymEdges.size == 1) {
                     exitSymEdges.single().src.node
                 } else {
                     // confluence point?
                     exitSymEdges.monadicMap {
                         g.succ(it.src.node).singleOrNull()
-                    }?.uniqueOrNull() ?: return@forEach
+                    }?.uniqueOrNull() ?: continue
                 }
                 if(!v_.all {
                         it in exitSymEdges || g.cache.domination.dominates(exitPoint, it.src.node)
                     }) {
-                    return@forEach
+                    continue
                 }
-                val trueRetSym = exitSymEdges.map { it.dest.exitSym }.uniqueOrNull() ?: return@forEach
+                val trueRetSym = exitSymEdges.map { it.dest.exitSym }.uniqueOrNull() ?: continue
                 v_.filter {
                     it.dest.exitSym == trueRetSym
                 }
@@ -258,19 +1031,16 @@ object FunctionFlowAnnotator {
                 it.dest.exitSym
             }.uniqueOrNull().warnIfNull {
                 "Found multiple exit symbols in $v for call at $callSrc"
-            } ?: return@forEach
+            } ?: continue
             // check that all the sources have the same singleton successor (single return)
             val uniqueExit = v.monadicMap {
                 g.succ(it.src.node).singleOrNull()
             }?.uniqueOrNull().warnIfNull {
                 "Multiple exits points for return for call at $callSrc ($v)"
-            } ?: return@forEach
+            } ?: continue
             val dst = g.succ(callSrc).singleOrNull().warnIfNull {
                 "Multiple successors for call node $callSrc, ignoring"
-            } ?: return@forEach
-            val callSiteSrc = g.elab(callSrc).commands.last().cmd.metaSrcInfo
-            val calleeSrc = g.elab(uniqueExit).commands.first().cmd.metaSrcInfo
-            val dstPc = dst.origStartPc
+            } ?: continue
             val block = g.elab(dst)
             val exitPoints = v.mapToSet {
                 it.src.node
@@ -289,397 +1059,68 @@ object FunctionFlowAnnotator {
                 }
             }.toSet()
 
-            val returnAddressHeight = returnSym.meta.find(TACBasicMeta.STACK_HEIGHT)
-                ?: error("Missing stack height information for $returnSym ($v)")
-
-            /*
-             * Compute the *actual* start of the function, i.e., where we expect to see the internal hint annotations.
-             *
-             * At present, this entails skipping over default-initialized memory allocations that are inserted by the compiler
-             * for struct types returned.
-             *
-             * TODO(jtoman): double check that these initializers do not mutate return/stack information
-             */
-            var properStart = block
-            while(properStart.commands.none {
-                it.maybeAnnotation(META_KEY) != null
-                } && properStart.id in edgesByDest) {
-                val edge = edgesByDest[properStart.id]?.singleOrNull() ?: break
-                val nxt = getInitializerInfoOrNull(
-                    t = edge,
-                    w = w,
-                    g = g
-                ) ?: break
-                properStart = g.elab(nxt)
+            val resolved : ResolutionWithId = when(val r = tryResolveHints(block, w, g)) {
+                is ResolutionWithId -> r
+                ResolutionHints.None -> continue
             }
-            /*
-               optimizer sometimes inlines this code to avoid an internal function call. detect the prefix
-             */
-            val resolved = if(properStart.commands.takeUntil {
-                it.cmd is TACCmd.Simple.AnnotationCmd && it.cmd.annot.k == META_KEY
-                }?.any {
-                    it.cmd is TACCmd.Simple.AssigningCmd.ByteStore
-                } == true) {
-                val prefix = properStart.commands.takeUntil {
-                    it.cmd is TACCmd.Simple.AnnotationCmd && it.cmd.annot.k == META_KEY
-                }!!.toList()
-                val indOf = prefix.indexOfLast {
-                    it.cmd is TACCmd.Simple.AssigningCmd.ByteStore
-                }
-                check(indOf >= 0) {
-                    "lol what $indOf $prefix"
-                }
-                val initPrefix = prefix.subList(0, indOf + 1)
-                with(g) {
-                    if(!isInitializerPrefix(initPrefix)) {
-                        ResolutionHints.None
-                    } else {
-                        collectHelperAnnotations(
-                            block = properStart,
-                            startPoint = indOf + 1,
-                            stackStart = null
-                        )
-                    }
-                }
-            } else {
-                with(g) {
-                    collectHelperAnnotations(
-                        block = properStart
-                    )
-                }
+            val functionBoundaries = FunctionBoundary(
+                callBlock = callSrc,
+                functionStartBlock = dst,
+                exitBlocks = exitPoints,
+                returnSym = returnSym,
+                uniqueExit = uniqueExit
+            )
+            val resolution = with(functionBoundaries) {
+                generateAnnotations(
+                    resolved,
+                    graph = g,
+                    source = source
+                )
             }
-            val stackHeightAtExit = uniqueExit.stkTop
-            val numReturn = (returnAddressHeight - stackHeightAtExit) + 1
-            val functionId = (resolved as? ResolutionSuccess)?.internalId?.let(
-                source.internalFunctions::get
-            )?.let { nmString ->
-                getMethodReferenceSignature(nmString)
-            }
-            if (resolved is ResolutionHints.FailureFor) {
-                source.internalFunctions[resolved.id]?.let {getMethodReferenceSignature(it)}
-                    ?.let(unresolved::add)
-            }
-            val thisId = Allocator.getFreshId(Allocator.Id.INTERNAL_FUNC)
-            val res = if (resolved is ResolutionSuccess && functionId != null) {
-                didNotFind.remove(functionId)
-
-                val annotationLocation = g.elab(dst).commands.first().ptr
-
-                fun recordParseFailure() {
-                    unresolved.add(functionId)
-                }
-
-                /**
-                 * Finds the set of symbols equivalent to `this` at the annotation site (annotation location).
-                 * This handles the case where argument symbols have been swapped around on the stack between
-                 * the "start" of the function and where the actual annotations have occurred.
-                 */
-                fun TACSymbol.relocateOrNull(): Set<TACSymbol>? = when(this) {
-                    is TACSymbol.Const -> setOf(this)
-                    is TACSymbol.Var -> {
-                        g.cache.gvn.findCopiesAt(annotationLocation, resolved.startLocation to this).takeIf { it.isNotEmpty() } ?: run {
-                            logger.warn {
-                                "For $functionId argument symbol $this at ${resolved.startLocation}, could not find copy at function start $annotationLocation"
-                            }
-                            recordParseFailure()
-                            null
-                        }
+            when(resolution) {
+                is GenerationResult.Failure -> {
+                    logger.warn {
+                        resolution.message
                     }
-                }
-
-                fun Set<TACSymbol>.pickBest(expectedStackHeight: Int): TACSymbol {
-                    return this.filter {
-                        it.stackHeight() != null
-                    }.takeIf { it.isNotEmpty() }?.let outer@{ stkHeightVars ->
-                        stkHeightVars.singleOrNull {
-                            it.stackHeight()!! == expectedStackHeight
-                        }?.let { return@outer it }
-                        val minDistance = stkHeightVars.minOf {
-                            (it.stackHeight()!! - expectedStackHeight).absoluteValue
-                        }
-                        stkHeightVars.singleOrNull {
-                            (it.stackHeight()!! - expectedStackHeight).absoluteValue == minDistance
-                        }?.let {
-                            return@outer it
-                        }
-                        return stkHeightVars.minBy {
-                            it.stackHeight()!!
-                        }
-                    } ?: this.first()
-                }
-                if (resolved is ResolutionHints.EmbeddedInfo) {
-                    val stackOffsetToArgPos = treapMapOf<Int, Int>().mutate { res ->
-                        var stackOffset = 1
-                        resolved.args.forEachIndexed { argOffset, arg ->
-                            res[stackOffset] = argOffset
-                            when (arg) {
-                                is StackArg.ConstantValue,
-                                is StackArg.Scalar, is StackArg.ScalarPlaceHolder,
-                                is StackArg.CalldataPointer, StackArg.CalldataPointerPlaceHolder -> {
-                                    stackOffset++
-                                }
-
-                                is StackArg.DecomposedArray, is StackArg.ArrayPlaceHolder -> {
-                                    // two [InternalFuncArgs] are corresponding to [argOffset], of sort
-                                    // [CALLDATA_ARRAY_LENGTH], [CALLDATA_ARRAY_ELEMS]
-                                    res[stackOffset + 1] = argOffset
-                                    stackOffset += 2
-                                }
-                            }
-                        }
+                    if(resolution.which != null) {
+                        unresolved.add(resolution.which)
                     }
-
-                    val resolvedArgs = mutableListOf<InternalFuncArg>()
-                    var stackPassingStyle = true
-                    var hasPlaceholder = false
-                    var expectedHeight = returnAddressHeight - 1
-                    var sumOffset = 0
-                    resolved.args.forEachIndexed { argIndex, arg ->
-                        when (arg) {
-                            StackArg.ArrayPlaceHolder -> {
-                                if (!stackPassingStyle) {
-                                    logger.warn {
-                                        "for $functionId argument #$argIndex, requested computation of calldata offsets, but stack passing " +
-                                                "convention appears violated"
-                                    }
-                                    recordParseFailure()
-                                    return@forEach
-                                }
-                                hasPlaceholder = true
-                                resolvedArgs.add(
-                                    InternalFuncArg(
-                                        s = TACSymbol.Var.stackVar(expectedHeight - 1),
-                                        sort = InternalArgSort.CALLDATA_ARRAY_ELEMS,
-                                        offset = ++sumOffset,
-                                        logicalPosition = stackOffsetToArgPos[sumOffset] ?: error("No position for $sumOffset"),
-                                        location = null
-                                    )
-                                )
-                                resolvedArgs.add(
-                                    InternalFuncArg(
-                                        s = TACSymbol.Var.stackVar(expectedHeight),
-                                        sort = InternalArgSort.CALLDATA_ARRAY_LENGTH,
-                                        offset = ++sumOffset,
-                                        logicalPosition = stackOffsetToArgPos[sumOffset] ?: error("No position for $sumOffset"),
-                                        location = null
-                                    )
-                                )
-                                expectedHeight -= 2
-                            }
-                            StackArg.CalldataPointerPlaceHolder,
-                            StackArg.ScalarPlaceHolder -> {
-                                if (!stackPassingStyle) {
-                                    logger.warn {
-                                        "For $functionId argument #$argIndex, requested placeholder argument, but stack passing convention " +
-                                                "appears violated"
-                                    }
-                                    recordParseFailure()
-                                    return@forEach
-                                }
-                                resolvedArgs.add(
-                                    InternalFuncArg(
-                                        s = TACSymbol.Var.stackVar(expectedHeight),
-                                        sort = if(arg is StackArg.ScalarPlaceHolder) {
-                                            InternalArgSort.SCALAR
-                                        } else {
-                                            check(arg is StackArg.CalldataPointerPlaceHolder)
-                                            InternalArgSort.CALLDATA_POINTER
-                                        },
-                                        offset = ++sumOffset,
-                                        logicalPosition = stackOffsetToArgPos[sumOffset] ?: error("No position for $sumOffset"),
-                                        location = null
-                                    )
-                                )
-                                hasPlaceholder = true
-                                expectedHeight--
-                            }
-                            is StackArg.DecomposedArray -> {
-                                val relocLen = arg.lenSym.relocateOrNull() ?: return@forEach
-                                val relocOffset = arg.offsetSym.relocateOrNull() ?: return@forEach
-                                if (relocLen.none { it.stackHeight() == expectedHeight } || relocOffset.none { it.stackHeight() == expectedHeight - 1 }) {
-                                    logger.debug {
-                                        "For $functionId argument #$argIndex $arg, violated stack convention at height $expectedHeight"
-                                    }
-                                    stackPassingStyle = false
-                                }
-                                resolvedArgs.add(
-                                    InternalFuncArg(
-                                        s = relocOffset.pickBest(expectedHeight),
-                                        offset = ++sumOffset,
-                                        sort = InternalArgSort.CALLDATA_ARRAY_ELEMS,
-                                        location = null,
-                                        logicalPosition = stackOffsetToArgPos[sumOffset] ?: error("No position for $sumOffset")
-                                    )
-                                )
-                                resolvedArgs.add(
-                                    InternalFuncArg(
-                                        s = relocLen.first(),
-                                        sort = InternalArgSort.CALLDATA_ARRAY_LENGTH,
-                                        offset = ++sumOffset,
-                                        logicalPosition = stackOffsetToArgPos[sumOffset] ?: error("No position for $sumOffset"),
-                                        location = null
-                                    )
-                                )
-                                expectedHeight -= 2
-                            }
-                            is StackArg.Scalar,
-                            is StackArg.CalldataPointer -> {
-                                check(arg is ScalarOnStack)
-                                val relocV = arg.v.relocateOrNull() ?: return@forEach
-                                if (relocV.none { it.stackHeight() == expectedHeight }) {
-                                    stackPassingStyle = false
-                                }
-                                resolvedArgs.add(
-                                    InternalFuncArg(
-                                        s = relocV.pickBest(expectedHeight),
-                                        offset = ++sumOffset,
-                                        sort = when(arg) {
-                                            is StackArg.CalldataPointer -> InternalArgSort.CALLDATA_POINTER
-                                            is StackArg.Scalar -> InternalArgSort.SCALAR
-                                        },
-                                        logicalPosition = stackOffsetToArgPos[sumOffset] ?: error("No position for $sumOffset"),
-                                        location = null
-                                    )
-                                )
-                                expectedHeight--
-                            }
-                            is StackArg.ConstantValue -> {
-                                resolvedArgs.add(
-                                    InternalFuncArg(
-                                        s = arg.v,
-                                        offset = ++sumOffset,
-                                        sort = InternalArgSort.SCALAR,
-                                        location = null,
-                                        logicalPosition = stackOffsetToArgPos[sumOffset] ?: error("No position for $sumOffset")
-                                    )
-                                )
-                            }
-                        }
-                    }
-                    if (!stackPassingStyle && hasPlaceholder) {
+                    continue
+                }
+                is GenerationResult.Success -> {
+                    handled.addAll(siblingCalls)
+                    if(!toAnnotateAsHandled.add(resolution.sourceAnnotation)) {
                         logger.warn {
-                            "Found argument array placeholder for $functionId @ $dstPc but stack passing style was violated"
-                        }
-                        recordParseFailure()
-                        return@forEach
-                    }
-                    InternalFuncStartAnnotation(
-                        startPc = dstPc,
-                        id = thisId,
-                        stackOffsetToArgPos = stackOffsetToArgPos,
-                        methodSignature = functionId,
-                        args = resolvedArgs.toList(),
-                        callSiteSrc = callSiteSrc,
-                        calleeSrc = calleeSrc
-                    )
-                } else {
-                    check(resolved is ResolutionHints.ModifierInfo)
-                    var expectedHeight = returnAddressHeight - 1
-                    val args = mutableListOf<InternalFuncArg>()
-                    val stackOffsetToArgPos = treapMapOf<Int, Int>().mutate { res ->
-                        var argPos = 0
-                        resolved.typeLayout.forEachIndexed { stackOffsetMinusOne, typ ->
-                            res[stackOffsetMinusOne + 1] = argPos
-                            when (typ) {
-                                InternalArgSort.CALLDATA_POINTER,
-                                InternalArgSort.SCALAR -> {
-                                    argPos++
-                                }
-
-                                InternalArgSort.CALLDATA_ARRAY_ELEMS -> {
-                                    check(resolved.typeLayout.getOrNull(stackOffsetMinusOne + 1) == InternalArgSort.CALLDATA_ARRAY_LENGTH) {
-                                        "Expected $typ at stack offset ${stackOffsetMinusOne + 1} to have ${
-                                            InternalArgSort.CALLDATA_ARRAY_LENGTH
-                                        } at the next stack offset, but found ${
-                                            resolved.typeLayout.getOrNull(
-                                                stackOffsetMinusOne + 1
-                                            )
-                                        } "
-                                    }
-                                    // Do not increment [argPos] (referring to the same [argPos] as the
-                                    // InternalArgSort of sort[CALLDATA_ARRAY_ELEMS]) coming after
-                                }
-
-                                InternalArgSort.CALLDATA_ARRAY_LENGTH -> {
-                                    argPos++
-                                }
-                            }
+                            "Double annotation for pointer ${resolution.sourceAnnotation}"
                         }
                     }
-                    resolved.typeLayout.forEachIndexed { indexTypeLayout, typeLayout ->
-                        val sym = TACSymbol.Var.stackVar(expectedHeight)
-                        val arg = InternalFuncArg(
-                            s = sym,
-                            sort = typeLayout,
-                            offset = indexTypeLayout + 1,
-                            location = null,
-                            logicalPosition = stackOffsetToArgPos[indexTypeLayout + 1] ?: error("Incorrect offset without an argument position for $functionId")
-                        )
-                        args.add(arg)
-                        if (resolved.resolvedHint != null && indexTypeLayout == resolved.resolvedHint.first) {
-                            if(resolved.resolvedHint.third.relocateOrNull()?.any { sym == it } != true || resolved.resolvedHint.second != typeLayout) {
-                                logger.warn {
-                                    "Stack layout mismatch for $functionId (at $callSrc), expected $sym to be argument $indexTypeLayout " +
-                                            " but the hint says it is actually ${resolved.resolvedHint.third} for $functionId"
-                                }
-                                recordParseFailure()
-                                return@forEach
-                            }
-                        }
-                        expectedHeight--
-                    }
-                    InternalFuncStartAnnotation(
-                        startPc = dstPc,
-                        id = thisId,
-                        stackOffsetToArgPos = stackOffsetToArgPos,
-                        methodSignature = functionId,
-                        args = args.toList(),
-                        callSiteSrc = callSiteSrc,
-                        calleeSrc = calleeSrc
-                    )
+                    toInstrument.add(resolution)
                 }
-            } else {
-                // jk, I guess we don't want these around anymore
-                return@forEach
-            }
-            val toAnnot = (resolved as ResolutionSuccess).handledAnnotation
-            if(!toAnnotateAsHandled.add(toAnnot)) {
-                logger.warn {
-                    "Double annotation for pointer $toAnnot"
-                }
-            }
-            val entryAnnotation = run {
-                handled.addAll(siblingCalls)
-                g.elab(dst).commands.first().ptr
-            }
-            toPrefix.computeIfAbsent(entryAnnotation) {
-                mutableListOf()
-            }.add(TACCmd.Simple.AnnotationCmd(
-                INTERNAL_FUNC_START,
-                res
-            ))
-            val returnVals = (0 until numReturn).map {
-                InternalFuncRet(
-                    offset = it,
-                    s = TACSymbol.Var.stackVar(returnAddressHeight - it),
-                    location = null
-                )
-            }
-            v.forEach {
-                toPrefix.computeIfAbsent(g.elab(it.src.node).commands.last().ptr) {
-                    mutableListOf()
-                }.add(
-                    TACCmd.Simple.AnnotationCmd(
-                        INTERNAL_FUNC_EXIT,
-                        InternalFuncExitAnnotation(
-                            id = thisId,
-                            rets = returnVals.toList(),
-                            methodSignature = functionId
-                        )
-                    )
-                )
             }
         }
+
+        val handledStarts = handled.mapNotNullToSet {
+            g.succ(it).singleOrNull()
+        }
+        toInstrument.addAll(alternativeAnalysis(
+            c, source, w, handledStarts, toAnnotateAsHandled
+        ))
+
+        for(toInst in toInstrument) {
+            toPrefix.computeIfAbsent(toInst.entryAnnot.first) {
+                mutableListOf()
+            }.add(TACCmd.Simple.AnnotationCmd(
+                INTERNAL_FUNC_START, toInst.entryAnnot.second
+            ))
+            for((where, exit) in toInst.exit) {
+                toPrefix.computeIfAbsent(where) {
+                    mutableListOf()
+                }.add(TACCmd.Simple.AnnotationCmd(
+                    INTERNAL_FUNC_EXIT, exit
+                ))
+            }
+        }
+
         val p = c.toPatchingProgram()
         for((where, what) in toPrefix) {
             p.replace(where) { l ->
@@ -689,12 +1130,11 @@ object FunctionFlowAnnotator {
         for(where in toAnnotateAsHandled) {
             p.replace(where) { l ->
                 check(l.maybeAnnotation(META_KEY) != null) {
-                    "Attempting to annotate a meta key as handled, but it's not a metakey??"
+                    "Attempting to annotate a meta key as handled, but it's not a metakey?? ${g.elab(where)}"
                 }
                 listOf(l.plusMeta(HANDLED_ANNOTATION))
             }
         }
-        unresolved.addAll(didNotFind)
         p.replace(c.analysisCache.graph.roots.singleOrNull()?.ptr ?: return c) { it ->
             listOf(TACCmd.Simple.AnnotationCmd(
                 INTERNAL_FUNC_FINDER_INFO,
@@ -705,6 +1145,79 @@ object FunctionFlowAnnotator {
                 it)
         }
         return p.toCodeNoTypeCheck(c)
+    }
+
+    /**
+     * Starting at the detected beginning of a function, try to trace to some function finder hints. These function
+     * finder hints may not in [block] due to compiler inserted initialization code, which is handled by this
+     * function.
+     *
+     * Returns a [ResolutionHints] indicating hints were found but failed to parse, resolution success, or that no hints were found.
+     */
+    private fun tryResolveHints(
+        block: TACBlock,
+        w: Worker,
+        g: TACCommandGraph,
+    ): ResolutionHints {
+        /*
+         * Compute the *actual* start of the function, i.e., where we expect to see the internal hint annotations.
+         *
+         * At present, this entails skipping over default-initialized memory allocations that are inserted by the compiler
+         * for struct types returned.
+         *
+         * TODO(jtoman): double check that these initializers do not mutate return/stack information
+         */
+        var properStart = block
+        while (properStart.commands.none {
+                it.maybeAnnotation(META_KEY) != null
+            }) {
+            val edge = w.complete.singleOrNull {
+                properStart.id == it.dest.node
+            } ?: break
+            val nxt = getInitializerInfoOrNull(
+                t = edge,
+                w = w,
+                g = g
+            ) ?: break
+            properStart = g.elab(nxt)
+        }
+        /*
+           optimizer sometimes inlines this code to avoid an internal function call. detect the prefix
+         */
+        val resolved = if (properStart.commands.takeUntil {
+                it.cmd is TACCmd.Simple.AnnotationCmd && it.cmd.annot.k == META_KEY
+            }?.any {
+                it.cmd is TACCmd.Simple.AssigningCmd.ByteStore
+            } == true) {
+            val prefix = properStart.commands.takeUntil {
+                it.cmd is TACCmd.Simple.AnnotationCmd && it.cmd.annot.k == META_KEY
+            }!!.toList()
+            val indOf = prefix.indexOfLast {
+                it.cmd is TACCmd.Simple.AssigningCmd.ByteStore
+            }
+            check(indOf >= 0) {
+                "lol what $indOf $prefix"
+            }
+            val initPrefix = prefix.subList(0, indOf + 1)
+            with(g) {
+                if (!isInitializerPrefix(initPrefix)) {
+                    ResolutionHints.None
+                } else {
+                    collectHelperAnnotations(
+                        block = properStart,
+                        startPoint = indOf + 1,
+                        stackStart = null
+                    )
+                }
+            }
+        } else {
+            with(g) {
+                collectHelperAnnotations(
+                    block = properStart
+                )
+            }
+        }
+        return resolved
     }
 
     private fun mustRevertWithoutReturn(g: TACCommandGraph, blockId: NBId) : Boolean {
@@ -1235,9 +1748,12 @@ object FunctionFlowAnnotator {
         object CalldataPointerPlaceHolder : StackArg()
     }
 
-    sealed interface ResolutionSuccess {
-        val numArgs: Int
+    private sealed interface ResolutionWithId {
         val internalId: String
+    }
+
+    private sealed interface ResolutionSuccess: ResolutionWithId {
+        val numArgs: Int
         val handledAnnotation: CmdPointer
         val startLocation: CmdPointer
     }
@@ -1275,7 +1791,11 @@ object FunctionFlowAnnotator {
                 get() = typeLayout.size
         }
         object None : ResolutionHints()
-        data class FailureFor(val msg: String, val id: String) : ResolutionHints()
+        data class FailureFor(val msg: String, val id: String) : ResolutionHints(), ResolutionWithId {
+            override val internalId: String
+                get() = id
+        }
+
     }
 
     context(TACCommandGraph)
@@ -1997,7 +2517,7 @@ object FunctionFlowAnnotator {
         val functionIdsWithoutAMatch = mutableSetOf<Pair<CmdPointer, String>>()
         val functionIdsWithWrongMatch = mutableSetOf<Pair<CmdPointer, String>>()
         val g = c.analysisCache.graph
-        g.commands.mapNotNull { it `to?` it.maybeAnnotation(InternalFunctionHint.META_KEY)?.takeIf { it.flag == 0 } }
+        g.commands.mapNotNull { it `to?` it.maybeAnnotation(META_KEY)?.takeIf { it.flag == 0 } }
             .forEach { (lc, hint) ->
                 val where = lc.ptr
                 val functionId = hint.sym

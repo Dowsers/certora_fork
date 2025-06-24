@@ -33,7 +33,7 @@ sealed class SimpleIntQualifier : SelfQualifier<SimpleIntQualifier> {
             return utils.hashObject(this)
         }
 
-        override fun saturateWith(equivClasses: VariableSaturation): List<SimpleIntQualifier> {
+        override fun saturateWith(equivClasses: VariableSaturation): List<Condition> {
             return equivClasses(op1).flatMap { x ->
                 equivClasses(op2).map {y ->
                     Condition(x, y, condition)
@@ -66,7 +66,7 @@ sealed class SimpleIntQualifier : SelfQualifier<SimpleIntQualifier> {
             return utils.hashObject(this)
         }
 
-        override fun saturateWith(equivClasses: VariableSaturation): List<SimpleIntQualifier> {
+        override fun saturateWith(equivClasses: VariableSaturation): List<LogicalConnective> {
             return equivClasses(op1).flatMap { x ->
                 equivClasses(op2).map { y ->
                     LogicalConnective(x, y, connective, applyNot)
