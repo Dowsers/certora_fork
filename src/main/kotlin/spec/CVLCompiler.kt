@@ -972,7 +972,7 @@ class CVLCompiler(
             sub.block
         }
         val compiledBody = if (body.isEmpty()) {
-            CVLTACProgram.empty("empty function").asSimple()
+            CommandWithRequiredDecls(TACCmd.Simple.NopCmd).toProg("empty block", compilationEnvironment).toSimple()
         } else {
             /**
              * usually, we would wrap [CVLCmd]s with labels early-on at [compileRule],

@@ -38,3 +38,5 @@ invariant mInvariantParamInPreserved(address b) c.m[b] >= 0 {
         require getM(e, b) >= 0;
     }
 }
+
+function setup() {}
