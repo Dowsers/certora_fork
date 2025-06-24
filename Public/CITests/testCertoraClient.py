@@ -750,7 +750,11 @@ class TestClient(unittest.TestCase):
             is_illegal_attr = (attr in [Attrs.EvmProverAttributes.CLOUD_GLOBAL_TIMEOUT,
                                         Attrs.EvmProverAttributes.SOLC_ARGS])
 
-            if has_no_jar_flag or is_illegal_attr:
+            # Ranger attributes are ignored by "normal" runs and aren't sent to the jar
+            is_ranger_attribute = attr in [Attrs.EvmProverAttributes.RANGE,
+                                            Attrs.EvmProverAttributes.RANGER_FAILURE_LIMIT]
+
+            if has_no_jar_flag or is_illegal_attr or is_ranger_attribute:
                 continue
             try:
                 args = test_simple_args(attr)
