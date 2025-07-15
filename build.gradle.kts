@@ -865,16 +865,20 @@ tasks {
 
 	val gradleVersionTask = register<Task>("git-version-resource") {
 		if(!project.hasProperty("testing")) {
+			val gitDir = project.rootProject.file(".git")
+			if (!gitDir.exists()) {
+				return@register
+			}
 			val versionDetails by lazy {
 				(project.extensions.extraProperties.get("versionDetails") as Callable<com.palantir.gradle.gitversion.VersionDetails>)()
 			}
 			val versionString by lazy {
-				"${versionDetails.gitHash}${
-					versionDetails.branchName?.let {
-						"($it)"
-					} ?: ""
-				}${".dirty".takeIf { !versionDetails.isCleanTag } ?: ""}"
-			}
+					"${versionDetails.gitHash}${
+						versionDetails.branchName?.let {
+							"($it)"
+						} ?: ""
+					}${".dirty".takeIf { !versionDetails.isCleanTag } ?: ""}"
+				}
 			val where = project.file("$genResourceDir/certora-version.properties")
 			outputs.file(where)
 			doLast {
