@@ -1596,6 +1596,30 @@ class CVLCompiler(
         }
     }
 
+    fun ParametricInstantiation<CVLTACProgram>.wrapAsAssumeInvariant(invariantId: String): CVLTACProgram {
+        // Creating a labelId to be able to map start and end of the currently compiled command in [instrumentation.transformers.RequireInvariantTransformer]
+        val labelId = Allocator.getFreshId(Allocator.Id.REQUIRE_INVARIANT_CMDS)
+        val meta = TACMeta.RequireInvariant(labelId, invariantId)
+        return this.getAsSimple()
+            .wrapWith(
+                CommandWithRequiredDecls(
+                    listOf(
+                        TACCmd.Simple.AnnotationCmd(
+                            CVL_ASSUME_INVARIANT_CMD_START,
+                            meta
+                        )
+                    )
+                ),
+                CommandWithRequiredDecls(
+                    listOf(
+                        TACCmd.Simple.AnnotationCmd(
+                            CVL_ASSUME_INVARIANT_CMD_END,
+                            meta
+                        )
+                    )
+                )
+            )
+    }
     /**
      * @param allocatedTACSymbols is imperatively extended with additional symbols
      */
@@ -1619,7 +1643,7 @@ class CVLCompiler(
             ),
             allocatedTACSymbols,
             CompilationEnvironment()
-        )
+        ).wrapAsAssumeInvariant(cmd.id).asSimple()
     }
 
 
@@ -1739,13 +1763,9 @@ class CVLCompiler(
             RequireInvariantProgram(programToMove = acc.programToMove.merge(havocedVariableAssumptions), programToMaintain = acc.programToMaintain.merge(evaulatedExpressionOfParam))
         }
 
-        // Creating a labelId to be able to map start and end of the currently compiled command in [instrumentation.transformers.RequireInvariantTransformer]
-        val labelId = Allocator.getFreshId(Allocator.Id.REQUIRE_INVARIANT_CMDS)
 
         val toBePlacedAfterRuleParamSetup = combinedProg.programToMove.merge(invariantAssume)
-            .getAsSimple()
-            .prependToBlock0(CommandWithRequiredDecls(listOf(TACCmd.Simple.AnnotationCmd(CVL_ASSUME_INVARIANT_CMD_START, TACMeta.RequireInvariant(labelId, cmd.id)))))
-            .appendToSinks(CommandWithRequiredDecls(listOf(TACCmd.Simple.AnnotationCmd(CVL_ASSUME_INVARIANT_CMD_END, TACMeta.RequireInvariant(labelId, cmd.id)))))
+            .wrapAsAssumeInvariant(cmd.id)
 
         return combinedProg.programToMaintain.merge(toBePlacedAfterRuleParamSetup).toSimple()
     }
