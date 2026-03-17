@@ -439,11 +439,13 @@ class ScalarDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> private con
                     else -> types
                 }
             }
+            // top xor top ~> num xor num
             // top << top ~> num << num
             // top >> top ~> num >> num
             // top / top  ~> num / num
             // top % top  ~> num % num
             // top * top  ~> num * num
+            BinOp.XOR,
             BinOp.ARSH,
             BinOp.LSH,
             BinOp.RSH,
