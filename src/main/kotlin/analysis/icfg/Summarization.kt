@@ -59,7 +59,7 @@ object Summarization {
     private data class SummarizationContext(
         val withSummaries: IWithSummaryInfo,
         val scene: IScene,
-        val cvlCompiler: CVLCompiler?,
+        val cvlCompiler: CVLCompiler,
         val manager: InliningDecisionManager.PostStorageAnalysis
     ) : IWithSummaryInfo by withSummaries
 
@@ -160,7 +160,7 @@ object Summarization {
         code: CoreTACProgram,
         scene: IScene,
         summaries: IWithSummaryInfo,
-        cvlCompiler: CVLCompiler?
+        cvlCompiler: CVLCompiler
     ): CoreTACProgram {
         val manager = InliningDecisionManager.PostStorageAnalysis(
             scene = scene,
@@ -1037,7 +1037,8 @@ object Summarization {
                     patching,
                     summ,
                     appliedSummary,
-                    methodCallStack
+                    methodCallStack,
+                    cvlCompiler
                 )
             }
         }
@@ -1073,7 +1074,8 @@ object Summarization {
                     summ = q.selectedSummary.summ,
                     appliedSummary = AppliedSummary.LateInliningDispatcher,
                     summAppReason = SummaryApplicationReason.SpecialReason("Late inlined method calls due to an (internal) dispatcher"),
-                    getCallersAtPointer = methodCallStack
+                    getCallersAtPointer = methodCallStack,
+                    cvlCompiler = cvlCompiler
                 )
             }
             DispatchSummary.OptimisticFallback -> {

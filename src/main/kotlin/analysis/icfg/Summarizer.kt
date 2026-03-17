@@ -20,13 +20,16 @@ package analysis.icfg
 import allocator.Allocator
 import allocator.SuppressRemapWarning
 import analysis.*
+import analysis.CommandWithRequiredDecls
 import analysis.CommandWithRequiredDecls.Companion.withDecls
+import analysis.SimpleCmdsWithDecls
 import analysis.EthereumVariables.returndata
 import analysis.EthereumVariables.returnsize
 import com.certora.collect.*
 import config.Config
 import datastructures.stdcollections.*
 import evm.*
+import icfg.ResolvedLinkInfo
 import instrumentation.calls.CalldataEncoding
 import log.*
 import report.*
@@ -51,6 +54,7 @@ import vc.data.*
 import vc.data.TACMeta.IS_EXTCODESIZE
 import vc.data.TACSymbol.Companion.Zero
 import vc.data.TACSymbol.Companion.atSync
+import vc.data.tacexprutil.ExprUnfolder
 import vc.data.tacexprutil.TACCmdStructFlattener
 import java.math.BigInteger
 import java.util.stream.Collectors
@@ -551,14 +555,20 @@ object Summarizer {
             )
         }
         val resolution = (callSumm.callTarget.map {
-            (it as? CallGraphBuilder.CalledContract.CreatedReference.Resolved)?.tgtConntractId
+            when (it) {
+                is CallGraphBuilder.CalledContract.CreatedReference.Resolved -> it.tgtConntractId
+                is CallGraphBuilder.CalledContract.FullyResolved.StorageLink -> it.contractId
+                else -> null
+            }
         })
         return callSumm.sigResolution.flatMap { sig -> scene.getMethods(sig!!) }.let { callees ->
             if (null in resolution) {
                 callees
             } else {
                 callees.filter {
-                    (it.getContainingContract() as? IClonedContract)?.sourceContractId in resolution
+                    val contract = it.getContainingContract()
+                    val id = (contract as? IClonedContract)?.sourceContractId ?: contract.instanceId
+                    id in resolution
                 }
             }
         }.letIf(isLateInlininedDispatcher){ callees -> callees.filter { it.matchesCallDataEncoding(callSumm.callConvention.input) }}
@@ -577,7 +587,8 @@ object Summarizer {
         summ: SpecCallSummary.Dispatcher,
         appliedSummary: Summarization.AppliedSummary,
         summAppReason: SummaryApplicationReason,
-        getCallersAtPointer: InlinedMethodCallStack
+        getCallersAtPointer: InlinedMethodCallStack,
+        cvlCompiler: CVLCompiler
     ) {
         val callSumm = where.cmd.summ
         require(callSumm is CallSummary) { "Expected $callSumm to be a ${CallSummary::javaClass.name}" }
@@ -604,11 +615,31 @@ object Summarizer {
             )
         }
 
+        val storageLinks = callSumm.callTarget.filterIsInstance<CallGraphBuilder.CalledContract.FullyResolved.StorageLink>()
+        if (storageLinks.isNotEmpty()) {
+            logStorageLinkDispatch(scene, caller, storageLinks, calleeMethods)
+        }
+
+        // When all storage links are wildcard-covered, suppress the havoc fallback (assume-false instead).
+        // This is sound because the wildcard declares an exhaustive set of target contracts.
+        val wildcardCovered = storageLinks.isNotEmpty() && storageLinks.all { it.wildcardCovered }
+        val effectiveOptimistic = summ.optimistic || wildcardCovered
+
+        // For wildcard+concrete coexistence, emit an assumption constraining
+        // non-concrete indices to only wildcard targets.
+        val wildcardPrecedenceCmds = if (wildcardCovered) {
+            val result = buildWildcardPrecedenceAssumption(where, callSumm, scene, caller, cvlCompiler)
+            patching.addVarDecls(result.varDecls)
+            result.cmds
+        } else {
+            emptyList()
+        }
+
         val callers = getCallersAtPointer(where.ptr)
         instrumentDispatcher(
             patching,
             where,
-            summ.optimistic,
+            effectiveOptimistic,
             caller,
             scene,
             defaultHavocType,
@@ -617,7 +648,121 @@ object Summarizer {
             calleeMethods,
             callers,
             summAppReason,
+            wildcardPrecedenceCmds,
         )
+    }
+
+    private fun logStorageLinkDispatch(
+        scene: IScene,
+        caller: BigInteger,
+        storageLinks: List<CallGraphBuilder.CalledContract.FullyResolved.StorageLink>,
+        calleeMethods: List<ITACMethod>
+    ) {
+        val callerContract = scene.getContract(caller)
+        val targetContracts = storageLinks.joinToString(", ") { scene.getContract(it.contractId).name }
+        val methods = calleeMethods.joinToString(", ") { "${it.getContainingContract().name}.${it.soliditySignature}" }
+        val targetIds = storageLinks.mapToSet { it.contractId }
+        val s2n = callerContract.getStorageLayout()?.entries?.associate { (name, info) -> info.slot to name }
+        val fieldStr = callerContract.resolvedLinks.fieldsTargeting(targetIds, s2n)
+            .takeIf { it.isNotEmpty() }?.joinToString("/")?.let { " via $it" }.orEmpty()
+        Logger.regression { "Spec link dispatch in ${callerContract.name}$fieldStr: storage linked to [$targetContracts], inlining [$methods]" }
+    }
+
+    /**
+     * Builds `assume(storageLoc in concreteSlots || addr in wildcardTargets)` commands.
+     * Returns empty list if not applicable (no wildcard+concrete coexistence).
+     * Uses [ResolvedLinkInfo.META_KEY] attached by [StorageLinkResolver] to get the
+     * [LinkAccessPath] and storage location symbol. The symbol is kept in sync with program
+     * transformations via [TransformableSymEntity].
+     *
+     * For arrays: compares storage slot offsets (index * elementSize + structFieldOffset).
+     * For mappings: compares keccak results directly (avoids skey_add domain issues).
+     */
+    private fun buildWildcardPrecedenceAssumption(
+        where: LTACCmdView<TACCmd.Simple.SummaryCmd>,
+        callSumm: CallSummary,
+        scene: IScene,
+        caller: BigInteger,
+        cvlCompiler: CVLCompiler
+    ): SimpleCmdsWithDecls {
+        val toVar = callSumm.toVar as? TACSymbol.Var ?: return SimpleCmdsWithDecls()
+        val items = where.cmd.meta.find(ResolvedLinkInfo.META_KEY)?.items ?: return SimpleCmdsWithDecls()
+
+        val resolvedLinks = scene.getContract(caller).resolvedLinks
+
+        // Group items by storageReadId: items from the same storage read (e.g., a phi'd
+        // storage pointer covering multiple registries) are merged into one assumption;
+        // items from different storage reads get separate, tighter assumptions.
+        // Merging within a group is necessary for soundness (separate assumes would be
+        // contradictory when only one branch is taken). Keeping groups separate preserves
+        // precision for the common case of independent SLOADs.
+        // Note: the merged assumption for phi'd storage pointers is imprecise — it can't
+        // distinguish which base slot was actually selected, so it allows the solver to
+        // mix wildcard targets across registries.
+        //
+        // For a wildcard link like:
+        //   a.registry[0] = FooContract;
+        //   a.registry[1] = BarContract;
+        //   a.registry[_] = DefaultContract;
+        // and a call whose callee C comes from slot s, we generate:
+        //   assume(s == slotOf(a.registry[0]) || s == slotOf(a.registry[1]) || C == DefaultContract)
+        // i.e., either the storage slot matches a concrete index, or the callee is the wildcard target.
+        val groups = items.groupBy { it.storageReadId }
+
+        val results = groups.entries.flatMapIndexed { groupIdx, (_, groupItems) ->
+            val slotDisjuncts = mutableListOf<TACExpr>()
+            val addrDisjuncts = mutableListOf<TACExpr>()
+            val decls = mutableSetOf<TACSymbol.Var>()
+            val cmds = mutableListOf<TACCmd.Simple>()
+
+            groupItems.forEachIndexed { itemIdx, item ->
+                val wcInfo = resolvedLinks.wildcardLinks[item.linkPath]
+                    ?.takeIf { it.concreteIndicesToIgnore.isNotEmpty() }
+                    ?: return@forEachIndexed
+                Logger.regression {
+                    "wildcard precedence: path=${item.linkPath} info=$wcInfo"
+                }
+                val storageLoc = item.storageLoc
+                (storageLoc as? TACSymbol.Var)?.let { decls.add(it) }
+                val wildcardTargetAddrs = wcInfo.targets.map { scene.getContract(it).addressSym as TACSymbol }
+                decls.addAll(wildcardTargetAddrs.filterIsInstance<TACSymbol.Var>())
+
+                wcInfo.concreteIndicesToIgnore.forEachIndexed { idx, concreteIndices ->
+                    val indexSyms = concreteIndices.map { cvlCompiler.resolveIndexSymbol(it) }
+                    decls.addAll(indexSyms.filterIsInstance<TACSymbol.Var>())
+                    val (slotCmds, slotSym) = item.linkPath.computeSlot(indexSyms.iterator(), "${groupIdx}_${itemIdx}_$idx",
+                        makeHashCmd = { lhs, length, args ->
+                            TACCmd.Simple.AssigningCmd.AssignSimpleSha3Cmd(lhs, TACSymbol.Const(length), args)
+                        },
+                        arrayMetadata = resolvedLinks.arrayMetadata
+                    )
+                    cmds.addAll(slotCmds.cmds)
+                    decls.addAll(slotCmds.varDecls)
+                    slotDisjuncts.add(TACExpr.BinRel.Eq(storageLoc.asSym(), slotSym.asSym()))
+                }
+                for (addr in wildcardTargetAddrs) {
+                    addrDisjuncts.add(TACExpr.BinRel.Eq(toVar.asSym(), addr.asSym()))
+                }
+            }
+
+            val assumeCmds = emitPrecedenceAssume(slotDisjuncts + addrDisjuncts)
+            listOf(CommandWithRequiredDecls(cmds, decls).merge(assumeCmds))
+        }
+        return CommandWithRequiredDecls.mergeMany(results)
+    }
+
+
+    /** Emits the precedence assume command from a list of disjuncts. */
+    private fun emitPrecedenceAssume(
+        disjuncts: List<TACExpr>,
+    ): SimpleCmdsWithDecls {
+        if (disjuncts.isEmpty()) {
+            return SimpleCmdsWithDecls()
+        }
+        val assumeExpr = disjuncts.singleOrNull() ?: TACExpr.BinBoolOp.LOr(disjuncts)
+        return ExprUnfolder.unfoldPlusOneCmd("wildcardPrecedence", assumeExpr) {
+            TACCmd.Simple.AssumeCmd(it.s, "wildcard link precedence")
+        }
     }
 
     private fun instrumentDispatcher(
@@ -632,6 +777,7 @@ object Summarizer {
         callees: Collection<ITACMethod>,
         callers: List<MethodRef>,
         summAppReason: SummaryApplicationReason,
+        wildcardPrecedenceCmds: List<TACCmd.Simple> = emptyList(),
     ) {
         val existingInvocationCounts = callees.associateWith { callee ->
             callers.count {
@@ -640,6 +786,7 @@ object Summarizer {
         }
         val tmp = TACKeyword.TMP(Tag.Bool, "dispatchCmp")
         val inlineSuccessor = patching.splitBlockAfter(where.ptr)
+
         // Create and add the last else block to the program. It is bound to it's successor,
         // but at the moment no block will point here
         var elseBlock = if (!optimistic) {
@@ -867,7 +1014,7 @@ object Summarizer {
             )
         )
         patching.replaceCommand(
-            where.ptr, listOf(
+            where.ptr, wildcardPrecedenceCmds + listOf(
                 TACCmd.Simple.JumpCmd(dst = annotStartBlock)
             ), treapSetOf(annotStartBlock)
         )
@@ -1037,7 +1184,8 @@ object Summarizer {
         patching: SimplePatchingProgram,
         where: LTACCmdView<TACCmd.Simple.SummaryCmd>,
         appliedSummary: Summarization.AppliedSummary.Config,
-        methodCallStack: InlinedMethodCallStack
+        methodCallStack: InlinedMethodCallStack,
+        cvlCompiler: CVLCompiler
     ) {
         val callSumm = where.cmd.summ
         require(callSumm is CallSummary) { "Expected $callSumm to be a ${CallSummary::javaClass.name}" }
@@ -1069,7 +1217,8 @@ object Summarizer {
                     The mapping between Python flags and their corresponding Java flags
                     appears in certoraContext.py, but not in our Kotlin code. */
                     SummaryApplicationReason.Cli(Config.DispatchOnCreated.pythonName!!),
-                    methodCallStack
+                    methodCallStack,
+                    cvlCompiler
                 )
             }
 
@@ -1085,7 +1234,8 @@ object Summarizer {
                     appliedSummary.specCallSumm.copy(optimistic = optimistic),
                     Summarization.AppliedSummary.Config.AutoDispatcher,
                     SummaryApplicationReason.SpecialReason("When auto mode is enabled, setting all unresolved calls to automatically dispatch"),
-                    methodCallStack
+                    methodCallStack,
+                    cvlCompiler
                 )
             }
 
@@ -1180,7 +1330,7 @@ object Summarizer {
         patching: SimplePatchingProgram,
         where: LTACCmdView<TACCmd.Simple.SummaryCmd>,
         appliedSummary: Summarization.AppliedSummary.MethodsBlock,
-        cvlCompiler: CVLCompiler?,
+        cvlCompiler: CVLCompiler,
         linkingState: ExternalLinkingState,
         inliningDecisionManager: InliningDecisionManager.PostStorageAnalysis,
         getCallersAtPointer: InlinedMethodCallStack,
@@ -1301,15 +1451,12 @@ object Summarizer {
                             specCallSumm,
                             appliedSummary,
                             summSpecAppReason,
-                            getCallersAtPointer
+                            getCallersAtPointer,
+                            cvlCompiler
                         )
                     }
 
                     is SpecCallSummary.Exp -> {
-                        check(cvlCompiler != null) {
-                            "The cvlCompiler field should only be null in the case of the integrative checker, but " +
-                                "there we don't expect expression summaries"
-                        }
                         val generatedSummaryInitial = generateExternalExpSummary(
                             specCallSumm,
                             callSumm,
@@ -2118,4 +2265,16 @@ object Summarizer {
         patching.addVarDecls(summ.code.getSymbols())
         patching.procedures.add(summ.proc)
     }
+}
+
+/** Returns field/variable names from the storage layout that link to the given [targetIds]. */
+private fun ResolvedLinks.fieldsTargeting(targetIds: Set<ContractId>, slotToName: Map<StorageSlotNum, String>?): List<String> {
+    if (slotToName == null) {
+        return emptyList()
+    }
+    fun slotName(path: LinkAccessPath) = slotToName[path.rootSlot()]
+    return scalars.filterValues { it == targetIds }.keys.mapNotNull(::slotName) +
+        elementLinks.filterValues { entries -> entries.flatMapToSet { it.targets } == targetIds }.keys.mapNotNull(::slotName) +
+        wildcardLinks.filterValues { it.targets == targetIds }.keys.mapNotNull(::slotName) +
+        immutables.filterValues { it == targetIds }.keys
 }

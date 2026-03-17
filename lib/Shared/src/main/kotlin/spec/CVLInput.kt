@@ -223,6 +223,7 @@ sealed class CVLInput {
                 val impDefinitions: MutableList<CVLDefinition> = mutableListOf()
                 val impHooks: MutableList<CVLHook> = mutableListOf()
                 val impImportedContracts: MutableList<CVLImportedContract> = mutableListOf()
+                val impLinkEntries: MutableList<CVLLinkEntryBase> = mutableListOf()
 
                 val impRulesInUse: MutableList<ICVLRule> = mutableListOf()
                 val impInvsInUse: MutableList<CVLInvariant> = mutableListOf()
@@ -247,6 +248,7 @@ sealed class CVLInput {
                     )
                     impHooks.addAll(importedSpecFileAst.hooks)
                     impImportedContracts.addAll(importedSpecFileAst.importedContracts)
+                    impLinkEntries.addAll(importedSpecFileAst.linkEntries)
 
                     // Add rules and invariants that match the use declarations in [astWithoutMergedImports]
                     // NOTE: use declarations, as opposed to spec import declarations, are NOT transitive, i.e.,
@@ -307,6 +309,7 @@ sealed class CVLInput {
                         definitions = impDefinitions.also { it.addAll(astWithoutMergedImports.definitions) },
                         hooks = impHooks.also { it.addAll(astWithoutMergedImports.hooks) },
                         importedContracts = impImportedContracts.also { it.addAll(astWithoutMergedImports.importedContracts) },
+                        linkEntries = impLinkEntries.also { it.addAll(astWithoutMergedImports.linkEntries) },
                         importedSpecFiles = emptyList(), // Treat the "merged" .spec file as if it has no imports
                         overrideDeclarations = OverrideDeclarations() // Treat the "merged" .spec file as if it has no overrides
                     )

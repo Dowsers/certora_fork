@@ -77,6 +77,93 @@ class InvalidCVLTypeException(msg: String, contractName: String?, id: String) :
 @Suppress("unused")
 class InvalidParameterType(msg: String) : RuntimeException(msg)
 
+/**
+ * Restricted index value for link path segments. Only literals and contract aliases are allowed.
+ */
+@Serializable
+sealed class LinkIndexValue : HasKSerializable, java.io.Serializable {
+    /** A numeric literal: `a.field[42]` */
+    @KSerializable
+    data class NumericLiteral(val value: BigInteger) : LinkIndexValue() {
+        override fun toString() = "$value"
+    }
+
+    /** `to_bytesK(numericLiteral)`: `a.field[to_bytes4(0x1234)]` */
+    @KSerializable
+    data class BytesLiteral(val k: Int, val value: BigInteger) : LinkIndexValue() {
+        override fun toString() = "to_bytes$k($value)"
+    }
+
+    /** A contract alias used as an address key: `a.field[myContract]` */
+    @KSerializable
+    data class ContractRef(val alias: ContractAlias) : LinkIndexValue() {
+        override fun toString() = alias
+    }
+}
+
+@Serializable
+sealed class CVLLinkPathSegment : HasKSerializable {
+    /** Unchecked index from the parser — holds a raw CVLExp until the typechecker validates it. */
+    @KSerializable
+    data class UncheckedIndex(val expr: CVLExp) : CVLLinkPathSegment() {
+        override fun toString() = "[$expr]"
+    }
+
+    /** A validated link path segment — guaranteed to not contain [UncheckedIndex] after typechecking. */
+    @KSerializable
+    sealed class Resolved : CVLLinkPathSegment()
+
+    @KSerializable
+    data class Field(val name: String) : Resolved() {
+        override fun toString() = ".$name"
+    }
+    /** Validated index — only contains restricted literal/contract-ref forms. */
+    @KSerializable
+    data class Index(val value: LinkIndexValue) : Resolved() {
+        override fun toString() = "[${value}]"
+    }
+    @KSerializable
+    object Wildcard : Resolved() {
+        override fun toString() = "[_]"
+        private fun readResolve(): Any = Wildcard
+    }
+}
+
+typealias ContractAlias = String
+
+/**
+ * Common base for link entries before and after typechecking.
+ * [UnresolvedCVLLinkEntry] is produced by the parser; [CVLLinkEntry] by the typechecker.
+ */
+@KSerializable
+sealed interface CVLLinkEntryBase : HasRange, HasKSerializable {
+    val sourceContractAlias: ContractAlias
+    val fieldPath: List<CVLLinkPathSegment>
+    val targets: Set<ContractAlias>
+    override val range: Range
+    /** e.g. `a.field[0].subfield` */
+    val pathString: String get() = sourceContractAlias + fieldPath.joinToString("")
+}
+
+/** Parser-produced link entry. Indices may be [CVLLinkPathSegment.UncheckedIndex]; [isImmutable] is unknown. */
+@KSerializable
+data class UnresolvedCVLLinkEntry(
+    override val sourceContractAlias: ContractAlias,
+    override val fieldPath: List<CVLLinkPathSegment>,
+    override val targets: Set<ContractAlias>,
+    override val range: Range
+) : CVLLinkEntryBase
+
+/** Typechecked link entry. All path segments are [CVLLinkPathSegment.Resolved]. */
+@KSerializable
+data class CVLLinkEntry(
+    override val sourceContractAlias: ContractAlias,
+    override val fieldPath: List<CVLLinkPathSegment.Resolved>,
+    override val targets: Set<ContractAlias>,
+    val isImmutable: Boolean = false,
+    override val range: Range
+) : CVLLinkEntryBase
+
 @Serializable
 data class CVLAst(
     val importedMethods: List<MethodBlockEntry>,
@@ -92,7 +179,8 @@ data class CVLAst(
     val importedSpecFiles: List<CVLImportedSpecFile>,
     val overrideDeclarations: OverrideDeclarations,
     /* The scope is guaranteed to be initialized after [CVLScope.addScopes] */
-    val scope: CVLScope
+    val scope: CVLScope,
+    val linkEntries: List<CVLLinkEntryBase> = emptyList(),
 ) : IAstCodeBlocks
 
 interface CreatesScope {
