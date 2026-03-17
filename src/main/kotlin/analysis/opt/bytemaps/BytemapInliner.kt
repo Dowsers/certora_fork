@@ -38,7 +38,7 @@ import utils.Color.Companion.yellow
 import vc.data.*
 import vc.data.TACCmd.Simple.AssigningCmd.AssignExpCmd
 import vc.data.tacexprutil.ExprUnfolder.Companion.unfoldToSingleVar
-import vc.data.tacexprutil.asConstOrNull
+import vc.data.tacexprutil.asConst
 import vc.data.tacexprutil.asVarOrNull
 import vc.data.tacexprutil.isConst
 import vc.data.tacexprutil.isVar
@@ -189,7 +189,11 @@ class BytemapInliner private constructor(
                             ).sameValueOrNull()
 
                         override fun mapDefinition(lhs: TACSymbol.Var, param: TACSymbol.Var, definition: TACExpr) =
-                            definition.asConstOrNull?.let { Term(it).toRight() }
+                            when {
+                                definition.isConst -> Term(definition.asConst)
+                                tf.isQueryInsideMapDefBound(currentPtr, param, definition, query) == false -> Term(0)
+                                else -> null
+                            }?.toRight()
                     }
 
                     handler.handle(g.toCommand(currentPtr)) ?: null.toRight()

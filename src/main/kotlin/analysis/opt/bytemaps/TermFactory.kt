@@ -35,7 +35,11 @@ import utils.ModZm.Companion.inBounds
 import utils.ModZm.Companion.onesZerosMask
 import vc.data.*
 import vc.data.tacexprutil.asConst
+import vc.data.tacexprutil.asConstOrNull
+import vc.data.tacexprutil.asSym
+import vc.data.tacexprutil.asVarOrNull
 import vc.data.tacexprutil.isConst
+import vc.data.tacexprutil.isSym
 import java.math.BigInteger
 
 /**
@@ -373,5 +377,28 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
             else -> null
         }
     }
+
+
+    /**
+     * checks if this map-definition is of the sort `[i -> i < boundVar ? * : 0]`. If not it returns null.
+     * Then it tries to evaluate it on `i := [query]`, and return the evaluation of the condition `i < boundVar`, or
+     * null if there is no clear answer.
+     */
+    fun isQueryInsideMapDefBound(defPtr: CmdPointer, param: TACSymbol.Var, definition: TACExpr, query: Query): Boolean? {
+        val upperBound = if (
+            definition is TACExpr.TernaryExp.Ite &&
+            definition.i is TACExpr.BinRel.Lt &&
+            definition.i.o1.asVarOrNull == param &&
+            definition.i.o2.isSym &&
+            definition.t is TACExpr.Unconstrained &&
+            definition.e.asConstOrNull == BigInteger.ZERO
+        ) {
+            definition.i.o2.asSym
+        } else {
+            return null
+        }
+        return isInside(query.ptr, query.t, defPtr, Term(0), rhsTerm(defPtr, upperBound)!!)
+    }
+
 
 }
