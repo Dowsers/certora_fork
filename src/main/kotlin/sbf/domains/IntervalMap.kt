@@ -204,6 +204,18 @@ class IntervalMap<V> (
             FiniteInterval(start, end) to v
         }
 
+    /**
+     * Invoke [action] for each interval whose start is in `[rangeStart, rangeEnd]`
+     */
+    fun forEachInRange(rangeStart: Long, rangeEnd: Long, action: (FiniteInterval, V) -> Unit) {
+        var entry = map.ceilingEntry(rangeStart)
+        while (entry != null && entry.key <= rangeEnd) {
+            val (end, v) = entry.value
+            action(FiniteInterval(entry.key, end), v)
+            entry = map.higherEntry(entry.key)
+        }
+    }
+
     fun removeAll(pred: (FiniteInterval) -> Boolean): IntervalMap<V> {
         return IntervalMap(map.removeAll { (start, endAndV) ->
             val (end, _) = endAndV

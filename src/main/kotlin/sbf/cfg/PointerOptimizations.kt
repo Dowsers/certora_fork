@@ -53,16 +53,18 @@ fun runSimplePTAOptimizations(cfg: MutableSbfCFG, globals: GlobalVariables) {
  * Note that each optimization runs a scalar analysis since the program can change from one optimization
  * to another.
  **/
-fun runPTAOptimizations(prog: SbfCallGraph, memSummaries: MemorySummaries): SbfCallGraph {
+fun runPTAOptimizations(prog: SbfCallGraph, memSummaries: MemorySummaries, iteration: UInt): SbfCallGraph {
     return prog.transformSingleEntry { entryCFG ->
         val optEntryCFG = entryCFG.clone(entryCFG.getName())
         promoteMemcpy(optEntryCFG, prog.getGlobals(), memSummaries)
         removeUselessDefinitions(optEntryCFG)
         promoteMemset(optEntryCFG, prog.getGlobals(), memSummaries)
-        markLoadedAsNumForPTA(optEntryCFG)
         unhoistPromotedMemcpy(optEntryCFG)
         optEntryCFG.simplify(prog.getGlobals())
-        splitWideStores(optEntryCFG, prog.getGlobals(), memSummaries)
+        if (iteration == 0U) {
+            // Run this pass only once
+            splitWideStores(optEntryCFG, prog.getGlobals(), memSummaries)
+        }
         optEntryCFG.normalize()
         optEntryCFG.verify(true, "after PTA optimizations")
         optEntryCFG
@@ -80,6 +82,8 @@ fun runPostSlicingOptimizations(prog: SbfCallGraph): SbfCallGraph {
         optEntryCFG.verify(false, "[after markAddWithOverflow]")
         simplifyByteSwapInsts(optEntryCFG)
         optEntryCFG.verify(false, "[after simplifyByteSwapInsts]")
+        markLoadedAsNumForPTA(optEntryCFG)
+        optEntryCFG.verify(false, "[after markAddWithOverflow]")
         optEntryCFG.normalize()
         optEntryCFG.verify(true, "after post-slicing optimizations")
         optEntryCFG

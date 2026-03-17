@@ -359,15 +359,12 @@ class ScalarBaseDomain<ScalarValue>(
     }
 
     fun removeDeadStackFields(topStack: Long, useDynFrames: Boolean) {
-        val deadFields = ArrayList<ByteRange>()
-        for ((k, _) in stack) {
-            if (isDeadOffset(k.offset, topStack, useDynFrames)) {
-                deadFields.add(k)
-            }
-        }
-        while (deadFields.isNotEmpty()) {
-            val k = deadFields.removeLast()
-            stack = stack.put(k, sFac.mkTop())
+        stack = if (useDynFrames) {
+            // useDynFrames: dead if offset < topStack
+            stack.removeBelow(topStack)
+        } else {
+            // static frames: dead if offset > topStack
+            stack.removeAbove(topStack)
         }
     }
 

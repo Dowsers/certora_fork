@@ -17,28 +17,30 @@
 
 package sbf
 
-import sbf.analysis.ScalarAnalysis
 import sbf.cfg.*
 import sbf.disassembler.*
 import sbf.domains.*
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
 
-private val sbfTypesFac = ConstantSbfTypeFactory()
 private val globals = GlobalVariables(DefaultElfFileView)
 private val memSummaries = MemorySummaries()
-private val opts = MemsetPromotionOpts(2)
+private val opts = MemsetPromotionOpts()
 
 class PromoteMemsetTest {
 
     private fun checkMemset(cfg: SbfCFG): Boolean =
-        cfg.getEntry().getInstructions().any { inst ->
-            inst is SbfInstruction.Call && inst.name == "sol_memset_"
+        cfg.getBlocks().values.any { bb ->
+            bb.getInstructions().any { inst ->
+                inst is SbfInstruction.Call && inst.name == "sol_memset_"
+            }
         }
 
     private fun getNumOfStores(cfg: SbfCFG): Int =
-        cfg.getEntry().getInstructions().count { inst ->
-            inst is SbfInstruction.Mem && !inst.isLoad
+        cfg.getBlocks().values.sumOf { bb ->
+            bb.getInstructions().count { inst ->
+                inst is SbfInstruction.Mem && !inst.isLoad
+            }
         }
 
 
@@ -55,9 +57,8 @@ class PromoteMemsetTest {
             }
         }
 
-        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         println("Before transformation\n$cfg")
-        promoteMemset(cfg, scalarAnalysis, opts)
+        promoteMemset(cfg, globals, memSummaries, opts)
         println("After transformation\n$cfg")
         Assertions.assertEquals(true, checkMemset(cfg))
         Assertions.assertEquals(true, getNumOfStores(cfg) == 0)
@@ -76,9 +77,8 @@ class PromoteMemsetTest {
             }
         }
 
-        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         println("Before transformation\n$cfg")
-        promoteMemset(cfg, scalarAnalysis, opts)
+        promoteMemset(cfg, globals, memSummaries, opts)
         println("After transformation\n$cfg")
         Assertions.assertEquals(true, checkMemset(cfg))
         Assertions.assertEquals(true, getNumOfStores(cfg) == 0)
@@ -97,9 +97,8 @@ class PromoteMemsetTest {
             }
         }
 
-        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         println("Before transformation\n$cfg")
-        promoteMemset(cfg, scalarAnalysis, opts)
+        promoteMemset(cfg, globals, memSummaries, opts)
         println("After transformation\n$cfg")
         Assertions.assertEquals(false, checkMemset(cfg))
         Assertions.assertEquals(true, getNumOfStores(cfg) == 4)
@@ -118,9 +117,8 @@ class PromoteMemsetTest {
             }
         }
 
-        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         println("Before transformation\n$cfg")
-        promoteMemset(cfg, scalarAnalysis, opts)
+        promoteMemset(cfg, globals, memSummaries, opts)
         println("After transformation\n$cfg")
         // We could promote the first two stores to a memset of 16 but `promoteMemset` is greedy,
         // and it doesn't do that at the moment.
@@ -145,9 +143,8 @@ class PromoteMemsetTest {
             }
         }
 
-        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         println("Before transformation\n$cfg")
-        promoteMemset(cfg, scalarAnalysis, opts)
+        promoteMemset(cfg, globals, memSummaries, opts)
         println("After transformation\n$cfg")
         Assertions.assertEquals(true, checkMemset(cfg))
         Assertions.assertEquals(true, getNumOfStores(cfg) == 0)
@@ -167,9 +164,8 @@ class PromoteMemsetTest {
             }
         }
 
-        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         println("Before transformation\n$cfg")
-        promoteMemset(cfg, scalarAnalysis, opts)
+        promoteMemset(cfg, globals, memSummaries, opts)
         println("After transformation\n$cfg")
         // Here promoteMemset promotes the first two stores to a memset of 16 bytes and leave unchanged
         // the other two stores
@@ -181,24 +177,43 @@ class PromoteMemsetTest {
     fun `two promotable set of stores in the same block (1)`() {
         val cfg = SbfTestDSL.makeCFG("entrypoint") {
             bb(0) {
+                r4 = 0
+                goto (1)
+            }
+            bb(1) {
+                r5 = r4
+                goto (2)
+            }
+            bb(2) {
+                r4 = r5
+                goto (3)
+            }
+            bb(3) {
+                r5 = r4
+                goto (4)
+            }
+            bb(4) {
+                r4 = r5
+                goto (5)
+            }
+            bb(5) {
                 BinOp.ADD(r10, 4096)
                 r1= r10
-                r1[-56] = 0
-                r1[-48] = 0
-                r1[-40] = 0
+                r1[-56] = r4
+                r1[-48] = r4
+                r1[-40] = r4
                 r2 = 0
                 BinOp.ADD(r2, 1)
                 r3 = r10
-                r3[-200] = 0
-                r3[-192] = 0
-                r3[-208] = 0
+                r3[-200] = r4
+                r3[-192] = r4
+                r3[-208] = r4
                 exit()
             }
         }
 
-        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         println("Before transformation\n$cfg")
-        promoteMemset(cfg, scalarAnalysis, opts)
+        promoteMemset(cfg, globals, memSummaries, opts)
         println("After transformation\n$cfg")
         Assertions.assertEquals(true, checkMemset(cfg))
         Assertions.assertEquals(true, getNumOfStores(cfg) == 0)
@@ -221,9 +236,8 @@ class PromoteMemsetTest {
             }
         }
 
-        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         println("Before transformation\n$cfg")
-        promoteMemset(cfg, scalarAnalysis, opts)
+        promoteMemset(cfg, globals, memSummaries, opts)
         println("After transformation\n$cfg")
         Assertions.assertEquals(true, checkMemset(cfg))
         Assertions.assertEquals(true, getNumOfStores(cfg) == 0)

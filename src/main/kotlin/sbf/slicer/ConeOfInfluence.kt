@@ -71,7 +71,7 @@ fun sliceAndPTAOptLoop(
 
         // Run PTA optimizations that must be run after program has been inlined and sliced
         optProg = timeIt("optimizations to help the memory analysis") {
-            runPTAOptimizations(optProg, memSummaries)
+            runPTAOptimizations(optProg, memSummaries, i)
         }
 
         val newStats = optProg.getCallGraphRootSingleOrFail().getStats()

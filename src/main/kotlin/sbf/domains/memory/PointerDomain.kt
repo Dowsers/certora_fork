@@ -26,6 +26,7 @@ import kotlin.math.absoluteValue
 import datastructures.stdcollections.*
 import log.*
 import org.jetbrains.annotations.TestOnly
+import java.util.SortedMap
 import kotlin.collections.removeLast
 
 /**
@@ -708,14 +709,14 @@ open class PTANode<Flags: IPTANodeFlags<Flags>> constructor(
 
     /**
     * @property succs is indexed by PTAField so that we could have multiple edges between the same
-    * two cells: one per PTAField. It is a sorted map so that we can detect overlaps efficiently.
+    * two cells: one per PTAField. It is a **mutable** sorted map so that we can detect overlaps efficiently.
     **/
-    private val succs: MutableMap<PTAField, PTACell<Flags>> = MutableNonInjectiveMap(
+    private val succs: MutableNonInjectiveMap<PTAField, PTACell<Flags>> = MutableNonInjectiveMap(
         sortedMapOf()) { f -> fieldEquivClass(f) }
 
     /* "Non-injective" because i != j does not imply m[i] !== m[k] (note that this is reference inequality) */
     private inner class MutableNonInjectiveMap<K,V>(
-        private val theMap: MutableMap<K, V>,
+        private val theMap: SortedMap<K, V>,
         private val mapper: PTANode<Flags>.(K) -> K,
     ): MutableMap<K, V> by theMap {
         override fun remove(key: K): V? = theMap.remove(mapper(key))
@@ -723,6 +724,9 @@ open class PTANode<Flags: IPTANodeFlags<Flags>> constructor(
         override fun put(key: K, value: V): V? = theMap.put(mapper(key), value)
         override fun get(key: K): V? = theMap[mapper(key)]
         override fun containsKey(key: K): Boolean = theMap.containsKey(mapper(key))
+        fun subMap(fromKey: K, toKey: K): SortedMap<K, V> = theMap.subMap(mapper(fromKey), mapper(toKey))
+        fun headMap(toKey: K): SortedMap<K, V> = theMap.headMap(mapper(toKey))
+        fun tailMap(fromKey: K): SortedMap<K, V> = theMap.tailMap(mapper(fromKey))
     }
 
     fun getNode() = forward?.getNode() ?: this
@@ -821,6 +825,10 @@ open class PTANode<Flags: IPTANodeFlags<Flags>> constructor(
     }
 
     companion object {
+        // Maximum field size in bytes (max SBF access width).
+        // Used as a look-back margin when computing the lower bound for getLinksInRange.
+        private const val MAX_FIELD_SIZE = 8L
+
         /**
          * Make a summarized node from a non-summarized one.
          * For that, we need to unify all the node's fields
@@ -1131,22 +1139,30 @@ open class PTANode<Flags: IPTANodeFlags<Flags>> constructor(
         dbgUnify2 { "\t\tUpdated $succC as successor of ($this, ${fieldEquivClass(field)})" }
     }
 
-    /** Remove one edge from (this, [field]) to [succC] **/
+    /**
+     * Remove the entry [field] from [succs].
+     *
+     * Moreover, if sanity checks enabled then it checks that [field] pointed to [succC] before the removal.
+     **/
     fun removeSucc(field: PTAField, succC: PTACell<Flags>) {
         checkNotForward("removeSucc", this)
 
-        val oldSucc = succs[field]
-        if (oldSucc != null) {
-            if (oldSucc != succC) {
-                throw PointerDomainError(
-                    "The successor of ($this,${fieldEquivClass(field)}) " +
-                        "is expected to be $succC but instead, it is $oldSucc"
-                )
+        if (SolanaConfig.SanityChecks.get()) {
+            val oldSucc = succs[field]
+            if (oldSucc != null) {
+                if (oldSucc != succC) {
+                    throw PointerDomainError(
+                        "The successor of ($this,${fieldEquivClass(field)}) " +
+                            "is expected to be $succC but instead, it is $oldSucc"
+                    )
+                }
+                succs.remove(field)
+                dbgUnify2 { "\t\tRemoved $oldSucc as successor of ($this, ${fieldEquivClass(field)})" }
+            } else {
+                dbgUnify2 { "\t\tNo successor of ($this, ${fieldEquivClass(field)}) found, so nothing to remove" }
             }
-            succs.remove(field)
-            dbgUnify2 { "\t\tRemoved $oldSucc as successor of ($this, ${fieldEquivClass(field)})" }
         } else {
-            dbgUnify2 { "\t\tNo successor of ($this, ${fieldEquivClass(field)}) found, so nothing to remove" }
+            succs.remove(field)
         }
     }
 
@@ -1162,6 +1178,8 @@ open class PTANode<Flags: IPTANodeFlags<Flags>> constructor(
     }
 
     fun getSuccs(): Map<PTAField, PTACell<Flags>> = getNode().succs
+    fun getSuccsHeadMap(toKey: PTAField): SortedMap<PTAField, PTACell<Flags>> = getNode().succs.headMap(toKey)
+    fun getSuccsTailMap(fromKey: PTAField): SortedMap<PTAField, PTACell<Flags>> = getNode().succs.tailMap(fromKey)
 
     fun copyFlags(other: PTANode<Flags>) {
         checkNotForward("copyFlags", other)
@@ -1207,10 +1225,11 @@ open class PTANode<Flags: IPTANodeFlags<Flags>> constructor(
                     notify: (PTAField) -> Unit = {}) {
         checkNotForward("removeLinks", this)
 
-        for ((field,  succC) in links) {
+        for ((field, succC) in links) {
             notify(field)
             removeSucc(field, succC)
         }
+
     }
 
     /** Check for **partial** overlaps between this and [other] **/
@@ -1247,8 +1266,6 @@ open class PTANode<Flags: IPTANodeFlags<Flags>> constructor(
     /**
      * Return all links from this node in the range `[start, start+size-1]`
      *
-     * TOIMPROVE: use something similar to C++ lower_bound to avoid a full pass over all successors.
-     *
      * @param isStrict if true then a link is only returned if it is strictly included in the above range.
      * @param onlyPartial if true then a link is not returned if it occupies exactly the above range.
      *
@@ -1276,7 +1293,16 @@ open class PTANode<Flags: IPTANodeFlags<Flags>> constructor(
 
         val fullRange = FiniteInterval.mkInterval(start.v, size)
         val links = ArrayList<PTALink<Flags>>(getSuccs().size)
-        for ((field, succC) in getSuccs()) {
+
+        // Use subMap to skip directly to the first candidate field (O(log n) instead of O(n)).
+        // Lower bound: go back by MAX_FIELD_SIZE so that fields starting just before fullRange.l
+        // but extending into it are not missed (needed for isStrict=false overlap checks).
+        // Upper bound (exclusive): first offset strictly past the range end.
+        val lowerBound = PTAField(PTAOffset(fullRange.l - MAX_FIELD_SIZE), 1)
+        val upperBound = PTAField(PTAOffset(fullRange.u + 1), 1)
+        val relevantSuccs = succs.subMap(lowerBound, upperBound)
+
+        for ((field, succC) in relevantSuccs) {
             val fieldRange = field.toInterval()
 
             if (fieldRange.lessThan(fullRange)) {
@@ -1823,15 +1849,20 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
     private var unmaterializedStack: IntervalMap<PTACell<Flags>> = IntervalMap()
 ) {
 
-    /** Contains r1,...,r10
+    /**
+     *  Contains r1,...,r10.
+     *
      *  A register can point to either a PTASymCell or null.
      *  Null means here that the register can point to anywhere (i.e., top).
      *  Setting a register to null is always sound because the analysis will throw an exception if a
      *  memory instruction access to a null register.
      **/
     private val registers: ArrayList<PTASymCell<Flags>?> = ArrayList(NUM_OF_SBF_REGISTERS)
-    /** Contains the scratch registers of all callers
-     * This is a stack whose size is multiple of 4 which is the number of scratch registers.
+    /**
+     *  Stack of scratch registers.
+     *
+     *  We do not benefit from using PersistentStack because when we copy a PTAGraph we need to rename any cell that
+     *  points to the old stack because stack nodes are renamed when a copy of PTAGraph is done.
      **/
     private val scratchRegisters: ArrayList<PTASymCell<Flags>?> = arrayListOf()
 
@@ -2020,9 +2051,7 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
         for (i in 0 until registers.size) {
             setRegCell(Value.Reg(SbfRegister.getByValue(i.toByte())), null)
         }
-        while (scratchRegisters.isNotEmpty()) {
-            popScratchReg()
-        }
+        scratchRegisters.clear()
         untrackedStackFields = newUntrackedStackFields()
         unmaterializedStack = IntervalMap()
     }
@@ -4097,8 +4126,9 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
                 }
 
                 // propagate unmaterialized stack from source to destination
-                val unmaterializedIntervals = unmaterializedStack.intervals()
-                unmaterializedIntervals.forEach { (i, c) ->
+                // forEachInRange navigates in O(log n) to the first interval starting at srcRange.l,
+                // then walks forward — O(log n + k) instead of O(n) for the full scan.
+                unmaterializedStack.forEachInRange(srcRange.l, srcRange.u) { i, c ->
                     if (srcRange.includes(i)) {
                         val dstStart = i.l + adjustedOffset.v
                         val dstEnd = i.u + adjustedOffset.v
@@ -4611,13 +4641,17 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
         val stack = getStack()
         val topStack = getStackTop()
 
-        // 1. Remove all dead links
-        val deadLinks = mutableListOf<PTALink<Flags>>()
-        for ((field, succC) in stack.getSuccs()) {
-            if (isDeadOffset(field.offset.v, topStack)) {
-                deadLinks.add(PTALink(field, succC))
-            }
+        // 1. Remove all dead links.
+        // Dead fields form a contiguous prefix (dynamic frames: offset < topStack) or
+        // suffix (static frames: offset > topStack) of the sorted successor map.
+        // Use headMap/tailMap for O(log n) navigation to the boundary instead of O(n).
+        val deadSuccs = if (globalState.globals.elf.useDynamicFrames()) {
+            stack.getSuccsHeadMap(PTAField(PTAOffset(topStack), 0))
+        } else {
+            stack.getSuccsTailMap(PTAField(PTAOffset(topStack + 1), 0))
         }
+        // Materialize before removal to avoid mutating the backing map while iterating the view.
+        val deadLinks = deadSuccs.map { (field, succC) -> PTALink(field, succC) }
         stack.removeLinks(deadLinks)
 
         // 2. Remove all dead fields from the set of untracked fields

@@ -201,7 +201,9 @@ private fun solanaRuleToTAC(
         sbfTypesFac,
         ptaFlagsFac
       ).let {
-        runGlobalInferenceAnalysis(it, memSummaries)
+        timeIt(target, "Inference of global variables") {
+            runGlobalInferenceAnalysis(it, memSummaries)
+        }
     }
 
     // Optionally, we annotate CFG with types. This is useful if the CFG will be printed.
