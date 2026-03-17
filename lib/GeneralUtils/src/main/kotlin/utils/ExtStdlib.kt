@@ -1328,3 +1328,5 @@ public inline fun <R> coRunCatching(block: () -> R): Result<R> {
         Result.failure(e)
     }
 }
+
+fun <T> Result<T>.isSuccessAnd(f: (T) -> Boolean) = this.getOrNull()?.let(f) == true
