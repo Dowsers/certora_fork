@@ -22,6 +22,7 @@ contract PrimaryContract {
 
     uint   public uint_field;
     uint[] public array_field;
+    uint[3] public static_array_field;
     mapping(bool => address) public bool_map;
     mapping(uint => mapping(uint => address)) public nested_map;
 

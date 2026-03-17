@@ -3399,4 +3399,14 @@ class IllegalRerouteSummary(
     """,
     exampleMessage = "Link path index must be of type uint256 or a compatible subtype, but got bytes4",
 )
+@CVLErrorExample(
+    exampleCVLWithRange = """
+        using PrimaryContract as a;
+        using SecondaryContract as b;
+        links {
+            #a.static_array_field[3] => b;#
+        }
+    """,
+    exampleMessage = "Index 3 is out of bounds for static array of size 3",
+)
 class LinksBlockError(override val location: Range, override val message: String) : CVLError()

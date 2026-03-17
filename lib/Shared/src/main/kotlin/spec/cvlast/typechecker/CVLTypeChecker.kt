@@ -28,6 +28,7 @@ import spec.cvlast.EVMBuiltinTypes.method
 import spec.cvlast.typedescriptors.ToVMContext
 import spec.cvlast.typedescriptors.VMArrayTypeDescriptor
 import spec.cvlast.typedescriptors.VMMappingDescriptor
+import spec.cvlast.typedescriptors.VMStaticArrayType
 import spec.cvlast.typedescriptors.VMStructDescriptor
 import spec.cvlast.typedescriptors.VMTypeDescriptor
 import spec.rules.*
@@ -393,6 +394,14 @@ class CVLAstTypeChecker(
                                                 "Link path index must be of type uint256 or a compatible subtype, " +
                                                     "but got $exprType"
                                             )
+                                        }
+                                        if (t is VMStaticArrayType && indexValue is LinkIndexValue.NumericLiteral) {
+                                            if (indexValue.value >= t.numElements) {
+                                                linkError(
+                                                    "Index ${indexValue.value} is out of bounds for static array " +
+                                                        "of size ${t.numElements}"
+                                                )
+                                            }
                                         }
                                         currentType = t.elementType
                                     }
