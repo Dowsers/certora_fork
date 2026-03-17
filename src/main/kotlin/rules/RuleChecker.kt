@@ -824,6 +824,21 @@ class RuleChecker(
                     }
                 )
             }
+        } else if (rule.ruleType is SpecType.Single.BuiltIn) {
+            val result = RuleCheckResult.Single.Basic(
+                rule = rule,
+                result = SolverResult.UNSAT,
+                verifyTime = VerifyTime.None,
+                ruleCheckInfo = RuleCheckResult.Single.RuleCheckInfo.BasicInfo(
+                    details = Result.success("Built-in rule with nothing to check"),
+                    dumpGraphLink = null,
+                    isOptimizedRuleFromCache = IsFromCache.INAPPLICABLE,
+                    isSolverResultFromCache = IsFromCache.INAPPLICABLE,
+                ),
+                ruleAlerts = emptyList(),
+            )
+            treeViewReporter.signalEnd(rule, result)
+            return result
         } else {
             val result = when {
                 rule.ruleType is SpecType.Single.InvariantCheck.GenericPreservedInductionStep -> Result.success(
@@ -838,11 +853,7 @@ class RuleChecker(
                             " and could not find any applicable methods"
                     )
                 )
-                ((rule.ruleType is SpecType.Single.BuiltIn) &&
-                    BuiltInRuleCustomChecker.fromBirType(rule.ruleType as SpecType.Single.BuiltIn).functionSetCanBeEmpty) -> {
-                    // Non-payable functions are filtered out so codeList is empty.
-                    Result.success(RuleAlertReport.Info("No payable functions in the contract"))
-                }
+
 
                 else -> throw IllegalStateException(
                     "Reached the default case in compiledSingleRuleCheck, even though " +

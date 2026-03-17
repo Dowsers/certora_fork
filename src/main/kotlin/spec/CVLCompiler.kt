@@ -43,7 +43,6 @@ import kotlinx.serialization.UseSerializers
 import log.*
 import report.calltrace.CVLReportLabel
 import report.calltrace.printer.StackEntry
-import rules.genericrulecheckers.BuiltInRuleCustomChecker
 import scene.*
 import spec.CVLCompiler.CallIdContext.Companion.defaultBaseCallId
 import spec.cvlast.*
@@ -2752,8 +2751,8 @@ class CVLCompiler(
             // allow empty invariant preserves
             ruleType is SpecType.Single.InvariantCheck.GenericPreservedInductionStep -> true
 
-            // some builtin rules are allowed to have an empty function set
-            ruleType is SpecType.Single.BuiltIn && BuiltInRuleCustomChecker.fromBirType(ruleType).functionSetCanBeEmpty -> true
+            // builtin rules are allowed to have an empty function set
+            ruleType is SpecType.Single.BuiltIn -> true
 
             // if we ignore view/pure functions, we also don't care if they fail to instantiate
             Config.IgnoreViewFunctionsInParametricRules.get() -> true
