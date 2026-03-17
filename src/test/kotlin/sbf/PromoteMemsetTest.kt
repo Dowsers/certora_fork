@@ -65,26 +65,6 @@ class PromoteMemsetTest {
     }
 
     @Test
-    fun `four stores of -1`() {
-        val cfg = SbfTestDSL.makeCFG("entrypoint") {
-            bb(0) {
-                BinOp.ADD(r10, 4096)
-                r10[-56] = -1
-                r10[-48] = -1
-                r10[-40] = -1
-                r10[-64] = -1
-                exit()
-            }
-        }
-
-        println("Before transformation\n$cfg")
-        promoteMemset(cfg, globals, memSummaries, opts)
-        println("After transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemset(cfg))
-        Assertions.assertEquals(true, getNumOfStores(cfg) == 0)
-    }
-
-    @Test
     fun `four stores of 1`() {
         val cfg = SbfTestDSL.makeCFG("entrypoint") {
             bb(0) {

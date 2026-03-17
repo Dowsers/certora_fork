@@ -197,7 +197,8 @@ private data class MemsetPattern(
         private fun isByteUniform(x: ULong): Boolean {
             return when {
                 x == 0UL -> true
-                x.toLong() == -1L -> true
+                // Currently, we don't support -1 because TAC encoding does not supported
+                //x.toLong() == -1L -> true
                 else -> false
             }
         }
