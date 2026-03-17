@@ -2885,9 +2885,7 @@ class CVLCompiler(
             for (targetId in allTargetIds.distinct()) {
                 val target = scene.getContract(targetId)
                 val targetSrc = (target as? IContractWithSource)?.src
-                val isLibrary = targetSrc?.isLibrary == true
-                    || (targetSrc?.methods?.isNotEmpty() == true && targetSrc.methods.all { it.sighash == "0" })
-                if (isLibrary) {
+                if (targetSrc?.isLibrary == true) {
                     throw CertoraException(
                         CertoraErrorType.INVALID_LINKING,
                         "Could not link in ${contract.name} to ${target.name}, which is a library." +
