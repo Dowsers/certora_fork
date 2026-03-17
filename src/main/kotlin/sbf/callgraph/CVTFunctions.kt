@@ -267,6 +267,14 @@ enum class CVTNativeInt(val function: ExternalFunction) {
         setOf(Value.Reg(SbfRegister.R0)),
         listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
     ),
+    NATIVEINT_SLT(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_slt,
+        setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
+    ),
+    NATIVEINT_SLE(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_sle,
+        setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
+    ),
     NATIVEINT_ADD(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_add,
         setOf(Value.Reg(SbfRegister.R0)),
         listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
@@ -318,8 +326,15 @@ enum class CVTNativeInt(val function: ExternalFunction) {
     NATIVEINT_U256_MAX(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_u256_max,
         setOf(Value.Reg(SbfRegister.R0)),
         setOf())
+    ),
+    NATIVEINT_U64_SEXT(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_sext,
+        setOf(Value.Reg(SbfRegister.R0)),
+        setOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
+    ),
+    NATIVEINT_U64_NEG(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_neg,
+        setOf(Value.Reg(SbfRegister.R0)),
+        setOf(Value.Reg(SbfRegister.R1)))
     );
-
 
     companion object: ExternalLibrary<CVTNativeInt>  {
         private val nameMap = CVTNativeInt.entries.associateBy { it.function.name }
