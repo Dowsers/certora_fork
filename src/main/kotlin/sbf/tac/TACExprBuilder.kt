@@ -26,10 +26,13 @@ import datastructures.stdcollections.*
 import sbf.SolanaConfig
 
 class TACExprBuilder(private val regVars: ArrayList<TACSymbol.Var>) {
-    private val mask64 =  (BigInteger.valueOf(Long.MAX_VALUE) * BigInteger.TWO + BigInteger.ONE).asTACExpr()
-    private val mask128 =  (BigInteger.TWO.pow(128) - BigInteger.ONE).asTACExpr()
+    private val mask8   = BigInteger("FF", 16).asTACExpr()                                 // 2^8 - 1
+    private val mask16  = BigInteger("FFFF", 16).asTACExpr()                               // 2^16 - 1
+    private val mask32  = BigInteger("FFFFFFFF", 16).asTACExpr()                           // 2^32 - 1
+    private val mask64  = BigInteger("FFFFFFFFFFFFFFFF", 16).asTACExpr()                   // 2^64 - 1
+    private val mask128 = BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16).asTACExpr()   // 2^128 - 1
 
-    private val MINUS_ONE = mkConst(-1)
+    val MINUS_ONE = mkConst(-1)
     val ONE = mkConst(1)
     val ZERO = mkConst(0)
     val SIXTY_FOUR = mkConst(64)
@@ -192,23 +195,23 @@ class TACExprBuilder(private val regVars: ArrayList<TACSymbol.Var>) {
         return TACExpr.TernaryExp.Ite(
             TACExpr.BinRel.Eq(mask64(value), mask64(longMin)),
             value,
-            TACExpr.Vec.Mul(listOf(MINUS_ONE.asSym(), signExtendSbfValue(mask64(value))))
+            TACExpr.Vec.Mul(listOf(MINUS_ONE.asSym(), signExtendSbfValue(mask64(value), 64L)))
         )
     }
 
     /** Return the equivalent TAC expression of logical [op1] xor [op2] **/
-    private fun mkXorExpr(op1: TACExpr.Sym, op2: TACExpr): TACExpr {
+    private fun mkXorExpr(op1: TACExpr, op2: TACExpr): TACExpr {
         /* mask64 because TAC uses 256bits but SBF uses 64bits */
         return TACExpr.BinOp.BWXOr(mask64(op1), mask64(op2))
     }
 
     /** Return the equivalent TAC expression of logical [op1] or [op2] **/
-    private fun mkOrExpr(op1: TACExpr.Sym, op2: TACExpr): TACExpr {
+    private fun mkOrExpr(op1: TACExpr, op2: TACExpr): TACExpr {
         return TACExpr.BinOp.BWOr(op1, op2)
     }
 
     /** Return the equivalent TAC expression of logical [op1] and [op2] **/
-    private fun mkAndExpr(op1: TACExpr.Sym, op2: TACExpr): TACExpr {
+    private fun mkAndExpr(op1: TACExpr, op2: TACExpr): TACExpr {
         return TACExpr.BinOp.BWAnd(op1, op2)
     }
 
@@ -243,7 +246,7 @@ class TACExprBuilder(private val regVars: ArrayList<TACSymbol.Var>) {
             return when (op) {
                 CondOp.EQ, CondOp.NE -> mask64(e)
                 CondOp.GE, CondOp.GT, CondOp.LE, CondOp.LT -> e
-                CondOp.SGE, CondOp.SGT, CondOp.SLE, CondOp.SLT -> signExtendSbfValue(mask64(e))
+                CondOp.SGE, CondOp.SGT, CondOp.SLE, CondOp.SLT -> signExtendSbfValue(mask64(e), 64L)
             }
         }
     }
@@ -298,8 +301,44 @@ class TACExprBuilder(private val regVars: ArrayList<TACSymbol.Var>) {
         return TACExpr.BinOp.BWAnd(e, mask128)
     }
 
-    /** Sign extend [e] from 64 to 256 bits **/
+    private val signExtErrMsg = "only supports one of these bitwidths {8,16,32,64,128}"
+
+    /**
+     * Sign extend [e] from [fromWidth] to 256 bits
+     *
+     * @param [fromWidth] Can only be one of these bitwidths 8, 16, 32, 64, or 128
+     **/
     fun signExtendSbfValue(
         e: TACExpr,
-    ) = TACExpr.BinOp.SignExtend(BigInteger.valueOf(7).asTACExpr(), e)
+        fromWidth: Long
+    ): TACExpr {
+        return when(fromWidth) {
+            8L   -> TACExpr.BinOp.SignExtend(BigInteger.valueOf(0).asTACExpr(), e)
+            16L  -> TACExpr.BinOp.SignExtend(BigInteger.valueOf(1).asTACExpr(), e)
+            32L  -> TACExpr.BinOp.SignExtend(BigInteger.valueOf(3).asTACExpr(), e)
+            64L  -> TACExpr.BinOp.SignExtend(BigInteger.valueOf(7).asTACExpr(), e)
+            128L -> TACExpr.BinOp.SignExtend(BigInteger.valueOf(15).asTACExpr(), e)
+            else -> throw TACTranslationError("signExtendSbfValue $signExtErrMsg")
+        }
+    }
+
+    /**
+     * Apply AND of [e] and `2^fromWidth -1` and sign extend the result from [fromWidth] to 256 bits
+     *
+     * @param [fromWidth] Can only be one of these bitwidths 8, 16, 32, 64, or 128
+     * **/
+    fun signExtendSbfValueWithMask(
+        e: TACExpr,
+        fromWidth: Long
+    ): TACExpr {
+       return when (fromWidth) {
+               8L   -> signExtendSbfValue(mkAndExpr(e, mask8), fromWidth)
+               16L  -> signExtendSbfValue(mkAndExpr(e, mask16), fromWidth)
+               32L  -> signExtendSbfValue(mkAndExpr(e, mask32), fromWidth)
+               64L  -> signExtendSbfValue(mkAndExpr(e, mask64), fromWidth)
+               128L -> signExtendSbfValue(mkAndExpr(e, mask128), fromWidth)
+               else -> throw TACTranslationError("signExtendSbfValueWithMask $signExtErrMsg")
+       }
+    }
+
 }

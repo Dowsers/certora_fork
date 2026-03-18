@@ -201,7 +201,9 @@ private fun solanaRuleToTAC(
         sbfTypesFac,
         ptaFlagsFac
       ).let {
-        runGlobalInferenceAnalysis(it, memSummaries)
+        timeIt(target, "Inference of global variables") {
+            runGlobalInferenceAnalysis(it, memSummaries)
+        }
     }
 
     // Optionally, we annotate CFG with types. This is useful if the CFG will be printed.
@@ -495,8 +497,8 @@ private fun vacuousProgram(root: String, globals: GlobalVariables, comment: Stri
     val b = cfg.getOrInsertBlock(Label.fresh())
     cfg.setEntry(b)
     cfg.setExit(b)
-    val rx = Value.Reg(SbfRegister.R3_ARG)
-    val ry = Value.Reg(SbfRegister.R4_ARG)
+    val rx = Value.Reg(SbfRegister.R3)
+    val ry = Value.Reg(SbfRegister.R4)
     b.add(SbfInstruction.Bin(BinOp.MOV, rx, Value.Imm(0UL), is64 = true))
     b.add(SbfInstruction.Bin(BinOp.MOV, ry, Value.Imm(1UL), is64 = true))
     val falseC = Condition(CondOp.GT, rx, ry)

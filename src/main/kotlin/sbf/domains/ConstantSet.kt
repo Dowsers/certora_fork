@@ -33,21 +33,20 @@ data class ConstantSet private constructor(
 
     companion object {
         private fun normalize(xs: Set<Constant>, maxNumDisjuncts: ULong): ConstantSet {
-            return if (xs.any { it.isTop() }) {
-                mkTop(maxNumDisjuncts)
-            } else{
-                val ys = xs.filter { !it.isBottom() }
-                if (ys.isEmpty()) {
-                    mkBottom(maxNumDisjuncts)
-                } else {
-                    val res = ConstantSet(ys.toSet(), maxNumDisjuncts)
-                    if (res.values.size.toULong() > maxNumDisjuncts) {
-                        res.smash()
-                    } else {
-                        res
+            val ys = mutableSetOf<Constant>()
+            for (x in xs) {
+                if (x.isTop()) {
+                    return mkTop(maxNumDisjuncts)
+                }
+                if (!x.isBottom()) {
+                    ys.add(x)
+                    // smash() returns top whenever size > maxNumDisjuncts (which implies size >= 2)
+                    if (ys.size.toULong() > maxNumDisjuncts) {
+                        return mkTop(maxNumDisjuncts)
                     }
                 }
             }
+            return if (ys.isEmpty()) { mkBottom(maxNumDisjuncts) } else { ConstantSet(ys, maxNumDisjuncts) }
         }
 
         operator fun invoke(values: Set<Constant>, maxNumDisjuncts: ULong) = normalize(values, maxNumDisjuncts)

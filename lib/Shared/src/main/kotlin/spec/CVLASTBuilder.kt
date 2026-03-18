@@ -85,6 +85,14 @@ class CVLAstBuilder(
             }
         }
 
+        // Check for conflict between spec links block and conf link field
+        if (ast.linkEntries.isNotEmpty() && contracts.any { it.state.isNotEmpty() || it.structLinkingInfo.isNotEmpty() }) {
+            returnError(LinksBlockError(
+                ast.linkEntries.first().range,
+                "Cannot use both spec 'links' block and .conf 'link' (or 'struct_link') field. Remove one."
+            ))
+        }
+
         // add currentContract mapping to list of imported contract
         // this is for making all implicit accesses to methods of  the current contract an explicit reference
         val (declaredInternalFunctions, declaredExternalFunctions) = run {
@@ -177,7 +185,8 @@ class CVLAstBuilder(
             astSummaries.internal,
             astSummaries.external,
             astSummaries.unresolved,
-            rulesAndFilters.second
+            rulesAndFilters.second,
+            linkEntries = ast.linkEntries.map { it as CVLLinkEntry }
         )
     }
 

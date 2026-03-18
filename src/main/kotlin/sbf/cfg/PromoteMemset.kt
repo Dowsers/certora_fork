@@ -37,7 +37,9 @@ private fun dbg(msg: () -> Any) { logger.debug(msg)}
  * @property minNumOfStoresToBePromoted Minimum number of stores a pattern must have
  **/
 data class MemsetPromotionOpts(
-    val minNumOfStoresToBePromoted: Int,
+    val minNumOfStoresToBePromoted: Int = 2,
+    val runScalarAnalysis: Boolean = false,
+    val maxDepth: Int = 5,
 )
 
 /**
@@ -49,41 +51,91 @@ fun promoteMemset(
     cfg: MutableSbfCFG,
     globals: GlobalVariables,
     memSummaries: MemorySummaries,
-    opts: MemsetPromotionOpts = MemsetPromotionOpts(2)
+    opts: MemsetPromotionOpts = MemsetPromotionOpts()
 ) {
 
-    // We run a scalar analysis to know whether a store instruction is storing an immediate value or not.
-    // Most of the cases, it is enough a very local analysis, but we run the analysis for the whole CFG anyway.
-    val sbfTypeFac = ConstantSetSbfTypeFactory(SolanaConfig.ScalarMaxVals.get().toULong())
-    val scalarAnalysis = GenericScalarAnalysis(
-        cfg,
-        globals,
-        memSummaries,
-        sbfTypeFac,
-        domFac = CFGTransformScalarDomFac())
-
-    promoteMemset(cfg, scalarAnalysis, opts)
+    if (opts.runScalarAnalysis) {
+        val sbfTypeFac = ConstantSetSbfTypeFactory(SolanaConfig.ScalarMaxVals.get().toULong())
+        val scalarAnalysis = GenericScalarAnalysis(
+            cfg,
+            globals,
+            memSummaries,
+            sbfTypeFac,
+            // run the cheapest scalar domain
+            domFac = ScalarDomainFactory()
+        )
+        promoteMemset(cfg, scalarAnalysis, opts)
+    } else {
+        promoteMemset(cfg, opts)
+    }
 }
 
-fun<D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> promoteMemset(
+/**
+ * This version uses a scalar analysis to know the value operand of a promoted `memset`.
+ */
+private fun<D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> promoteMemset(
     cfg: MutableSbfCFG,
     scalarAnalysis: IAnalysis<D>,
     opts: MemsetPromotionOpts
 ) where D: AbstractDomain<D>,
         D: ScalarValueProvider<TNum, TOffset> {
 
-    val types = AnalysisRegisterTypes(scalarAnalysis)
+    val getRegNumericValue: (LocatedSbfInstruction, Value.Reg) -> ULong? = { locInst, reg ->
+        val types = AnalysisRegisterTypes(scalarAnalysis)
+        (types.typeAtInstruction(locInst, reg) as? SbfType.NumType)?.value?.toLongOrNull()?.toULong()
+    }
+
+    promoteMemset(cfg, getRegNumericValue, opts)
+}
+
+/**
+ * This version does not use a scalar analysis (only simple def-use analysis) to know the value operand of
+ * a promoted `memset`.
+ */
+private fun promoteMemset(
+    cfg: MutableSbfCFG,
+    opts: MemsetPromotionOpts
+)  {
+
+    val getRegNumericValue: (LocatedSbfInstruction, Value.Reg) -> ULong? = { locInst, reg ->
+        fun resolveToImm(locInst: LocatedSbfInstruction, reg: Value.Reg, depth: Int): ULong? {
+            if (depth == opts.maxDepth) {
+                return null
+            }
+            val b = checkNotNull(cfg.getBlock(locInst.label))
+            val def = findDefinitionInterBlock(b, reg, locInst.pos) ?: return null
+            val defInst = def.inst
+            if (defInst !is SbfInstruction.Bin || defInst.op != BinOp.MOV) {
+                return null
+            }
+            return when (val rhs = defInst.v) {
+                is Value.Imm -> rhs.v
+                is Value.Reg -> resolveToImm(def, rhs, depth + 1)
+            }
+        }
+        resolveToImm(locInst, reg, 0)
+    }
+
+    promoteMemset(cfg, getRegNumericValue, opts)
+}
+
+private fun promoteMemset(
+    cfg: MutableSbfCFG,
+    getRegNumericValue: (LocatedSbfInstruction, Value.Reg) -> ULong?,
+    opts: MemsetPromotionOpts
+) {
     val rewrites = mutableListOf<MemsetRewrite>()
 
     // First, we identify memset patterns and emit code (`memsetRewrite`) to replace stores
     // with calls to `memset`.
     for (bb in cfg.getBlocks().values) {
-        rewrites.addAll(findMemsetPatternsIntraBlock(bb, types, opts))
+        rewrites.addAll(findMemsetPatternsIntraBlock(bb, getRegNumericValue, opts))
     }
 
     // Second, we do the actual CFG transformation
     applyRewrites(cfg, rewrites)
 }
+
 
 /**
  * Represents a `memset` pattern, i.e., a sequence of stores that write the same value
@@ -145,7 +197,8 @@ private data class MemsetPattern(
         private fun isByteUniform(x: ULong): Boolean {
             return when {
                 x == 0UL -> true
-                x.toLong() == -1L -> true
+                // Currently, we don't support -1 because TAC encoding does not supported
+                //x.toLong() == -1L -> true
                 else -> false
             }
         }
@@ -264,16 +317,11 @@ private data class MemsetRewrite(
  * @return A list of [MemsetRewrite], each describing the stores to remove and the
  * `memset` instructions to emit in their place.
  */
-private fun<D, TNum, TOffset> findMemsetPatternsIntraBlock(
+private fun findMemsetPatternsIntraBlock(
     bb: SbfBasicBlock,
-    types: AnalysisRegisterTypes<D, TNum, TOffset>,
+    getRegNumericValue: (LocatedSbfInstruction, Value.Reg) -> ULong?,
     opts: MemsetPromotionOpts
-): List<MemsetRewrite>
-where D: AbstractDomain<D>,
-      D: ScalarValueProvider<TNum, TOffset>,
-      TNum: INumValue<TNum>,
-      TOffset: IOffset<TOffset>
-{
+): List<MemsetRewrite> {
     val outRewrites = mutableListOf<MemsetRewrite>()
     var current: MemsetPattern? = null
 
@@ -284,10 +332,6 @@ where D: AbstractDomain<D>,
             outRewrites.add(it)
         }
         current = null
-    }
-
-    val getRegNumericValue: (LocatedSbfInstruction, Value.Reg) -> ULong? = { locInst, reg ->
-        (types.typeAtInstruction(locInst, reg) as? SbfType.NumType)?.value?.toLongOrNull()?.toULong()
     }
 
     for (locInst in bb.getLocatedInstructions()) {

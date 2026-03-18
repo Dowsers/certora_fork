@@ -77,6 +77,7 @@ private val tokenName: List<String> = sym
             sym.GOODDESCRIPTION -> "good_description"
             sym.PRESERVED -> "preserved"
             sym.ON_TRANSACTION_BOUNDARY -> "onTransactionBoundary"
+            sym.LINKS -> "links"
 
             sym.USING -> "using"
             sym.IMPORT -> "import"

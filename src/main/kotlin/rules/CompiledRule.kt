@@ -19,6 +19,7 @@ package rules
 
 import allocator.Allocator
 import analysis.LTACCmd
+import analysis.controlflow.AllPathsRevertedResult
 import analysis.controlflow.checkIfAllPathsAreLastReverted
 import analysis.opt.PatternRewriter
 import analysis.opt.basicPatternsList
@@ -151,9 +152,15 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
                 scene,
                 compiledRule.rule,
                 extraAlerts = result.getOrNull()?.let { (res, _) ->
-                    val isAlwaysRevertingAlert = runIf(checkIfAllPathsAreLastReverted(compiledRule.tac)) {
-                        listOf(RuleAlertReport.Info(msg = "The rule contains only reverting paths."))
-                    }.orEmpty()
+                    val isAlwaysRevertingAlert = when (checkIfAllPathsAreLastReverted(compiledRule.tac)) {
+                        AllPathsRevertedResult.NON_REVERTING_PATH_EXISTS -> emptyList()
+                        AllPathsRevertedResult.ALL_REVERT_DEFINITIVE ->
+                            listOf(RuleAlertReport.Info(msg = "The rule contains only reverting paths."))
+                        AllPathsRevertedResult.ALL_REVERT_BUT_LOOP_PRESENT ->
+                            listOf(RuleAlertReport.Info(msg = "The rule contains only reverting paths. " +
+                                "However, the program contains a loop, so a higher loop unrolling bound " +
+                                "(--loop_iter) might lead to a non-reverting path."))
+                    }
                     val sanityAlerts = computeSanityAlerts(compiledRule.rule, res)
                     val requireWithoutReasonAlerts = collectRequireWithoutReasonNotifications(compiledRule)
                     isAlwaysRevertingAlert + requireWithoutReasonAlerts + sanityAlerts

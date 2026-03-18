@@ -484,6 +484,12 @@ MultiLineComment = \/\*[^*]*\*+([^/*][^*]*\*+)*\/
     tableBuilder.registerTokenEmit(currentSymbol);
     return currentSymbol;
 }
+<YYINITIAL> "links" {
+    debug(" LINKS");
+    ComplexSymbolFactory.ComplexSymbol currentSymbol = symbol(sym.LINKS, yytext());
+    tableBuilder.registerTokenEmit(currentSymbol);
+    return currentSymbol;
+}
 <YYINITIAL> "description" {
     debug(" DESCRIPTION");
     ComplexSymbolFactory.ComplexSymbol currentSymbol = symbol(sym.DESCRIPTION, yytext());

@@ -258,7 +258,7 @@ terminal String
     ON_TRANSACTION_BOUNDARY, WEAK, STRONG, LOCATION, OPCODE;
 
 terminal
-    HOOK, SLOAD, SSTORE, CREATE, TLOAD, TSTORE, METHODS, HAVOC, ASSUMING,
+    HOOK, SLOAD, SSTORE, CREATE, TLOAD, TSTORE, METHODS, HAVOC, ASSUMING, LINKS,
     PLUS, MINUS, TIMES, DIV, MOD, EXPONENT, LOR, LAND, IMPLIES, IFF, NOT,
     BWOR, BWXOR, BWAND, BWLSHIFT, BWRSHIFT, BWRSHIFTWZEROS, BWNOT,
     IN, AT, RETURNS, EXPECT, SATISFY, REQUIRE, REQUIREINVARIANT, ASSERT, INVARIANT, PRESERVED, REVERT,
@@ -292,6 +292,11 @@ non terminal ImportedContract contract_using;
 /* imported methods */
 
 non terminal MethodsBlock methods_block;
+non terminal LinkBlock link_block;
+non terminal List<LinkEntry> link_entries;
+non terminal LinkEntry link_entry;
+non terminal Exp link_path;
+non terminal List<String> link_target_list;
 non terminal /* Nullable */ CallSummary summary_opt;
 non terminal CallSummary summary;
 non terminal HavocingCallSummary havoc_summary;
@@ -467,6 +472,36 @@ contract_using ::=
 
 methods_block ::= METHODS:m LB method_dec_list:l RB:rb {: RESULT = new MethodsBlock(l, range(mxleft, rbxright)); :};
 
+link_block ::= LINKS:l LB link_entries:e RB:rb
+    {: RESULT = new LinkBlock(range(lxleft, rbxright), e); :}
+;
+
+link_entries ::=
+    /* empty */                      {: RESULT = new ArrayList<LinkEntry>(); :}
+  | link_entries:le link_entry:e     {: le.add(e); RESULT = le; :}
+;
+
+link_entry ::=
+    link_path:lp IMPLIES ID:target SC:sc
+        {: List<String> targets = new ArrayList<>(); targets.add(target);
+           RESULT = new LinkEntry(range(lpxleft, scxright), lp, targets); :}
+  | link_path:lp IMPLIES LSQB link_target_list:targets RSQB SC:sc
+        {: RESULT = new LinkEntry(range(lpxleft, scxright), lp, targets); :}
+;
+
+link_path ::=
+    ID:i
+        {: RESULT = new VariableExp(i, range(ixleft, ixright)); :}
+  | link_path:lp DOT ID:field
+        {: RESULT = new FieldSelectExp(lp, field, range(lpxleft, fieldxright)); :}
+  | link_path:lp LSQB exp:e RSQB:rb
+        {: RESULT = new ArrayDerefExp(lp, e, range(lpxleft, rbxright)); :}
+;
+
+link_target_list ::=
+    ID:i                             {: List<String> l = new ArrayList<>(); l.add(i); RESULT = l; :}
+  | link_target_list:l COMMA ID:i    {: l.add(i); RESULT = l; :}
+;
 flag_list ::=
     ID:oid ASSIGN boolLit:ob {: Map<String, Boolean> ret = new LinkedHashMap<>(); ret.put(oid, ob); RESULT = ret; :}
   | flag_list:fl COMMA ID:oid ASSIGN boolLit:ob {:
@@ -808,6 +843,7 @@ ast_base_blocks ::=
   | ast_base_blocks:b use_decl:u      {: b.add(u); RESULT = b; :}
   | ast_base_blocks:b override_decl:o {: b.add(o); RESULT = b; :}
   | ast_base_blocks:b methods_block:m {: b.getMethodsBlocks ().add(m); RESULT = b; :}
+  | ast_base_blocks:b link_block:l    {: b.getLinkBlocks    ().add(l); RESULT = b; :}
   | ast_base_blocks:b error SC        {: RESULT = b; :}
 ;
 

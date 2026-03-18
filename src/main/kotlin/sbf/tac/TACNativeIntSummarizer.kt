@@ -17,6 +17,8 @@
 
 package sbf.tac
 
+import cvlr.CvlrFunctions
+import datastructures.stdcollections.listOf
 import sbf.callgraph.CVTNativeInt
 import sbf.cfg.LocatedSbfInstruction
 import sbf.cfg.SbfInstruction
@@ -24,6 +26,7 @@ import sbf.disassembler.SbfRegister
 import sbf.domains.INumValue
 import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
+import sbf.domains.SbfType
 import vc.data.TACCmd
 import vc.data.TACExpr
 import vc.data.asTACExpr
@@ -45,11 +48,11 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     check(function != null) {"summarizeNativeInt does not support ${inst.name}"}
 
     // These symbols are created using 256-bit
-    val r1 = exprBuilder.mkVar(SbfRegister.R1_ARG).asSym()
-    val r2 = exprBuilder.mkVar(SbfRegister.R2_ARG).asSym()
-    val r3 = exprBuilder.mkVar(SbfRegister.R3_ARG).asSym()
-    val r4 = exprBuilder.mkVar(SbfRegister.R4_ARG).asSym()
-    val r0 = exprBuilder.mkVar(SbfRegister.R0_RETURN_VALUE)
+    val r1 = exprBuilder.mkVar(SbfRegister.R1).asSym()
+    val r2 = exprBuilder.mkVar(SbfRegister.R2).asSym()
+    val r3 = exprBuilder.mkVar(SbfRegister.R3).asSym()
+    val r4 = exprBuilder.mkVar(SbfRegister.R4).asSym()
+    val r0 = exprBuilder.mkVar(SbfRegister.R0)
     val zero = exprBuilder.ZERO.asSym()
     val one  = exprBuilder.ONE.asSym()
 
@@ -61,6 +64,10 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
                 assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Lt(r1, r2), one, zero))
             CVTNativeInt.NATIVEINT_LE ->
                 assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Le(r1, r2), one, zero))
+            CVTNativeInt.NATIVEINT_SLT ->
+                assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Slt(r1, r2), one, zero))
+            CVTNativeInt.NATIVEINT_SLE ->
+                assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Sle(r1, r2), one, zero))
             CVTNativeInt.NATIVEINT_ADD ->
                 assign(r0, TACExpr.Vec.Add(datastructures.stdcollections.listOf(r1, r2)))
             CVTNativeInt.NATIVEINT_SUB ->
@@ -90,6 +97,25 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
                 assign(r0, (BigInteger.TWO.pow(128) - BigInteger.ONE).asTACExpr())
             CVTNativeInt.NATIVEINT_U256_MAX ->
                 assign(r0, (BigInteger.TWO.pow(256) - BigInteger.ONE).asTACExpr())
+            CVTNativeInt.NATIVEINT_U64_SEXT -> {
+                // nativeint_u64_sext(val, from_width) returns
+                //   if from_width=8   -> signExtToBv256(val & 0xFF, 8)
+                //   if from_width=16  -> signExtToBv256(val & 0xFFFF, 16)
+                //   if from_width=32  -> signExtToBv256(val & 0xFFFF_FFFF, 32)
+                //   if from_width=64  -> signExtToBv256(val & 0xFFFF_FFFF_FFFF_FFFF, 64)
+                //   if from_width=128 -> signExtToBv256(val & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF, 128)
+                val fromWidth = (types.typeAtInstruction(locInst, SbfRegister.R2) as? SbfType.NumType)?.value?.toLongOrNull()
+                    ?: throw TACTranslationError(
+                        "${CvlrFunctions.CVT_nativeint_u64_sext} expects width to be statically known as a constant number"
+                    )
+                assign(r0, exprBuilder.signExtendSbfValueWithMask(r1, fromWidth))
+            }
+            CVTNativeInt.NATIVEINT_U64_NEG -> {
+                // nativeint_u64_neg(val) returns -1bv256 * signExtToBv256(val & 0xFFFF_FFFFF_FFFF_FFFF, 64)
+                assign(r0, TACExpr.Vec.Mul(listOf(exprBuilder.MINUS_ONE.asSym(),
+                    exprBuilder.signExtendSbfValue(exprBuilder.mask64(r1), 64L))))
+            }
+
         }
     )
 }

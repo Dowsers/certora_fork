@@ -255,7 +255,8 @@ open class CVLAstTransformer<E>(
                 overrideDeclarations = ast.overrideDeclarations,
                 scope = ast.scope,
                 sorts = ast.sorts,
-                useDeclarations = ast.useDeclarations
+                useDeclarations = ast.useDeclarations,
+                linkEntries = ast.linkEntries
             ).lift()
         }
     }

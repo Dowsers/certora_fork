@@ -61,6 +61,8 @@ object CvlrFunctions {
     const val CVT_nativeint_u64_eq = "CVT_nativeint_u64_eq"
     const val CVT_nativeint_u64_lt = "CVT_nativeint_u64_lt"
     const val CVT_nativeint_u64_le = "CVT_nativeint_u64_le"
+    const val CVT_nativeint_u64_slt = "CVT_nativeint_u64_slt"
+    const val CVT_nativeint_u64_sle = "CVT_nativeint_u64_sle"
     const val CVT_nativeint_u64_add = "CVT_nativeint_u64_add"
     const val CVT_nativeint_u64_sub = "CVT_nativeint_u64_sub"
     const val CVT_nativeint_u64_mul = "CVT_nativeint_u64_mul"
@@ -74,5 +76,7 @@ object CvlrFunctions {
     const val CVT_nativeint_u64_u64_max = "CVT_nativeint_u64_u64_max"
     const val CVT_nativeint_u64_u128_max = "CVT_nativeint_u64_u128_max"
     const val CVT_nativeint_u64_u256_max = "CVT_nativeint_u64_u256_max"
+    const val CVT_nativeint_u64_sext = "CVT_nativeint_u64_sext"
+    const val CVT_nativeint_u64_neg = "CVT_nativeint_u64_neg"
     const val CVT_alloc_slice = "CVT_alloc_slice"
 }
