@@ -301,6 +301,19 @@ class TACExprBuilder(private val regVars: ArrayList<TACSymbol.Var>) {
         return TACExpr.BinOp.BWAnd(e, mask128)
     }
 
+    /** Return the equivalent TAC expression to [e] & ((1 << [bits]) - 1) **/
+    fun mask(e: TACExpr, bits: Long): TACExpr {
+        val maskExpr = when (bits) {
+            8L -> mask8
+            16L -> mask16
+            32L -> mask32
+            64L -> mask64
+            128L -> mask128
+            else -> error("mask only supports bitwidths {8, 16, 32, 64, 128}, got $bits")
+        }
+        return TACExpr.BinOp.BWAnd(e, maskExpr)
+    }
+
     private val signExtErrMsg = "only supports one of these bitwidths {8,16,32,64,128}"
 
     /**

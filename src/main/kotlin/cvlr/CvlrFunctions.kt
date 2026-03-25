@@ -79,5 +79,6 @@ object CvlrFunctions {
     const val CVT_nativeint_u64_u256_max = "CVT_nativeint_u64_u256_max"
     const val CVT_nativeint_u64_sext = "CVT_nativeint_u64_sext"
     const val CVT_nativeint_u64_neg = "CVT_nativeint_u64_neg"
+    const val CVT_nativeint_u64_mask = "CVT_nativeint_u64_mask"
     const val CVT_alloc_slice = "CVT_alloc_slice"
 }

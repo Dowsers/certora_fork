@@ -97,7 +97,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
                 assign(r0, (BigInteger.TWO.pow(128) - BigInteger.ONE).asTACExpr())
             CVTNativeInt.NATIVEINT_U256_MAX ->
                 assign(r0, (BigInteger.TWO.pow(256) - BigInteger.ONE).asTACExpr())
-            CVTNativeInt.NATIVEINT_U64_SEXT -> {
+            CVTNativeInt.NATIVEINT_SEXT -> {
                 // nativeint_u64_sext(val, from_width) returns
                 //   if from_width=8   -> signExtToBv256(val & 0xFF, 8)
                 //   if from_width=16  -> signExtToBv256(val & 0xFFFF, 16)
@@ -110,10 +110,17 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
                     )
                 assign(r0, exprBuilder.signExtendSbfValueWithMask(r1, fromWidth))
             }
-            CVTNativeInt.NATIVEINT_U64_NEG -> {
-                // nativeint_u64_neg(val) returns -1bv256 * signExtToBv256(val & 0xFFFF_FFFFF_FFFF_FFFF, 64)
-                assign(r0, TACExpr.Vec.Mul(listOf(exprBuilder.MINUS_ONE.asSym(),
-                    exprBuilder.signExtendSbfValue(exprBuilder.mask64(r1), 64L))))
+            CVTNativeInt.NATIVEINT_NEG -> {
+                // nativeint_neg(val) returns -1bv256 * val
+                assign(r0, TACExpr.Vec.Mul(listOf(exprBuilder.MINUS_ONE.asSym(), r1)))
+            }
+            CVTNativeInt.NATIVEINT_MASK -> {
+                // nativeint_mask(val, bits) returns val & ((1 << bits) - 1)
+                val bits = (types.typeAtInstruction(locInst, SbfRegister.R2) as? SbfType.NumType)?.value?.toLongOrNull()
+                    ?: throw TACTranslationError(
+                        "${CvlrFunctions.CVT_nativeint_u64_mask} expects bits to be statically known as a constant number"
+                    )
+                assign(r0, exprBuilder.mask(r1, bits))
             }
 
         }

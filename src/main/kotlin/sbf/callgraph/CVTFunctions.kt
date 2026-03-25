@@ -341,13 +341,17 @@ enum class CVTNativeInt(val function: ExternalFunction) {
         setOf(Value.Reg(SbfRegister.R0)),
         setOf())
     ),
-    NATIVEINT_U64_SEXT(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_sext,
+    NATIVEINT_SEXT(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_sext,
         setOf(Value.Reg(SbfRegister.R0)),
         setOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
     ),
-    NATIVEINT_U64_NEG(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_neg,
+    NATIVEINT_NEG(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_neg,
         setOf(Value.Reg(SbfRegister.R0)),
         setOf(Value.Reg(SbfRegister.R1)))
+    ),
+    NATIVEINT_MASK(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_mask,
+        setOf(Value.Reg(SbfRegister.R0)),
+        setOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
     );
 
     companion object: ExternalLibrary<CVTNativeInt>  {
