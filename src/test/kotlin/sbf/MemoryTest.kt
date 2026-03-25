@@ -1688,4 +1688,44 @@ class MemoryTest {
             }
         }
     }
+
+    @Test
+    fun `no PTA error if reduction from pointer domain to scalar domain`() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(0) {
+                r1 = 8
+                "__rust_alloc"()
+                r2 = r0
+                r2[0] = 2
+                goto(1)
+            }
+
+            bb(1) {
+                r8 = 1
+                r2 = r2[0]
+                // the pointer domain knows that r2 is a number
+                // the scalar domain knows that r8 is 1
+                select(r8, CondOp.EQ(r4, 0), r8, r2)
+                // after reduction the memory analysis should know that r8 is just a number
+                r10[-368] = r8
+                goto(2)
+            }
+            bb(2) {
+                r9 = r10[-368]
+                exit()
+            }
+        }
+        println("$cfg")
+
+        // The test is that the memory analysis shouldn't throw any PTA error
+        MemoryAnalysis(
+            cfg,
+            globals,
+            MemorySummaries(),
+            ConstantSbfTypeFactory(),
+            nodeAllocator.flagsFactory,
+            memDomainOpts,
+            processor = null
+        )
+    }
 }
