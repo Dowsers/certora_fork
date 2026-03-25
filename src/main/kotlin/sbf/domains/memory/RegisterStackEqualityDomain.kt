@@ -502,7 +502,22 @@ class RegisterStackEqualityDomain(
      **/
     fun getEqualities(reg: Value.Reg): Set<Value.Reg> {
         val stackSlot = registers[reg] ?: return setOf()
-        return registers.remove(reg).filter { stackSlot == it.value}.keys
+        return registers.remove(reg).filter {
+            /**
+             * We don't compare directly `stackSlot` with `it.value` because a `StackSlot` contains both
+             * the stack location and the located instruction where the stack location was loaded from.
+             * Two registers are just equal if their stack locations are the same.
+             * For instance, in this example `r1` is equal to `r2`.
+             * Note if `*(u64*)(r10 - 24)` would change in between the two load instructions,
+             * then the abstract domain would forget the information about `r1`.
+             * ```
+             *  r1 = *(u64*)(r10 - 24)
+             *  ...
+             *  r2 = *(u64*)(r10 - 24)
+             * ```
+             **/
+            stackSlot.loc == it.value.loc
+        }.keys
     }
 }
 

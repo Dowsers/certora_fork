@@ -81,6 +81,7 @@ object SbfMeta {
     // These keys have empty strings as values. The values are irrelevant
     val HINT_OPTIMIZED_WIDE_STORE =  MetaKey<Unit>("hint_optimized_wide_store")
     val MEMCPY_PROMOTION = MetaKey<Unit>("promoted_memcpy")
+    val MATH_PROMOTION = MetaKey<Unit>("math_promotion")
     val MEMCPY_ZEXT_PROMOTION = MetaKey<Unit>("promoted_memcpy_zext")
     val MEMCPY_TRUNC_PROMOTION = MetaKey<Unit>("promoted_memcpy_trunc")
     val MEMSET_PROMOTION = MetaKey<Unit>("promoted_memset")
@@ -116,8 +117,10 @@ fun toString(metaData: MetaData): String {
             SbfMeta.MEMSET_PROMOTION,
             SbfMeta.UNHOISTED_STORE, SbfMeta.UNHOISTED_LOAD,
             SbfMeta.UNHOISTED_MEMCPY, SbfMeta.UNHOISTED_MEMCMP,
-            SbfMeta.LOWERED_SELECT, SbfMeta.LOWERED_OR, SbfMeta.LOADED_AS_NUM_FOR_PTA, SbfMeta.REMOVED_MEMMOVE,
-            SbfMeta.SAFE_MATH, SbfMeta.SET_GLOBAL, SbfMeta.NARROWED_LOAD -> {
+            SbfMeta.LOWERED_SELECT, SbfMeta.LOWERED_OR, SbfMeta.LOADED_AS_NUM_FOR_PTA,
+            SbfMeta.REMOVED_MEMMOVE,
+            SbfMeta.SAFE_MATH, SbfMeta.SET_GLOBAL, SbfMeta.NARROWED_LOAD,
+            SbfMeta.MATH_PROMOTION -> {
                 strB.append(" /*${k.name}*/")
             }
             SbfMeta.CALL_ID,

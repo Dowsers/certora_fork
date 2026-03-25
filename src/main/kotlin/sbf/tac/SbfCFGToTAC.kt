@@ -994,13 +994,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                     }
 
                     is CVTFunction.U128Intrinsics -> {
-                        if (SolanaConfig.UseTACMathInt.get()) {
-                            summarizeU128(locInst)
-                        } else {
-                            sbfLogger.warn {"${locInst.inst} will not be modeled precisely in TAC. " +
-                                "Enable ${SolanaConfig.UseTACMathInt.name} for a precise modeling" }
-                            summarizeCall(locInst)
-                        }
+                        summarizeU128(locInst)
                     }
                     is CVTFunction.I128Intrinsics -> {
                         if (SolanaConfig.UseTACMathInt.get()) {

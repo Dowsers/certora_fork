@@ -85,7 +85,7 @@ fun sliceAndPTAOptLoop(
         i++
     }
 
-    return runPostSlicingOptimizations(optProg)
+    return runPostSlicingOptimizations(optProg, memSummaries)
 }
 
 

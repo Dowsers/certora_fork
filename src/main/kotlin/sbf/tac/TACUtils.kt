@@ -208,7 +208,18 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
 
 data class Result128(val low: TACVariable, val high: TACVariable, val overflow: TACVariable?)
 
-/** Get the symbolic TAC variables corresponding to the result of u128/i128 operation **/
+/**
+ * Get the symbolic TAC variables corresponding to the result of a u128/i128 operation.
+ *
+ * This function assumes the summarized instruction writes its results to exactly two or three
+ * stack locations, in the following order:
+ *  1. Low half  — the lower 64 bits of the 128-bit result.
+ *  2. High half — the upper 64 bits of the 128-bit result.
+ *  3. Overflow flag (optional) — present only for operations that can overflow (e.g. addition,
+ *     multiplication). When absent the returned [Result128.overflow] field is `null`.
+ *
+ * Returns `null` if the summary does not exist or does not conform to the expected layout.
+ */
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> getResFrom128(
     locInst: LocatedSbfInstruction
@@ -248,7 +259,8 @@ context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> applyU128BinaryOperation(
     args: U128BinaryOperands,
     cmds: MutableList<TACCmd.Simple>,
-    op: (res: TACSymbol.Var, overflow: TACSymbol.Var?, x: TACSymbol.Var, y: TACSymbol.Var) -> Unit) {
+    op: (res: TACSymbol.Var, overflow: TACSymbol.Var?, x: TACSymbol.Var, y: TACSymbol.Var) -> Unit
+) {
     val res = vFac.mkFreshIntVar()
     val x = mergeU128(args.xLow, args.xHigh, cmds)
     val y = mergeU128(args.yLow, args.yHigh, cmds)

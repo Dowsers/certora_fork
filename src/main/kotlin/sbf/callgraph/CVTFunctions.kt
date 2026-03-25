@@ -206,7 +206,11 @@ enum class CVTU128Intrinsics(val function: ExternalFunction) {
         listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())),
     U128_CEIL_DIV(ExternalFunction(CvlrFunctions.CVT_u128_ceil_div,
         setOf(),
-        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4, SbfRegister.R5).map{ Value.Reg(it)}.toSet()));
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4, SbfRegister.R5).map{ Value.Reg(it)}.toSet())),
+    U128_WRAPPING_SUBTRACTION(ExternalFunction(CvlrFunctions.CVT_u128_wrapping_sub,
+        setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())
+    );
 
 
     companion object: ExternalLibrary<CVTU128Intrinsics>  {
@@ -222,8 +226,18 @@ enum class CVTU128Intrinsics(val function: ExternalFunction) {
                         memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
                     }
                     U128_CEIL_DIV, U128_NONDET  -> {
-                        val summaryArgs = listOf(MemSummaryArgument(r = SbfRegister.R1, offset = 0 , width = 8, type = MemSummaryArgumentType.NUM),
-                            MemSummaryArgument(r = SbfRegister.R1, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM))
+                        val summaryArgs = listOf(
+                            MemSummaryArgument(r = SbfRegister.R1, offset = 0 , width = 8, type = MemSummaryArgumentType.NUM),
+                            MemSummaryArgument(r = SbfRegister.R1, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM)
+                        )
+                        memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
+                    }
+                    U128_WRAPPING_SUBTRACTION -> {
+                        val summaryArgs = listOf(
+                            MemSummaryArgument(r = SbfRegister.R0, allocatedSpace = 16UL, type = MemSummaryArgumentType.PTR_HEAP),
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 0 , width = 8, type = MemSummaryArgumentType.NUM),
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM)
+                        )
                         memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
                     }
                 }
