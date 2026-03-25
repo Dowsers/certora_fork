@@ -237,6 +237,11 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
     private fun inRange(v: TACSymbol.Var, lb: Long, ub: Long, isUnsigned: Boolean = true) =
         inRange(v, lb.toBigInteger(), ub.toBigInteger(), isUnsigned)
 
+    /**
+     * Emit TAC code for `assume(lb <= v < ub)`
+     * - If isUnsigned=true then unsigned comparison
+     * - otherwise signed comparison
+     **/
     fun inRange(v: TACSymbol.Var, lb: BigInteger, ub: BigInteger, isUnsigned: Boolean = true): List<TACCmd.Simple>{
         val lbBool = vFac.mkFreshBoolVar()
         val ubBool = vFac.mkFreshBoolVar()

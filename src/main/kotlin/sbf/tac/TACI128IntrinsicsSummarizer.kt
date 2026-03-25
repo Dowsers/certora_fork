@@ -26,7 +26,6 @@ import sbf.callgraph.CVTI128Intrinsics
 import sbf.domains.INumValue
 import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
-import vc.data.TACExprFactUntyped as txf
 
 /**
  * Summarize i128 intrinsics.
@@ -70,12 +69,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
         cmds.add(TACCmd.Simple.AssigningCmd.AssignHavocCmd(highV))
     } else {
         val res = vFac.mkFreshIntVar()
-        cmds.addAll(assume(txf {
-                   ((res ge exprBuilder.ZERO.asSym()) and (res le exprBuilder.mkConst(BigInteger.TWO.pow(127) - BigInteger.ONE))) or
-                    (res ge exprBuilder.mkConst(-BigInteger.TWO.pow(127)))
-                }, msg = "inRange"
-            )
-        )
+        cmds.addAll(inRange(res, BigInteger.ZERO, BigInteger.TWO.pow(128), true))
         cmds.addAll(splitU128(res, lowV, highV))
     }
 
