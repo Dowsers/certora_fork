@@ -209,6 +209,9 @@ enum class CVTU128Intrinsics(val function: ExternalFunction) {
         listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4, SbfRegister.R5).map{ Value.Reg(it)}.toSet())),
     U128_WRAPPING_SUBTRACTION(ExternalFunction(CvlrFunctions.CVT_u128_wrapping_sub,
         setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())),
+    U128_WRAPPING_ADDITION(ExternalFunction(CvlrFunctions.CVT_u128_wrapping_add,
+        setOf(Value.Reg(SbfRegister.R0)),
         listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())
     );
 
@@ -232,7 +235,7 @@ enum class CVTU128Intrinsics(val function: ExternalFunction) {
                         )
                         memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
                     }
-                    U128_WRAPPING_SUBTRACTION -> {
+                    U128_WRAPPING_SUBTRACTION, U128_WRAPPING_ADDITION -> {
                         val summaryArgs = listOf(
                             MemSummaryArgument(r = SbfRegister.R0, allocatedSpace = 16UL, type = MemSummaryArgumentType.PTR_HEAP),
                             MemSummaryArgument(r = SbfRegister.R0, offset = 0 , width = 8, type = MemSummaryArgumentType.NUM),

@@ -37,6 +37,38 @@ internal fun isMayLiveAfter(bb: SbfBasicBlock, reg: Value.Reg, afterPos: Int): B
 }
 
 /**
+ * Scan positions `[firstPos, lastPos]` and collects non-pattern store instructions whose
+ * stored value is [resLow] or [resHigh].  Returns `null` if any other non-pattern store is
+ * found, otherwise returns the list of store instructions.
+ */
+internal fun collectTrailingStores(
+    bb: SbfBasicBlock,
+    insts: List<SbfInstruction>,
+    firstPos: Int,
+    lastPos: Int,
+    patternPositions: Set<Int>,
+    resLow: Value.Reg,
+    resHigh: Value.Reg
+): List<LocatedSbfInstruction>? {
+    val trailingStoreLocInsts = mutableListOf<LocatedSbfInstruction>()
+    for (pos in firstPos..lastPos) {
+        if (pos in patternPositions) {
+            continue
+        }
+        val nonPatternInst = insts[pos]
+        val nonPatternLocInst = LocatedSbfInstruction(bb.getLabel(), pos, nonPatternInst)
+        if (nonPatternInst is SbfInstruction.Mem && !nonPatternInst.isLoad) {
+            if (nonPatternInst.value == resLow || nonPatternInst.value == resHigh) {
+                trailingStoreLocInsts.add(nonPatternLocInst)
+            } else {
+                return null
+            }
+        }
+    }
+    return trailingStoreLocInsts
+}
+
+/**
  * Resolves an input operand [reg] that is first read by a pattern instruction at [firstUsedAtPos].
  *
  * If no non-pattern instruction in `(firstUsedAtPos, lastPos)` writes [reg], the value in [reg]
@@ -78,6 +110,55 @@ internal fun resolveInputParam(
             return null
         }
         return RegOrStack.Stack(memInst.access)
+    }
+    return null
+}
+
+/**
+ * Find the last instruction that writes to [dst] strictly before position [before] in [bb],
+ * and returns it if [predicate] holds for it, otherwise returns null.
+ */
+fun findLastDefinition(
+    bb: SbfBasicBlock,
+    dst: Value.Reg,
+    before: Int,
+    predicate: (LocatedSbfInstruction) -> Boolean
+): LocatedSbfInstruction? {
+    val insts = bb.getInstructions()
+    for (pos in before - 1 downTo 0) {
+        val inst = insts[pos]
+        if (!inst.writeRegister.contains(dst)) {
+            continue
+        }
+        val locInst = LocatedSbfInstruction(bb.getLabel(), pos, inst)
+        return if (predicate(locInst)) {
+            locInst
+        } else {
+            null
+        }
+    }
+    return null
+}
+
+/**
+ * Scan forward from [afterPos] and return the first instruction for which [match] holds.
+ * Return null if [stop] holds before a match is found.
+ */
+fun findFirstAfter(
+    bb: SbfBasicBlock,
+    afterPos: Int,
+    match: (LocatedSbfInstruction) -> Boolean,
+    stop: (LocatedSbfInstruction) -> Boolean
+): LocatedSbfInstruction? {
+    val insts = bb.getInstructions()
+    for (pos in afterPos + 1 until insts.size) {
+        val locInst = LocatedSbfInstruction(bb.getLabel(), pos, insts[pos])
+        if (match(locInst)) {
+            return locInst
+        }
+        if (stop(locInst)) {
+            return null
+        }
     }
     return null
 }

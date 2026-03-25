@@ -54,6 +54,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
         CVTU128Intrinsics.U128_CEIL_DIV -> summarizeU128CeilDiv(locInst)
         CVTU128Intrinsics.U128_NONDET -> summarizeU128Nondet(locInst)
         CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION -> summarizeU128WrappingSubtraction(locInst)
+        CVTU128Intrinsics.U128_WRAPPING_ADDITION -> summarizeU128WrappingAddition(locInst)
     }
 }
 
@@ -221,30 +222,29 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
 
 
 /**
- * Summarizes an u128 wrapping subtraction intrinsic.
+ * Shared implementation for u128 wrapping binary operations (addition, subtraction).
  *
- * Computes `result = (x - y) mod 2^128`, where:
+ * Computes `result = op(x, y) mod 2^128`, where:
  *  - `x` is the 128-bit value whose low half is in R1 and high half is in R2.
  *  - `y` is the 128-bit value whose low half is in R3 and high half is in R4.
  *
- * The result is written to two map locations provided by the memory summary:
- *  1. `*(summary[0])` — low half of the result.
- *  2. `*(summary[1])` — high half of the result.
+ * [op] performs the actual 256-bit operation on the merged operands and is provided
+ * by the caller.
  *
- * There is no overflow flag: wrapping subtraction always produces a valid u128.
- *
- * Unlike other external functions, when `u128_wrapping_subtraction` returns `r0` points to a heap allocated memory of 16 bytes
- * where `*(u64*)r0` contains `resLow` and `*(u64*)r0+8` contains resHigh.
+ * The result is written to heap memory pointed to by r0:
+ *  `*(u64*)r0` contains `resLow` and `*(u64*)r0+8` contains `resHigh`.
  */
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128WrappingSubtraction(
-    locInst: LocatedSbfInstruction
+private fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128WrappingBinaryOp(
+    locInst: LocatedSbfInstruction,
+    expected: CVTU128Intrinsics,
+    op: (TACSymbol.Var, TACSymbol.Var) -> TACExpr
 ): List<TACCmd.Simple> {
     val inst = locInst.inst
     check(inst is SbfInstruction.Call)
-    { "summarizeU128WrappingSubtraction expects a call instruction instead of ${locInst.inst}" }
-    check(CVTU128Intrinsics.from(inst.name) == CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION)
-    { "summarizeU128WrappingSubtraction expects ${CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION.function.name}" }
+    { "${expected.function.name} expects a call instruction instead of ${locInst.inst}" }
+    check(CVTU128Intrinsics.from(inst.name) == expected)
+    { "Expected ${expected.function.name} but got ${inst.name}" }
 
     val summaryArgs = mem.getTACMemoryFromSummary(locInst) ?: return listOf()
     if (summaryArgs.size != 2) {
@@ -264,27 +264,41 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
 
     val cmds = mutableListOf<TACCmd.Simple>()
 
-    cmds += Debug.startFunction(name= inst.name)
+    cmds += Debug.startFunction(name = inst.name)
     // We assign a symbolic address to the returned pointer.
     check(summaryArgs[0].reg == summaryArgs[1].reg)
     val ptrV = exprBuilder.mkVar(summaryArgs[0].reg)
-    val allocatedSpace = 16UL
-    cmds += heapMemAlloc.alloc(ptrV, allocatedSpace)
+    cmds += heapMemAlloc.alloc(ptrV, 16UL)
 
-    // The TAC code for wrapping subtraction
     // 1. Merge low and high halves
-    // 2. SUB in bv256
-    // 3. mask with 2^128 -1
+    // 2. Apply op in bv256
+    // 3. mask with 2^128 - 1
     // 4. split into two halves again
     // Steps 1, 3, and 4 are done as part of `applyU128BinaryOperation`
     applyU128BinaryOperation(args, cmds) { res, _, x, y ->
-        cmds += assign(res, exprBuilder.mkSubExpr(x.asSym(), y.asSym(), false))
+        cmds += assign(res, op(x, y))
     }
 
-    // Store resLow in `*(u64*)r0` and highLow in `*(u64*)r0+8`.
+    // Store resLow in `*(u64*)r0` and resHigh in `*(u64*)r0+8`.
     // Since r0 is a heap pointer their contents are modeled by TAC ByteMap's.
     cmds += mapStores(resLowMap,  ptrV, summaryArgs[0].offset, resLow)
     cmds += mapStores(resHighMap, ptrV, summaryArgs[1].offset, resHigh)
     cmds += Debug.endFunction(name = inst.name)
     return cmds
 }
+
+context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128WrappingSubtraction(
+    locInst: LocatedSbfInstruction
+): List<TACCmd.Simple> =
+    summarizeU128WrappingBinaryOp(locInst, CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION) { x, y ->
+        exprBuilder.mkSubExpr(x.asSym(), y.asSym(), false)
+    }
+
+context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128WrappingAddition(
+    locInst: LocatedSbfInstruction
+): List<TACCmd.Simple> =
+    summarizeU128WrappingBinaryOp(locInst, CVTU128Intrinsics.U128_WRAPPING_ADDITION) { x, y ->
+        exprBuilder.mkAddExpr(x.asSym(), y.asSym(), false)
+    }

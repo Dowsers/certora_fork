@@ -75,7 +75,11 @@ val U128WrappingSubTransform = object : MathIntrinsicsTransform<U128WrappingSubP
 
             // Instruction 3: xHigh = xHigh - borrow
             // Must be the first SUB using borrow after instruction 2
-            val inst3Loc = findSubWithRhsAfter(bb, borrow, p2, equalAt) ?: continue
+            val inst3Loc = findFirstAfter(bb, p2,
+                match = { val inst = it.inst
+                          inst is SbfInstruction.Bin && inst.op == BinOp.SUB && equalAt(it, inst.v, borrow) },
+                stop  = { it.inst.writeRegister.contains(borrow) }
+            ) ?: continue
             val xHigh = (inst3Loc.inst as SbfInstruction.Bin).dst
             val p3 = inst3Loc.pos
 
@@ -83,7 +87,10 @@ val U128WrappingSubTransform = object : MathIntrinsicsTransform<U128WrappingSubP
 
             // Instruction 1: xHigh = xHigh - yHigh
             // Must be the last write to xHigh before instruction 3
-            val inst1Loc = findLastSubOnDstBefore(bb, xHigh, p3) ?: continue
+            val inst1Loc = findLastDefinition(bb, xHigh, p3) {
+                val inst = it.inst
+                inst is SbfInstruction.Bin && inst.op == BinOp.SUB && inst.v is Value.Reg
+            } ?: continue
             val yHigh = (inst1Loc.inst as SbfInstruction.Bin).v as? Value.Reg ?: continue
             val p1 = inst1Loc.pos
 
@@ -91,7 +98,11 @@ val U128WrappingSubTransform = object : MathIntrinsicsTransform<U128WrappingSubP
 
             // Instruction 4: xLow = xLow - yLow, must come after the SELECT so that the SELECT
             // sees the original xLow (not the post-subtraction value).
-            val inst4Loc = findFirstSubWithDstAndRhs(bb, xLow, yLow, locInst, equalAt) ?: continue
+            val inst4Loc = findFirstAfter(bb, p2,
+                match = { val inst = it.inst
+                          inst is SbfInstruction.Bin && inst.op == BinOp.SUB && equalAt(it, inst.dst, xLow) && equalAt(it, inst.v, yLow) },
+                stop  = { it.inst.writeRegister.contains(xLow) || it.inst.writeRegister.contains(yLow) }
+            ) ?: continue
             val p4 = inst4Loc.pos
 
             dbg {"[4] ${inst4Loc.inst}: xLow = xLow - yLow"}
@@ -128,32 +139,9 @@ val U128WrappingSubTransform = object : MathIntrinsicsTransform<U128WrappingSubP
 
             dbg { "Detected wrapping_sub: resLow=$resLow resHigh=$resHigh" }
 
-            // Collect non-pattern instructions interleaved in [firstPos, lastPos] that store
-            // `resLow` or `resHigh`. They will be re-emitted after the wrapping_sub call so they see
-            // the correct result values. If we find any other interleaved store instruction, then
-            // we conservatively reject the pattern.
             val firstPos = minOf(p1, p2, p3, p4)
-            val trailingStoreLocInsts = mutableListOf<LocatedSbfInstruction>()
-            var hasInvalidInterleaved = false
-            for (pos in firstPos..lastPos) {
-                if (pos in patternPositions) {
-                    continue
-                }
-                val nonPatternInst = insts[pos]
-                val nonPatternLocInst = LocatedSbfInstruction(bb.getLabel(), pos, nonPatternInst)
-
-                // we only support stores of lowRes or highRes interleaved with pattern instructions
-                if (nonPatternInst is SbfInstruction.Mem && !nonPatternInst.isLoad) {
-                    if (nonPatternInst.value == resLow || nonPatternInst.value == resHigh) {
-                        trailingStoreLocInsts.add(nonPatternLocInst)
-                    } else {
-                        hasInvalidInterleaved = true
-                        break
-                    }
-                }
-            }
-
-            if (hasInvalidInterleaved) {
+            val trailingStoreLocInsts = collectTrailingStores(bb, insts, firstPos, lastPos, patternPositions, resLow, resHigh)
+            if (trailingStoreLocInsts == null) {
                 dbg { "Rejected pattern because there is an interleaved store" }
                 continue
             }
@@ -204,78 +192,6 @@ val U128WrappingSubTransform = object : MathIntrinsicsTransform<U128WrappingSubP
         }
     }
 
-    /**
-     * Finds the first `x = x - rhs` at a position strictly after [from] in [bb].
-     * Returns null if [rhs] is redefined before such an instruction is found.
-     */
-    private fun findSubWithRhsAfter(
-        bb: SbfBasicBlock,
-        rhs: Value.Reg,
-        from: Int,
-        equalAt: (LocatedSbfInstruction, Value, Value.Reg) -> Boolean
-    ): LocatedSbfInstruction? {
-        val insts = bb.getInstructions()
-        for (pos in from + 1 until insts.size) {
-            val inst = insts[pos]
-            val locInst = LocatedSbfInstruction(bb.getLabel(), pos, inst)
-            if (inst is SbfInstruction.Bin && inst.op == BinOp.SUB && equalAt(locInst, inst.v, rhs)) {
-                return locInst
-            }
-            if (inst.writeRegister.contains(rhs)) {
-                return null
-            }
-        }
-        return null
-    }
-
-    /**
-     * Finds the last instruction that writes to [dst] strictly before position [before] in [bb].
-     * Returns it only if it is `dst = dst - x` where x is any [Value.Reg].
-     */
-    private fun findLastSubOnDstBefore(bb: SbfBasicBlock, dst: Value.Reg, before: Int): LocatedSbfInstruction? {
-        val insts = bb.getInstructions()
-        for (pos in before - 1 downTo 0) {
-            val inst = insts[pos]
-            if (!inst.writeRegister.contains(dst)) {
-                continue
-            }
-            return if (inst is SbfInstruction.Bin && inst.op == BinOp.SUB && inst.v is Value.Reg) {
-                LocatedSbfInstruction(bb.getLabel(), pos, inst)
-            } else {
-                null
-            }
-        }
-        return null
-    }
-
-    /**
-     * Finds the first `dst = dst - rhs` after [selectLocInst] in [bb],
-     * where [dst] and [rhs] still hold the same values they had at the select instruction.
-     */
-    private fun findFirstSubWithDstAndRhs(
-        bb: SbfBasicBlock,
-        dst: Value.Reg,
-        rhs: Value.Reg,
-        selectLocInst: LocatedSbfInstruction,
-        equalAt: (LocatedSbfInstruction, Value, Value.Reg) -> Boolean
-    ): LocatedSbfInstruction? {
-        val insts = bb.getInstructions()
-        val selectPos = selectLocInst.pos
-        for (pos in selectPos + 1 until insts.size) {
-            val inst = insts[pos]
-            val locInst = LocatedSbfInstruction(bb.getLabel(), pos, inst)
-            if (inst is SbfInstruction.Bin && inst.op == BinOp.SUB &&
-                equalAt(locInst, inst.dst, dst) &&
-                equalAt(locInst, inst.v, rhs)
-            ) {
-                return locInst
-            }
-            // If dst or rhs is redefined before a matching instruction is found,
-            // the values no longer match what the SELECT compared — give up.
-            if (inst.writeRegister.contains(dst) || inst.writeRegister.contains(rhs)) {
-                return null
-            }
-        }
-        return null
-    }
 }
+
+

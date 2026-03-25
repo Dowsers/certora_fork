@@ -59,6 +59,7 @@ object CvlrFunctions {
     const val CVT_u128_gt0 = "CVT_u128_gt0"
     const val CVT_u128_ceil_div = "CVT_u128_ceil_div"
     const val CVT_u128_wrapping_sub = "CVT_u128_wrapping_sub"
+    const val CVT_u128_wrapping_add = "CVT_u128_wrapping_add"
     const val CVT_nativeint_u64_eq = "CVT_nativeint_u64_eq"
     const val CVT_nativeint_u64_lt = "CVT_nativeint_u64_lt"
     const val CVT_nativeint_u64_le = "CVT_nativeint_u64_le"

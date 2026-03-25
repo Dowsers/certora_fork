@@ -85,7 +85,10 @@ fun runPostSlicingOptimizations(prog: SbfCallGraph, memSummaries: MemorySummarie
         optEntryCFG.verify(false, "[after simplifyByteSwapInsts]")
         promoteMathIntrinsics(
             optEntryCFG,
-            transformers = listOf(U128WrappingSubTransform),
+            transformers = listOf(
+                U128WrappingSubTransform,
+                U128WrappingAddTransform
+                ),
             globals = prog.getGlobals(),
             memSummaries
         )
