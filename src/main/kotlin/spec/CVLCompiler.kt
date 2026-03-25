@@ -605,9 +605,9 @@ class CVLCompiler(
 
             is CVLCmd.Simple.AssumeCmd.AssumeInvariant -> {
                 if(Config.RequireInvariantsPreRuleSemantics.get()){
-                    compileAssumeInvariantGlobally(cmd, allocatedTACSymbols)
+                    compileAssumeInvariantGlobally(cmd, allocatedTACSymbols, compilationEnvironment)
                 } else{
-                    compileAssumeInvariant(cmd, allocatedTACSymbols)
+                    compileAssumeInvariant(cmd, allocatedTACSymbols, compilationEnvironment)
                 }
             }
 
@@ -1623,7 +1623,7 @@ class CVLCompiler(
     /**
      * @param allocatedTACSymbols is imperatively extended with additional symbols
      */
-    private fun compileAssumeInvariant(cmd: CVLCmd.Simple.AssumeCmd.AssumeInvariant, allocatedTACSymbols: TACSymbolAllocation): ParametricInstantiation<CVLTACProgram> {
+    private fun compileAssumeInvariant(cmd: CVLCmd.Simple.AssumeCmd.AssumeInvariant, allocatedTACSymbols: TACSymbolAllocation, compilationEnvironment: CompilationEnvironment): ParametricInstantiation<CVLTACProgram> {
         val inv =
             symbolTable.lookUpNonFunctionLikeSymbol(cmd.id, cmd.scope)?.symbolValue as? CVLInvariant
                 ?: error("Failed to find invariant ${cmd.id}")
@@ -1642,7 +1642,7 @@ class CVLCompiler(
                 cmd.scope
             ),
             allocatedTACSymbols,
-            CompilationEnvironment()
+            compilationEnvironment
         ).wrapAsAssumeInvariant(cmd.id).asSimple()
     }
 
@@ -1669,7 +1669,7 @@ class CVLCompiler(
      * then [instrumentation.transformers.RequireInvariantTransformer] takes care of moving the program toBePlacedAfterRuleParamSetup to the correct location
      * (given by where the [CVL_ASSUME_INVARIANT_TARGET] is placed).
      */
-    private fun compileAssumeInvariantGlobally(cmd: CVLCmd.Simple.AssumeCmd.AssumeInvariant, allocatedTACSymbols: TACSymbolAllocation): ParametricInstantiation<CVLTACProgram> {
+    private fun compileAssumeInvariantGlobally(cmd: CVLCmd.Simple.AssumeCmd.AssumeInvariant, allocatedTACSymbols: TACSymbolAllocation, compilationEnvironment: CompilationEnvironment): ParametricInstantiation<CVLTACProgram> {
         fun CVLTACProgram.ignoreInCallTrace(): CVLTACProgram =
             this.copy(code = this.code.mapValues { (_, cmds) ->
                 cmds.map { tacCmd ->
@@ -1739,7 +1739,7 @@ class CVLCompiler(
                 cmd.scope
             ),
             allocatedTACSymbols,
-            CompilationEnvironment()
+            compilationEnvironment
         )
 
         val combinedProg = havocedInvParams.zip(cmd.params).foldIndexed(RequireInvariantProgram(CVLTACProgram.empty("toBePlacedAfterRuleParamSetup"), CVLTACProgram.empty("assumeRequireInvParam"))) { i, acc, (havocedInvParam, exp) ->
@@ -1752,14 +1752,14 @@ class CVLCompiler(
             val assumeCmd = CVLCmd.Simple.AssumeCmd.Assume(cmd.range, eqExp, "compileAssumeInvariantGlobally", cmd.scope)
 
             // compiling the assumption that the assigned global is equal to the initially havoc'ed variable
-            val compiledAssume = compileCommand(assumeCmd, allocatedTACSymbols, CompilationEnvironment())
+            val compiledAssume = compileCommand(assumeCmd, allocatedTACSymbols, compilationEnvironment)
 
             // Compiling the evaluation of the expression of parameter
-            val evaulatedExpressionOfParam = CVLExpressionCompiler(this, allocatedTACSymbols, CompilationEnvironment())
+            val evaulatedExpressionOfParam = CVLExpressionCompiler(this, allocatedTACSymbols, compilationEnvironment)
                 .compileExp(globalRequireInvVar, exp).getAsSimple().merge(compiledAssume).getAsSimple().ignoreInCallTrace()
 
             // Adding variable assumption to the freshly havoc'ed CVL parameters. As the freshly generated havoc'ed parameter variables will be moved, the assumption on the bounds must be moved as well.
-            val havocedVariableAssumptions = addVariableValueAssumptions(havocedInvParam.id, havocedInvParam.type, "variable assumptions for havoced parameters ", allocatedTACSymbols, CompilationEnvironment()).getAsSimple()
+            val havocedVariableAssumptions = addVariableValueAssumptions(havocedInvParam.id, havocedInvParam.type, "variable assumptions for havoced parameters ", allocatedTACSymbols, compilationEnvironment).getAsSimple()
             RequireInvariantProgram(programToMove = acc.programToMove.merge(havocedVariableAssumptions), programToMaintain = acc.programToMaintain.merge(evaulatedExpressionOfParam))
         }
 
