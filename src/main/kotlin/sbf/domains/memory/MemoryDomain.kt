@@ -381,6 +381,10 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTA
      **/
     private fun refineToNum(reg: Value.Reg): Boolean {
         val oldVal = scalars.getAsScalarValue(reg)
+        if (oldVal.type() is SbfType.PointerType.Global<TNum, TOffset>) {
+            // we don't touch a global variable
+            return false
+        }
         val newType = scalars.getTypeFac().anyNum()
         return if (!oldVal.type().lessOrEqual(newType)) {
             // newType is strictly more precise
