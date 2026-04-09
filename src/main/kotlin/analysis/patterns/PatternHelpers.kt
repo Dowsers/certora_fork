@@ -107,6 +107,19 @@ object PatternHelpers {
     inline fun <reified T : Tag> lSymTag(key: InfoKey<LTACSymbol>? = null) =
         anyLSymbol.mapResult { s -> runIf(s.symbol.tag is T) { Info(key, s) } }
 
+    /**
+     * Follows the def chain through copies, matching when [p] returns true for the variable's symbol.
+     * If the chain ends at a complex expression without [p] being satisfied, the pattern fails.
+     */
+    fun defChainLSym(key: InfoKey<LTACSymbol>? = null, p: (TACSymbol) -> Boolean): PI =
+        Pattern.FromVar<Info>({ lcmd, v ->
+            if (p(v)) {
+                PatternMatcher.VariableMatch.Match(Info(key, LTACSymbol(lcmd.ptr, v))!!)
+            } else {
+                PatternMatcher.VariableMatch.Continue
+            }
+        })
+
     fun lSym256(key: InfoKey<LTACSymbol>) =
         lSymTag<Tag.Bit256>(key).onlyIf {
             // this is needed only because we sometimes create Tag.bv256 constant symbols with out of bounds

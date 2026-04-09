@@ -17,11 +17,8 @@
 
 package sbf.tac
 
-import analysis.PatternMatcher
 import analysis.opt.PatternRewriter
 import analysis.opt.PatternRewriter.Key.*
-import analysis.LTACSymbol
-import analysis.patterns.Info
 import config.Config
 import datastructures.stdcollections.*
 import evm.twoToThe
@@ -170,15 +167,7 @@ fun PatternRewriter.solanaPatternsList() = listOf(
         PatternHandler(
             name = "redundant-narrow",
             pattern = {
-                safeMathNarrow(
-                    PatternMatcher.Pattern.FromVar<Info>({ lcmd, v ->
-                        if (v.tag is Tag.Bit256) {
-                            PatternMatcher.VariableMatch.Match(Info(A, LTACSymbol(lcmd.ptr, v))!!)
-                        } else {
-                            PatternMatcher.VariableMatch.Continue
-                        }
-                    })
-                )
+                safeMathNarrow(defChainLSym(A) { it.tag is Tag.Bit256 })
             },
             handle = {
                 sym(A)
