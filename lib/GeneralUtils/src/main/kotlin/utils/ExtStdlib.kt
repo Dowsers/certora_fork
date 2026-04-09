@@ -577,6 +577,9 @@ fun <T, @Treapable E> TreapSet<T>.mapNotNullToTreapSet(m : (T) -> E?) =
         }
     }
 
+fun <T : Any> sequenceOfNotNull(element: T?): Sequence<T> = element?.let { sequenceOf(it) }.orEmpty()
+fun <T : Any> sequenceOfNotNull(vararg elements: T?): Sequence<T> = elements.asSequence().filterNotNull()
+
 /** Like [mapToTreapSet], except optimized for the case where the source set is the same type as the result */
 fun <@Treapable T : Any> TreapSet<T>.updateElements(transform: (T) -> T?): TreapSet<T> {
     var added = treapSetOf<T>()
