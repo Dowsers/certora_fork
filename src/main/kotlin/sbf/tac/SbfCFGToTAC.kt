@@ -243,8 +243,19 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                     check(inst.name == SolanaFunction.SOL_MEMCMP.syscall.name)
                     val info = mem.getTACMemoryFromMemIntrinsic(locInst)
                     checkNotNull(info) {"addGlobalInitializers cannot get PTA info from $inst"}
-                    check(info is TACMemSplitter.NonStackMemCmpInfo) {"addGlobalInitializers expects a byte map at $inst"}
-                    if (reg == SbfRegister.R1) { info.op1 } else { info.op2 }
+                    when(info) {
+                        is TACMemSplitter.NonStackMemCmpInfo -> {
+                            // memcmp when both src and destination are non-stack and thus, they are both modeled as ByteMap
+                            if (reg == SbfRegister.R1) { info.op1 } else { info.op2 }
+                        }
+                        is TACMemSplitter.MixedRegionsMemCmpInfo -> {
+                            // memcmp when one (src or destination) is non-stack and the other stack. The non-stack operand
+                            // is modeled as ByteMap.
+                            check(info.byteMapReg == reg)
+                            info.byteMap
+                        }
+                        else -> throw TACTranslationError("addGlobalInitializers expects a byte map at $inst")
+                    }
                 }
                 else -> throw TACTranslationError("addGlobalInitializers: unexpected instruction $inst")
             }
