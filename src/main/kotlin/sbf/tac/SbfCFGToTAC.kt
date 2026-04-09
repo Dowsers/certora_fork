@@ -229,19 +229,31 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
     private fun addGlobalInitializers(): List<TACCmd.Simple> {
         val initializers = runGlobalInitializationAnalysis(cfg, types, globals.elf)
         val cmds = mutableListOf<TACCmd.Simple>()
-        for ( (gv, _, stride, locInst, values) in initializers) {
-            cmds.add(Debug.startFunction("init_${gv.name}"))
-            val loadOrStoreInfo = mem.getTACMemory(locInst)
-            checkNotNull(loadOrStoreInfo) {"addGlobalInitializers cannot get PTA info from $locInst"}
-            check(loadOrStoreInfo is TACMemSplitter.NonStackLoadOrStoreInfo) {"addGlobalInitializers expects a byte map at $locInst"}
-
-            val byteMap = loadOrStoreInfo.variable
+        for ( (gv, _, stride, locInst, reg, values) in initializers) {
+            val inst = locInst.inst
+            cmds += Debug.startFunction("init_${gv.name}")
+            val byteMap = when (inst) {
+                is SbfInstruction.Mem -> {
+                    val info = mem.getTACMemory(locInst)
+                    checkNotNull(info) {"addGlobalInitializers cannot get PTA info from $inst"}
+                    check(info is TACMemSplitter.NonStackLoadOrStoreInfo) {"addGlobalInitializers expects a byte map at $inst"}
+                    info.variable
+                }
+                is SbfInstruction.Call -> {
+                    check(inst.name == SolanaFunction.SOL_MEMCMP.syscall.name)
+                    val info = mem.getTACMemoryFromMemIntrinsic(locInst)
+                    checkNotNull(info) {"addGlobalInitializers cannot get PTA info from $inst"}
+                    check(info is TACMemSplitter.NonStackMemCmpInfo) {"addGlobalInitializers expects a byte map at $inst"}
+                    if (reg == SbfRegister.R1) { info.op1 } else { info.op2 }
+                }
+                else -> throw TACTranslationError("addGlobalInitializers: unexpected instruction $inst")
+            }
             val locVar = vFac.mkFreshIntVar()
-            cmds.add(assign(locVar, sbfTacB.mkConst(gv.address).asSym()))
+            cmds += assign(locVar, sbfTacB.mkConst(gv.address).asSym())
             val offsets = List(values.size) { index -> PTAOffset((index * stride).toLong())  }
             val storedValues = values.map { sbfTacB.mkConst(it)}
-            cmds.addAll(mapStores(byteMap, locVar, offsets, storedValues))
-            cmds.add(Debug.endFunction("init_${gv.name}"))
+            cmds += mapStores(byteMap, locVar, offsets, storedValues)
+            cmds += Debug.endFunction("init_${gv.name}")
         }
         return cmds
     }
