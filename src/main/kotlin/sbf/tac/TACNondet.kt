@@ -33,7 +33,7 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
 ): List<TACCmd.Simple> {
     when (nondetFn) {
         CVTNondet.NONDET_I8, CVTNondet.NONDET_I16, CVTNondet.NONDET_I32, CVTNondet.NONDET_I64 -> {
-            val r0 = exprBuilder.mkVar(SbfRegister.R0)
+            val r0 = sbfTacB.mkVar(SbfRegister.R0)
             val bits = when (nondetFn) {
                 CVTNondet.NONDET_I8  ->  8
                 CVTNondet.NONDET_I16 ->  16
@@ -41,20 +41,20 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
                 CVTNondet.NONDET_I64 ->  64
                 else -> throw TACTranslationError("Unexpected CVT_nondet signed integer function ${inst.name}")
             }
-            val n = BigInteger.TWO.pow(if (SolanaConfig.TACSignedMath.get()) { bits }  else { bits - 1 })
-            val rangeAssume = if (SolanaConfig.TACSignedMath.get()) {
+            val n = BigInteger.TWO.pow(if (SolanaConfig.UseTACSignedMath.get()) { bits }  else { bits - 1 })
+            val rangeAssume = if (SolanaConfig.UseTACSignedMath.get()) {
                 // if this flag is enabled then range similar to unsigned counterparts
                 inRange(r0, BigInteger.ZERO, n, true)
             } else {
                 inRange(r0, -n, n, false)
             }
             return listOf(Debug.externalCall(inst),
-                   TACCmd.Simple.AssigningCmd.AssignHavocCmd(r0)) +
+                   havoc(r0)) +
                    rangeAssume +
                    listOf(Calltrace.externalCall(inst, listOf(r0)))
         }
         CVTNondet.NONDET_U8, CVTNondet.NONDET_U16, CVTNondet.NONDET_U32, CVTNondet.NONDET_U64, CVTNondet.NONDET_USIZE -> {
-            val r0 = exprBuilder.mkVar(SbfRegister.R0)
+            val r0 = sbfTacB.mkVar(SbfRegister.R0)
             val n = when (nondetFn) {
                 CVTNondet.NONDET_U8  -> BigInteger.TWO.pow(8)
                 CVTNondet.NONDET_U16 -> BigInteger.TWO.pow(16)
@@ -67,7 +67,7 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
             }
             return listOf(
                     Debug.externalCall(inst),
-                    TACCmd.Simple.AssigningCmd.AssignHavocCmd(r0)
+                    havoc(r0)
                     ) +
                     inRange(r0, BigInteger.ZERO, n) +
                     Calltrace.externalCall(inst, listOf(r0))

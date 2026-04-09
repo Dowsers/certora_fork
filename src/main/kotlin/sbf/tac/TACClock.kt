@@ -60,8 +60,8 @@ class Clock(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
         cmds += assign(leaderScheduleEpoch, v4.asSym())
         cmds += assign(unixTimestamp, v5.asSym())
 
-        val r0 = exprBuilder.mkVar(SbfRegister.R0)
-        cmds += TACCmd.Simple.AssigningCmd.AssignHavocCmd(r0)
+        val r0 = sbfTacB.mkVar(SbfRegister.R0)
+        cmds += havoc(r0)
         cmds += Debug.endFunction("sol_set_clock_sysvar")
         return cmds
     }
@@ -91,8 +91,8 @@ class Clock(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
         cmds += assign(v5, unixTimestamp.asSym())
         cmds += inRange(v1, BigInteger.ZERO, BigInteger.TWO.pow(64) - BigInteger.ONE)
 
-        val r0 = exprBuilder.mkVar(SbfRegister.R0)
-        cmds += TACCmd.Simple.AssigningCmd.AssignHavocCmd(r0)
+        val r0 = sbfTacB.mkVar(SbfRegister.R0)
+        cmds += havoc(r0)
         cmds += Debug.endFunction("sol_get_clock_sysvar")
         return cmds
     }

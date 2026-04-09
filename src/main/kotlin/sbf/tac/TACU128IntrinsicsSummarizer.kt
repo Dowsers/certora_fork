@@ -19,7 +19,6 @@ package sbf.tac
 
 import sbf.cfg.*
 import sbf.disassembler.SbfRegister
-import vc.data.*
 import java.math.BigInteger
 import datastructures.stdcollections.*
 import sbf.SolanaConfig
@@ -28,6 +27,9 @@ import sbf.domains.INumValue
 import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
 import sbf.sbfLogger
+import vc.data.TACCmd
+import vc.data.TACExpr
+import vc.data.TACSymbol
 
 /**
  * Dispatches TAC summarization for an u128 intrinsic call.
@@ -77,36 +79,25 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     check(CVTU128Intrinsics.from(inst.name) == CVTU128Intrinsics.U128_LEQ)
     {"summarizeU128Leq expects ${CVTU128Intrinsics.U128_LEQ.function.name}"}
 
-    val res = exprBuilder.mkVar(SbfRegister.R0)
-    val xLowE = exprBuilder.mkExprSym(Value.Reg(SbfRegister.R1))
-    val xHighE = exprBuilder.mkExprSym(Value.Reg(SbfRegister.R2))
-    val yLowE = exprBuilder.mkExprSym(Value.Reg(SbfRegister.R3))
-    val yHighE = exprBuilder.mkExprSym(Value.Reg(SbfRegister.R4))
+    val res    = sbfTacB.mkVar(SbfRegister.R0)
+    val xLowE  = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R1))
+    val xHighE = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R2))
+    val yLowE  = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R3))
+    val yHighE = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R4))
 
     val cmds = mutableListOf<TACCmd.Simple>()
     cmds += Debug.startFunction(inst.name)
     val xE = mergeU128(xLowE, xHighE, cmds)
     val yE = mergeU128(yLowE, yHighE, cmds)
-    val cond = TACExpr.TernaryExp.Ite(
-        TACExpr.BinBoolOp.LAnd(
-            TACExpr.BinRel.Eq(xHighE, TACExpr.zeroExpr),
-            TACExpr.BinRel.Eq(yHighE, TACExpr.zeroExpr)),
-        exprBuilder.mkBinRelExp(CondOp.LE, xLowE, yLowE),
-        TACExpr.TernaryExp.Ite(
-            TACExpr.BinBoolOp.LAnd(
-                TACExpr.BinRel.Eq(xHighE, TACExpr.zeroExpr),
-                TACExpr.UnaryExp.LNot(TACExpr.BinRel.Eq(yHighE, TACExpr.zeroExpr))),
-            TACSymbol.True.asSym(),
-            TACExpr.TernaryExp.Ite(
-                TACExpr.BinBoolOp.LAnd(
-                    TACExpr.UnaryExp.LNot(TACExpr.BinRel.Eq(xHighE, TACExpr.zeroExpr)),
-                    TACExpr.BinRel.Eq(yHighE, TACExpr.zeroExpr)),
-                TACSymbol.False.asSym(),
-                exprBuilder.mkBinRelExp(CondOp.LE, xE.asSym(), yE.asSym()),
-            )
+    val cond = sbfTacB {
+        switch(
+            (xHighE eq ZERO) and (yHighE eq ZERO) to (xLowE le yLowE),
+            (xHighE eq ZERO) and (yHighE neq ZERO) to TRUE,
+            (xHighE neq ZERO) and (yHighE eq ZERO) to FALSE,
+            default = xE le yE
         )
-    )
-    cmds += assign(res, TACExpr.TernaryExp.Ite(cond, exprBuilder.ONE.asSym(), TACExpr.zeroExpr))
+    }
+    cmds += assign(res, sbfTacB { ite(cond, ONE, ZERO) })
     cmds += Debug.endFunction(inst.name)
     return cmds
 }
@@ -127,18 +118,14 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     check(CVTU128Intrinsics.from(inst.name) == CVTU128Intrinsics.U128_GT0)
     { "summarizeU128Gt0 expects ${CVTU128Intrinsics.U128_GT0.function.name}" }
 
-    val res = exprBuilder.mkVar(SbfRegister.R0)
-    val xLowE  = exprBuilder.mkExprSym(Value.Reg(SbfRegister.R1))
-    val xHighE = exprBuilder.mkExprSym(Value.Reg(SbfRegister.R2))
-
-    val cmds = mutableListOf<TACCmd.Simple>()
-    cmds += Debug.startFunction(inst.name)
-    cmds += assign(res, TACExpr.BinBoolOp.LOr(
-        TACExpr.UnaryExp.LNot(TACExpr.BinRel.Eq(xHighE, TACExpr.zeroExpr)),
-        exprBuilder.mkBinRelExp(CondOp.GT, xLowE, TACExpr.zeroExpr))
+    val res = sbfTacB.mkVar(SbfRegister.R0)
+    val xLowE  = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R1))
+    val xHighE = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R2))
+    return listOf(
+        Debug.startFunction(inst.name),
+        assign(res, sbfTacB { (xHighE neq ZERO) or (xLowE gt ZERO) }),
+        Debug.endFunction(inst.name)
     )
-    cmds += Debug.endFunction(inst.name)
-    return cmds
 }
 
 /**
@@ -166,14 +153,14 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     }
 
     val (resLow, resHigh, overflow) = getResFrom128(locInst) ?: return listOf()
-    val xLowE  = exprBuilder.mkVar(SbfRegister.R2).asSym()
-    val xHighE = exprBuilder.mkVar(SbfRegister.R3).asSym()
-    val yLowE  = exprBuilder.mkVar(SbfRegister.R4).asSym()
-    val yHighE = exprBuilder.mkVar(SbfRegister.R5).asSym()
+    val xLowE  = sbfTacB.mkVar(SbfRegister.R2).asSym()
+    val xHighE = sbfTacB.mkVar(SbfRegister.R3).asSym()
+    val yLowE  = sbfTacB.mkVar(SbfRegister.R4).asSym()
+    val yHighE = sbfTacB.mkVar(SbfRegister.R5).asSym()
     val args = U128BinaryOperands(resLow.tacVar, resHigh.tacVar, overflow?.tacVar, xLowE, xHighE, yLowE, yHighE)
 
-    val xMath = vFac.mkFreshMathIntVar()
-    val yMath = vFac.mkFreshMathIntVar()
+    val xMath   = vFac.mkFreshMathIntVar()
+    val yMath   = vFac.mkFreshMathIntVar()
     val resMath = vFac.mkFreshMathIntVar()
 
     val cmds = mutableListOf<TACCmd.Simple>()
@@ -181,10 +168,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     applyU128BinaryOperation(args, cmds) { res, _, x, y ->
         cmds += promoteToMathInt(x.asSym(), xMath)
         cmds += promoteToMathInt(y.asSym(), yMath)
-        cmds += assign(resMath, TACExpr.BinOp.IntDiv(
-            TACExpr.BinOp.IntSub(TACExpr.Vec.IntAdd(xMath.asSym(), yMath.asSym()), exprBuilder.ONE.asSym()),
-            yMath.asSym())
-        )
+        cmds += assign(resMath, sbfTacB { ((xMath intAdd yMath) intSub ONE) intDiv yMath })
         cmds += narrowFromMathInt(resMath.asSym(), res)
     }
     cmds += Debug.endFunction(inst.name)
@@ -256,10 +240,10 @@ private fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
 
     val resLow  = vFac.mkFreshIntVar()
     val resHigh = vFac.mkFreshIntVar()
-    val xLowE   = exprBuilder.mkVar(SbfRegister.R1).asSym()
-    val xHighE  = exprBuilder.mkVar(SbfRegister.R2).asSym()
-    val yLowE   = exprBuilder.mkVar(SbfRegister.R3).asSym()
-    val yHighE  = exprBuilder.mkVar(SbfRegister.R4).asSym()
+    val xLowE   = sbfTacB.mkVar(SbfRegister.R1).asSym()
+    val xHighE  = sbfTacB.mkVar(SbfRegister.R2).asSym()
+    val yLowE   = sbfTacB.mkVar(SbfRegister.R3).asSym()
+    val yHighE  = sbfTacB.mkVar(SbfRegister.R4).asSym()
     val args = U128BinaryOperands(resLow, resHigh, null, xLowE, xHighE, yLowE, yHighE)
 
     val cmds = mutableListOf<TACCmd.Simple>()
@@ -267,7 +251,7 @@ private fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
     cmds += Debug.startFunction(name = inst.name)
     // We assign a symbolic address to the returned pointer.
     check(summaryArgs[0].reg == summaryArgs[1].reg)
-    val ptrV = exprBuilder.mkVar(summaryArgs[0].reg)
+    val ptrV = sbfTacB.mkVar(summaryArgs[0].reg)
     cmds += heapMemAlloc.alloc(ptrV, 16UL)
 
     // 1. Merge low and high halves
@@ -291,14 +275,10 @@ context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128WrappingSubtraction(
     locInst: LocatedSbfInstruction
 ): List<TACCmd.Simple> =
-    summarizeU128WrappingBinaryOp(locInst, CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION) { x, y ->
-        exprBuilder.mkSubExpr(x.asSym(), y.asSym(), false)
-    }
+    summarizeU128WrappingBinaryOp(locInst, CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION) { x, y -> sbfTacB { x sub y } }
 
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128WrappingAddition(
     locInst: LocatedSbfInstruction
 ): List<TACCmd.Simple> =
-    summarizeU128WrappingBinaryOp(locInst, CVTU128Intrinsics.U128_WRAPPING_ADDITION) { x, y ->
-        exprBuilder.mkAddExpr(x.asSym(), y.asSym(), false)
-    }
+    summarizeU128WrappingBinaryOp(locInst, CVTU128Intrinsics.U128_WRAPPING_ADDITION) { x, y -> sbfTacB { x add y } }

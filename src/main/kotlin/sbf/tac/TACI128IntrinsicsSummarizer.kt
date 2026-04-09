@@ -18,7 +18,6 @@
 package sbf.tac
 
 import sbf.cfg.*
-import vc.data.*
 import java.math.BigInteger
 import datastructures.stdcollections.*
 import sbf.SolanaConfig
@@ -26,6 +25,7 @@ import sbf.callgraph.CVTI128Intrinsics
 import sbf.domains.INumValue
 import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
+import vc.data.TACCmd
 
 /**
  * Summarize i128 intrinsics.
@@ -60,13 +60,13 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     val highV = resHigh.tacVar
 
     val cmds = mutableListOf(Debug.externalCall(inst))
-    if (!SolanaConfig.TACSignedMath.get()) {
+    if (!SolanaConfig.UseTACSignedMath.get()) {
         // add some warning msg in a TAC annotation for better debugging
-        val msg = "Run with option \"-${SolanaConfig.TACSignedMath.name} true\" to support ${CVTI128Intrinsics.I128_NONDET.function.name}"
+        val msg = "Run with option \"-${SolanaConfig.UseTACSignedMath.name} true\" to support ${CVTI128Intrinsics.I128_NONDET.function.name}"
         cmds.add(Debug.unsupported(msg, listOf(lowV, highV)))
         // havoc low and high bits
-        cmds.add(TACCmd.Simple.AssigningCmd.AssignHavocCmd(lowV))
-        cmds.add(TACCmd.Simple.AssigningCmd.AssignHavocCmd(highV))
+        cmds.add(havoc(lowV))
+        cmds.add(havoc(highV))
     } else {
         val res = vFac.mkFreshIntVar()
         cmds.addAll(inRange(res, BigInteger.ZERO, BigInteger.TWO.pow(128), true))

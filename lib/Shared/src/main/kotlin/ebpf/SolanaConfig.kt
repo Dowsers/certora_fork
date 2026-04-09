@@ -356,6 +356,15 @@ object SolanaConfig {
         )
     ) {}
 
+    val UseTACSignedMath = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaTACSignedArithmetic",
+            true,
+            "Experimental flag for supporting signed math in TAC. [default: false]"
+        )
+    ) {}
+
     val TACHeapAllocSize = object : ConfigType.IntCmdLine(
         512,
         Option(
@@ -402,15 +411,6 @@ object SolanaConfig {
             true,
             "The initialization of a global variable is part of the TAC encoding if the number of bytes being " +
                       "initialized is less or equal that this number. [default: 64]"
-        )
-    ) {}
-
-    val TACSignedMath = object : ConfigType.BooleanCmdLine(
-        false,
-        Option(
-            "solanaTACSignedArithmetic",
-            true,
-            "Experimental flag for supporting signed math in TAC. [default: false]"
         )
     ) {}
 

@@ -47,8 +47,8 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
         val value = preservedValues[offset]
         value?.toLongOrNull()
             // `offset` is mapped to a non-top constant in `stackValues`
-            ?.let { exprBuilder.mkConst(it).asSym() }
-        // `offset` is mapped to a top constant in `stackValues`
+            ?.let { sbfTacB.mkConst(it).asSym() }
+            // `offset` is mapped to a top constant in `stackValues`
             ?: value?.let {
                 exactReconstruction = false
                 vFac.mkFreshIntVar().asSym()
@@ -112,16 +112,20 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
     o: TACExpr.Sym.Const,
     stackOffset: PTAOffset
 ): TACExpr {
-    val stackPtr = exprBuilder.mkVar(SbfRegister.R10).asSym()
-    val lhs = if (o.s.value == BigInteger.ZERO) { base } else { TACExpr.Vec.Add(listOf(base, o))}
+    val stackPtr = sbfTacB.mkVar(SbfRegister.R10).asSym()
+    val lhs = if (o.s.value == BigInteger.ZERO) {
+        base
+    } else {
+        sbfTacB { base add o }
+    }
     val rhs = if (globals.elf.useDynamicFrames()) {
         check(stackOffset >= 0) { "pointsToStack expects the stack to grow upwards" }
-        TACExpr.Vec.Add(listOf(stackPtr, exprBuilder.mkConst(stackOffset.v).asSym()))
+        sbfTacB { stackPtr add mkConst(stackOffset.v) }
     } else {
         check(stackOffset <= 0) { "pointsToStack expects the stack to grow downwards" }
-        TACExpr.BinOp.Sub(stackPtr, exprBuilder.mkConst(-stackOffset.v).asSym())
+        sbfTacB { stackPtr sub mkConst(-stackOffset.v) }
     }
-    return exprBuilder.mkBinRelExp(CondOp.EQ, lhs, rhs)
+    return CondOp.EQ(lhs, rhs, sbfTacB)
 }
 
 /**
@@ -150,10 +154,12 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
     return reversedStackLocs
         .drop(1)
         .fold(initialExpr) { acc, (offset, symbol) ->
-            TACExpr.TernaryExp.Ite(
-                pointsToStack(base, o, offset),
-                symbol,
-                acc
-            )
+            sbfTacB {
+                switch(
+                    pointsToStack(base, o, offset) to symbol,
+                    default = acc
+                )
+            }
         }
 }
+

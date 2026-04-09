@@ -37,12 +37,9 @@ sealed class TACAllocator {
     ): List<TACCmd.Simple> {
         return if (useTACAssume) {
             val b = vFac.mkFreshBoolVar()
-            listOf(
-                assign(b, exprBuilder.mkBinRelExp(CondOp.EQ, ptr.asSym() , address.toLong())),
-                TACCmd.Simple.AssumeCmd(b, "mkEq")
-            )
+            listOf(assign(b, CondOp.EQ(ptr.asSym() , address.toLong(), sbfTacB))) + assume(b.asSym(), "mkEq")
         } else {
-            listOf(assign(ptr, exprBuilder.mkConst(Value.Imm(address)).asSym()))
+            listOf(assign(ptr, sbfTacB.mkConst(Value.Imm(address)).asSym()))
         }
     }
 }

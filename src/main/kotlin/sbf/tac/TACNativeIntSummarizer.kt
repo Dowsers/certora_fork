@@ -28,9 +28,6 @@ import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
 import sbf.domains.SbfType
 import vc.data.TACCmd
-import vc.data.TACExpr
-import vc.data.asTACExpr
-import java.math.BigInteger
 
 /**
  * Summarize nativeint intrinsics
@@ -48,55 +45,42 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     check(function != null) {"summarizeNativeInt does not support ${inst.name}"}
 
     // These symbols are created using 256-bit
-    val r1 = exprBuilder.mkVar(SbfRegister.R1).asSym()
-    val r2 = exprBuilder.mkVar(SbfRegister.R2).asSym()
-    val r3 = exprBuilder.mkVar(SbfRegister.R3).asSym()
-    val r4 = exprBuilder.mkVar(SbfRegister.R4).asSym()
-    val r0 = exprBuilder.mkVar(SbfRegister.R0)
-    val zero = exprBuilder.ZERO.asSym()
-    val one  = exprBuilder.ONE.asSym()
+    val r1 = natIntTacB.mkVar(SbfRegister.R1).asSym()
+    val r2 = natIntTacB.mkVar(SbfRegister.R2).asSym()
+    val r3 = natIntTacB.mkVar(SbfRegister.R3).asSym()
+    val r4 = natIntTacB.mkVar(SbfRegister.R4).asSym()
+    val r0 = natIntTacB.mkVar(SbfRegister.R0)
+    val zero = natIntTacB.ZERO
+    val one  = natIntTacB.ONE
 
-    return datastructures.stdcollections.listOf(
+    return listOf(
         when (function) {
-            CVTNativeInt.NATIVEINT_EQ ->
-                assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Eq(r1, r2), one, zero))
-            CVTNativeInt.NATIVEINT_LT ->
-                assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Lt(r1, r2), one, zero))
-            CVTNativeInt.NATIVEINT_LE ->
-                assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Le(r1, r2), one, zero))
-            CVTNativeInt.NATIVEINT_SLT ->
-                assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Slt(r1, r2), one, zero))
-            CVTNativeInt.NATIVEINT_SLE ->
-                assign(r0, TACExpr.TernaryExp.Ite(TACExpr.BinRel.Sle(r1, r2), one, zero))
-            CVTNativeInt.NATIVEINT_ADD ->
-                assign(r0, TACExpr.Vec.Add(datastructures.stdcollections.listOf(r1, r2)))
-            CVTNativeInt.NATIVEINT_SUB ->
-                assign(r0, TACExpr.BinOp.Sub(r1, r2))
-            CVTNativeInt.NATIVEINT_MUL ->
-                assign(r0, TACExpr.Vec.Mul(datastructures.stdcollections.listOf(r1, r2)))
-            CVTNativeInt.NATIVEINT_DIV ->
-                assign(r0, TACExpr.BinOp.Div(r1, r2))
-            CVTNativeInt.NATIVEINT_CEIL_DIV ->
-                assign(r0, TACExpr.BinOp.Div(TACExpr.BinOp.Sub(TACExpr.Vec.Add(r1, r2), one), r2))
-            CVTNativeInt.NATIVEINT_MULDIV ->
-                assign(r0, TACExpr.BinOp.Div(TACExpr.Vec.Mul(r1, r2), r3))
-            CVTNativeInt.NATIVEINT_MULDIV_CEIL ->
-                assign(
-                    r0,
-                    TACExpr.BinOp.Div(TACExpr.BinOp.Sub(TACExpr.Vec.Add(TACExpr.Vec.Mul(r1, r2), r3), one), r3)
-                )
-            CVTNativeInt.NATIVEINT_NONDET ->
-                TACCmd.Simple.AssigningCmd.AssignHavocCmd(r0)
-            CVTNativeInt.NATIVEINT_FROM_U128 -> /* build a nativeint from u128 (two 64-bit registers) */
-                mergeU128(r0, r1, r2, false)
-            CVTNativeInt.NATIVEINT_FROM_U256 -> /* build a nativeint from u256 (four 64-bit registers) */
-                mergeU256(r0, r1, r2, r3, r4, false)
-            CVTNativeInt.NATIVEINT_U64_MAX ->
-                assign(r0, (BigInteger.TWO.pow(64) - BigInteger.ONE).asTACExpr())
-            CVTNativeInt.NATIVEINT_U128_MAX ->
-                assign(r0, (BigInteger.TWO.pow(128) - BigInteger.ONE).asTACExpr())
-            CVTNativeInt.NATIVEINT_U256_MAX ->
-                assign(r0, (BigInteger.TWO.pow(256) - BigInteger.ONE).asTACExpr())
+            CVTNativeInt.NATIVEINT_EQ -> assign(r0, natIntTacB { ite (r1 eq r2, one, zero)})
+            CVTNativeInt.NATIVEINT_LT -> assign(r0, natIntTacB { ite(r1 lt r2, one, zero) })
+            CVTNativeInt.NATIVEINT_LE -> assign(r0, natIntTacB { ite(r1 le r2, one, zero) })
+            CVTNativeInt.NATIVEINT_SLT -> assign(r0, natIntTacB { ite(r1 sLt r2, one, zero) })
+            CVTNativeInt.NATIVEINT_SLE -> assign(r0, natIntTacB { ite(r1 sLe r2, one, zero) })
+            CVTNativeInt.NATIVEINT_ADD -> assign(r0, natIntTacB { r1 add r2 })
+            CVTNativeInt.NATIVEINT_SUB -> assign(r0, natIntTacB { r1 sub r2 })
+            CVTNativeInt.NATIVEINT_MUL -> assign(r0, natIntTacB { r1 mul r2 })
+            CVTNativeInt.NATIVEINT_DIV -> assign(r0, natIntTacB { r1 div r2 })
+            CVTNativeInt.NATIVEINT_CEIL_DIV -> assign(r0, natIntTacB { r1 ceilDiv r2})
+            CVTNativeInt.NATIVEINT_MULDIV -> assign(r0, natIntTacB.MulDiv(r1,r2,r3))
+            CVTNativeInt.NATIVEINT_MULDIV_CEIL -> assign(r0, natIntTacB.MulDivCeil(r1,r2,r3))
+            CVTNativeInt.NATIVEINT_NONDET -> havoc(r0)
+            CVTNativeInt.NATIVEINT_FROM_U128 ->
+                /**
+                 *  build a nativeint from u128 (two 64-bit registers: r1:low, r2:high)
+                 **/
+                assign(r0, natIntTacB.mergeU128(r1, r2, false))
+            CVTNativeInt.NATIVEINT_FROM_U256 ->
+                /**
+                 * build a nativeint from u256 (four 64-bit registers)
+                 **/
+                assign(r0, natIntTacB.mergeU256(r1, r2, r3, r4, false))
+            CVTNativeInt.NATIVEINT_U64_MAX -> assign(r0, natIntTacB.U64_MAX)
+            CVTNativeInt.NATIVEINT_U128_MAX -> assign(r0, natIntTacB.U128_MAX)
+            CVTNativeInt.NATIVEINT_U256_MAX -> assign(r0, natIntTacB.U256_MAX)
             CVTNativeInt.NATIVEINT_SEXT -> {
                 // nativeint_u64_sext(val, from_width) returns
                 //   if from_width=8   -> signExtToBv256(val & 0xFF, 8)
@@ -108,19 +92,16 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
                     ?: throw TACTranslationError(
                         "${CvlrFunctions.CVT_nativeint_u64_sext} expects width to be statically known as a constant number"
                     )
-                assign(r0, exprBuilder.signExtendSbfValueWithMask(r1, fromWidth))
+                assign(r0, natIntTacB.signExtendSbfValueWithMask(r1, fromWidth))
             }
-            CVTNativeInt.NATIVEINT_NEG -> {
-                // nativeint_neg(val) returns -1bv256 * val
-                assign(r0, TACExpr.Vec.Mul(listOf(exprBuilder.MINUS_ONE.asSym(), r1)))
-            }
+            CVTNativeInt.NATIVEINT_NEG -> assign(r0, natIntTacB.ModNeg(r1))
             CVTNativeInt.NATIVEINT_MASK -> {
                 // nativeint_mask(val, bits) returns val & ((1 << bits) - 1)
                 val bits = (types.typeAtInstruction(locInst, SbfRegister.R2) as? SbfType.NumType)?.value?.toLongOrNull()
                     ?: throw TACTranslationError(
                         "${CvlrFunctions.CVT_nativeint_u64_mask} expects bits to be statically known as a constant number"
                     )
-                assign(r0, exprBuilder.mask(r1, bits))
+                assign(r0, natIntTacB.mask(r1, bits))
             }
 
         }
