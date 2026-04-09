@@ -61,7 +61,8 @@ object SbfMeta {
     val REG_TYPE =  MetaKey<Pair<Value.Reg, SbfRegisterType>>("reg_type")
     // Address of the instruction
     val SBF_ADDRESS = MetaKey<ULong>("sbf_bytecode_address")
-
+    // Tag to be consumed by calltrace function
+    val STICKY_TAG = MetaKey<String>("tag")
     val SBF_DWARF_DEBUG_ANNOTATIONS = MetaKey<List<DWARFCfgEdgeLabel>>("sbf_debug_edge_annotation")
     // The value is true if the loaded register affects the control flow of the program
     val LOADED_AS_NUM_FOR_PTA = MetaKey<Boolean>("loaded_as_number_for_pta")

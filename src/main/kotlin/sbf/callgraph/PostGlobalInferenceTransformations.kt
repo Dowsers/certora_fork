@@ -18,6 +18,7 @@
 package sbf.callgraph
 
 import sbf.cfg.resolveGetSysvarCalls
+import sbf.cfg.resolveStickyTagCalls
 import sbf.domains.MemorySummaries
 
 /**
@@ -27,5 +28,6 @@ fun runPostGlobalInferenceTransformations(prog: SbfCallGraph, memSummaries: Memo
     prog.transformSingleEntry {
         val mutCFG = it.clone(it.getName())
         resolveGetSysvarCalls(mutCFG, prog.getGlobals(), memSummaries)
+        resolveStickyTagCalls(mutCFG, prog.getGlobals(), memSummaries)
         mutCFG
     }

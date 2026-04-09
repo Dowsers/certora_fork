@@ -135,7 +135,7 @@ private fun simplifySelect(b: MutableSbfBasicBlock) {
 }
 
 private fun SbfInstruction.isLoweredAssume(): Boolean =
-    this is SbfInstruction.Assume && this.metaData.getVal(SbfMeta.LOWERED_ASSUME) != null
+    this is SbfInstruction.Assume && this.isLoweredAssume()
 
 private data class Assignment(
     val locInst: LocatedSbfInstruction,

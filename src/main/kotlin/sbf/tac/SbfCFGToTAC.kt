@@ -522,7 +522,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
             return null
         }
 
-        if (inst.metaData.getVal(SbfMeta.LOWERED_ASSUME) == null) {
+        if (!inst.isLoweredAssume()) {
             return null
         }
 

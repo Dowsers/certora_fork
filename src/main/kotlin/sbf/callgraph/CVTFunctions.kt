@@ -138,7 +138,8 @@ enum class CVTCore(val function: ExternalFunction) {
 
 enum class CVTCalltrace(val function: ExternalFunction,
                         // From all registers (r1-r5), which registers contain the string or strings passed to the function
-                        val strings: Set<CalltraceStr>) {
+                        val strings: Set<CalltraceStr>,
+                        val consumeStickyTag: Boolean = false) {
     PRINT_U64_1(CexPrintValue(CvlrFunctions.CVT_calltrace_print_u64_1, 3), setOf(CalltraceStr(SbfRegister.R1))),
     PRINT_U64_2(CexPrintValue(CvlrFunctions.CVT_calltrace_print_u64_2, 4), setOf(CalltraceStr(SbfRegister.R1))),
     PRINT_U64_3(CexPrintValue(CvlrFunctions.CVT_calltrace_print_u64_3, 5), setOf(CalltraceStr(SbfRegister.R1))),
@@ -166,9 +167,28 @@ enum class CVTCalltrace(val function: ExternalFunction,
         setOf(CalltraceStr(SbfRegister.R1))),
     PRINT_STRING(CexPrintValue(CvlrFunctions.CVT_calltrace_print_string, 4),
                  setOf(CalltraceStr(SbfRegister.R1), CalltraceStr(SbfRegister.R3))),
+    /**
+     *  `r1`-`r4` contains the four words of u64 bytes of the pubkey (from lowest to highest).
+     *  This intrinsics does not have any string argument.
+     */
+    PRINT_PUBKEY(ExternalFunction(
+        CvlrFunctions.CVT_calltrace_print_pubkey, setOf(),
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it) }.toSet()
+        ),
+        setOf(),
+        consumeStickyTag = true
+    ),
     RULE_LOCATION(ExternalFunction(CvlrFunctions.CVT_rule_location, setOf(),
                   listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3).map{ Value.Reg(it)}.toSet()),
-                  setOf(CalltraceStr(SbfRegister.R1)));
+                  setOf(CalltraceStr(SbfRegister.R1))),
+    /**
+     * Carries a tag that will be consumed by the next CVTCalltrace function requiring a tag.
+     * Used as a workaround when a CVTCalltrace function needs more than 5 SBF registers:
+     * the tag is passed separately, freeing up two registers for other arguments.
+     **/
+    STICKY_TAG(ExternalFunction(CvlrFunctions.CVT_calltrace_sticky_tag, setOf(),
+        listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it) }.toSet()),
+        setOf(CalltraceStr(SbfRegister.R1)));
 
     companion object: ExternalLibrary<CVTCalltrace>  {
         private val nameMap = CVTCalltrace.entries.associateBy { it.function.name }

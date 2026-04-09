@@ -55,12 +55,16 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
             listOf()
         CVTCalltrace.PRINT_STRING ->
             listOf(Calltrace.printString(locInst))
+        CVTCalltrace.PRINT_PUBKEY ->
+            listOf(Calltrace.printPubkey(locInst))
         CVTCalltrace.RULE_LOCATION ->
             listOf(Calltrace.ruleLocation(locInst))
         CVTCalltrace.SCOPE_END ->
             listOf(Calltrace.endScope(locInst))
         CVTCalltrace.SCOPE_START ->
             listOf(Calltrace.startScope(locInst))
+        CVTCalltrace.STICKY_TAG ->
+            throw TACTranslationError("Unexpected call to ${locInst.inst}")
     }
 }
 
@@ -170,6 +174,19 @@ internal object Calltrace {
         return SnippetCmd.CvlrSnippetCmd.CexPrintTag("$tag: $str").toAnnotation()
     }
 
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>>  printPubkey(
+        locInst: LocatedSbfInstruction
+    ): TACCmd.Simple {
+        val w0 = sbfTacB.mkVar(SbfRegister.R1)
+        val w1 = sbfTacB.mkVar(SbfRegister.R2)
+        val w2 = sbfTacB.mkVar(SbfRegister.R3)
+        val w3 = sbfTacB.mkVar(SbfRegister.R4)
+
+        val inst = locInst.inst
+        val displayMessage = inst.metaData.getVal(SbfMeta.STICKY_TAG).orEmpty()
+        return SnippetCmd.CvlrSnippetCmd.PrintPubkey(displayMessage, w0, w1, w2, w3).toAnnotation()
+    }
 
     /** Read the filepath from the first two registers and the line number from the third one. */
     fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>> IRegisterTypes<TNum, TOffset>.getFilepathAndLineNumber(

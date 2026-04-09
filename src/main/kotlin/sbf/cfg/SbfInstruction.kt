@@ -431,6 +431,9 @@ sealed class SbfInstruction: ReadRegister, WriteRegister  {
         override val readRegisters: Set<Value.Reg>
             get() = cond.readRegisters
 
+        /** return true if the instruction was inserted by the front-end from an original jump instruction **/
+        fun isLoweredAssume(): Boolean = metaData.getVal(SbfMeta.LOWERED_ASSUME) != null
+
         override fun toString() = "assume($cond) ${metadataToString()}"
     }
 
@@ -598,14 +601,14 @@ sealed class SbfInstruction: ReadRegister, WriteRegister  {
                 CVTCalltrace.PRINT_U64_AS_FIXED,
                 CVTCalltrace.PRINT_U64_AS_DECIMAL,
                 CVTCalltrace.PRINT_TAG,
-                CVTCalltrace.PRINT_STRING -> true
-
+                CVTCalltrace.PRINT_STRING,
+                CVTCalltrace.STICKY_TAG -> true
                 CVTCalltrace.PRINT_LOCATION,
+                CVTCalltrace.PRINT_PUBKEY,
                 CVTCalltrace.ATTACH_LOCATION,
                 CVTCalltrace.SCOPE_START,
                 CVTCalltrace.SCOPE_END,
                 CVTCalltrace.RULE_LOCATION -> false
-
                 null -> false
             }
         }
