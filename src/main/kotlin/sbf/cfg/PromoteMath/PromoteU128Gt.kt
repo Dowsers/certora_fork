@@ -48,16 +48,8 @@ val U128GtTransform = object : MathIntrinsicsTransform<U128GtPattern> {
      *
      * The pattern represents the computation (xLow:xHigh) > (yLow:yHigh) using select instructions.
      *
-     * We detect two main patterns:
+     * We detect the pattern:
      *
-     * Pattern 1 (using GE - unsigned greater-equal):
-     * ```
-     *   (1) tmpLow = select(yLow ge xLow, 1, 0)    // low comparison (note: may have swapped operands)
-     *   (2) tmpHigh = select(yHigh ge xHigh, 1, 0) // high comparison (note: may have swapped operands)
-     *   (3) result = select(xHigh eq yHigh, tmpLow, tmpHigh) // combine
-     * ```
-     *
-     * Pattern 2 (using GT - unsigned greater-than):
      * ```
      *   (1) tmpLow = select(xLow ugt yLow, 1, 0)    // low comparison
      *   (2) tmpHigh = select(xHigh ugt yHigh, 1, 0) // high comparison
@@ -97,7 +89,7 @@ val U128GtTransform = object : MathIntrinsicsTransform<U128GtPattern> {
             dbg { "[3] $inst3" }
 
             val p1Sel = matchSelect(bb, tmpLow, p3) { sel ->
-                (sel.cond.op == CondOp.GT || sel.cond.op == CondOp.GE) && sel.cond.right is Value.Reg
+                sel.cond.op == CondOp.GT && sel.cond.right is Value.Reg
             } ?: continue
 
             dbg { "[1] $p1Sel xLow: ${p1Sel.x}, yLow: ${p1Sel.y}" }
