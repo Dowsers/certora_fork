@@ -224,6 +224,39 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     cmds.addAll(splitU128(res.asSym(), args.resLow, args.resHigh))
 }
 
+/**
+ * Merges the low and high halves of [x] (and optionally [y]) into full 128-bit values and
+ * evaluates a relational [op] on them, assigning the boolean result to [res].
+ *
+ * Unlike [applyU128BinaryOperation], there is no [splitU128] step: the operation produces a
+ * scalar (boolean/condition) result rather than a new u128 value.
+ */
+context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>>
+    applyU128RelationalOperation(
+    res: TACSymbol.Var,
+    xLow: TACExpr.Sym, xHigh: TACExpr.Sym,
+    cmds: MutableList<TACCmd.Simple>,
+    op: (x: TACSymbol.Var) -> TACExpr
+) {
+    val x = mergeU128(xLow, xHigh, cmds)
+    cmds += assign(res, op(x))
+}
+
+context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>>
+    applyU128RelationalOperation(
+    res: TACSymbol.Var,
+    xLow: TACExpr.Sym, xHigh: TACExpr.Sym,
+    yLow: TACExpr.Sym, yHigh: TACExpr.Sym,
+    cmds: MutableList<TACCmd.Simple>,
+    op: (x: TACSymbol.Var, y: TACSymbol.Var) -> TACExpr
+) {
+    val x = mergeU128(xLow, xHigh, cmds)
+    val y = mergeU128(yLow, yHigh, cmds)
+    cmds += assign(res, op(x, y))
+}
+
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>>
     applyU128ShiftOperation(

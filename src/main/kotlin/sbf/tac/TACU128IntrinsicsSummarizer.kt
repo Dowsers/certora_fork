@@ -87,17 +87,9 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
 
     val cmds = mutableListOf<TACCmd.Simple>()
     cmds += Debug.startFunction(inst.name)
-    val xE = mergeU128(xLowE, xHighE, cmds)
-    val yE = mergeU128(yLowE, yHighE, cmds)
-    val cond = sbfTacB {
-        switch(
-            (xHighE eq ZERO) and (yHighE eq ZERO) to (xLowE le yLowE),
-            (xHighE eq ZERO) and (yHighE neq ZERO) to TRUE,
-            (xHighE neq ZERO) and (yHighE eq ZERO) to FALSE,
-            default = xE le yE
-        )
+    applyU128RelationalOperation(res, xLowE, xHighE, yLowE, yHighE, cmds) { x, y ->
+        sbfTacB { ite(x le y, ONE, ZERO) }
     }
-    cmds += assign(res, sbfTacB { ite(cond, ONE, ZERO) })
     cmds += Debug.endFunction(inst.name)
     return cmds
 }
@@ -118,14 +110,16 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     check(CVTU128Intrinsics.from(inst.name) == CVTU128Intrinsics.U128_GT0)
     { "summarizeU128Gt0 expects ${CVTU128Intrinsics.U128_GT0.function.name}" }
 
-    val res = sbfTacB.mkVar(SbfRegister.R0)
+    val res    = sbfTacB.mkVar(SbfRegister.R0)
     val xLowE  = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R1))
     val xHighE = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R2))
-    return listOf(
-        Debug.startFunction(inst.name),
-        assign(res, sbfTacB { (xHighE neq ZERO) or (xLowE gt ZERO) }),
-        Debug.endFunction(inst.name)
-    )
+    val cmds = mutableListOf<TACCmd.Simple>()
+    cmds += Debug.startFunction(inst.name)
+    applyU128RelationalOperation(res, xLowE, xHighE, cmds) { x ->
+        sbfTacB { ite(x gt ZERO, ONE, ZERO) }
+    }
+    cmds += Debug.endFunction(inst.name)
+    return cmds
 }
 
 /**
