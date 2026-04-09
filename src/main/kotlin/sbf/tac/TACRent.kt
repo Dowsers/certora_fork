@@ -49,7 +49,10 @@ class Rent(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
     ): List<TACCmd.Simple> {
         val inst = locInst.inst
         check(inst is SbfInstruction.Call)
-        check(SolanaFunction.from(inst.name) == SolanaFunction.SOL_GET_RENT_SYSVAR)
+        check(
+            SolanaFunction.from(inst.name) == SolanaFunction.SOL_GET_RENT_SYSVAR ||
+            SolanaFunction.from(inst.name) == SolanaFunction.CVT_SOL_GET_RENT_SYSVAR
+        )
 
         val cmds = mutableListOf<TACCmd.Simple>()
         val tacVars = getTACVariables(locInst, cmds)
@@ -66,7 +69,7 @@ class Rent(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
         cmds += assume(SummarizeFPCompilerRt<TNum, TOffset, TFlags>().isTwo(v2), "exemption_threshold == 2")
         // Add assumption that `burn_percent` is between 0 and 100
         cmds += assign(v3,  burnPercent.asSym())
-        cmds += inRange(v1, BigInteger.ZERO, BigInteger.valueOf(100))
+        cmds += inRange(v3, BigInteger.ZERO, BigInteger.valueOf(100))
         // Havoc r0
         cmds += havoc(sbfTacB.mkVar(SbfRegister.R0))
         cmds += Debug.endFunction("sol_get_rent_sysvar")

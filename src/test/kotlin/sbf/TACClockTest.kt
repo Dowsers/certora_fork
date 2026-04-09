@@ -17,11 +17,43 @@
 
 package sbf
 
+import sbf.callgraph.MutableSbfCallGraph
 import sbf.cfg.*
+import sbf.disassembler.*
+import sbf.domains.MemorySummaries
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
 
 class TACClockTest {
+
+    /**
+     * ELF view that places the CLOCK sysvar public key at address [CLOCK_SYSVAR_ADDR].
+     *
+     * The 32-byte key is represented as four little-endian Long words:
+     *   [-3930297668494579962, -5305770971630447064, 6660062555789614731, 559633779]
+     * which base58-encode to "SysvarC1ock11111111111111111111111111111111".
+     */
+    private object ClockSysvarElfView : IElfFileView {
+        override fun isLittleEndian() = true
+        override fun sbpfVersion() = SbpfVersion.SBF
+        override fun useDynamicFrames() = false
+        override fun isGlobalVariable(address: ElfAddress) = (address == CLOCK_SYSVAR_ADDR)
+        override fun isReadOnlyGlobalVariable(address: ElfAddress) = (address == CLOCK_SYSVAR_ADDR)
+
+        override fun getAsConstantString(address: ElfAddress, size: Long): String {
+            if (address != CLOCK_SYSVAR_ADDR) {
+                return ""
+            }
+            val words = longArrayOf(-3930297668494579962, -5305770971630447064, 6660062555789614731, 559633779)
+            return words.flatMap { toBytes(it).toList() }.map { (it.toInt() and 0xFF).toChar() }.joinToString("")
+        }
+
+        override fun getAsConstantNum(address: ElfAddress, size: Long): Long? = null
+    }
+
+    companion object {
+        private const val CLOCK_SYSVAR_ADDR = 788956L
+    }
 
     /**
      * ```
@@ -94,5 +126,54 @@ class TACClockTest {
         Assertions.assertEquals(true, verify(tacProg))
     }
 
+
+    /**
+     * Similar to [test1] but uses `sol_get_sysvar` instead of `sol_get_clock_sysvar`.
+     *
+     * ```
+     * r1 = r10 - 200
+     * *r1 = 0, *(r1+8) = 1, *(r1+16) = 2, *(r1+24) = 3, *(r1+32) = 4
+     * sol_set_clock_sysvar()
+     * r1 = CLOCK_SYSVAR_ADDR   // global pointer to the CLOCK sysvar public key
+     * r2 = r10 - 400           // output buffer
+     * r3 = 0
+     * r4 = 40
+     * sol_get_sysvar()
+     * assert(*(r2+16) == 2)
+     * ```
+     *
+     * Global inference (with [SolanaConfig.AggressiveGlobalDetection]) is needed to
+     * recognize the immediate value [CLOCK_SYSVAR_ADDR] as a global pointer so that
+     * [sbf.callgraph.SolGetSysvar.getSysvarId] can identify the sysvar as CLOCK.
+     */
+    @Test
+    fun test3() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                r1 = r10
+                BinOp.SUB(r1, 200)
+                r1[0] = 0
+                r1[8] = 1
+                r1[16] = 2
+                r1[24] = 3
+                r1[32] = 4
+                "sol_set_clock_sysvar"()
+                r1 = CLOCK_SYSVAR_ADDR
+                r2 = r10
+                BinOp.SUB(r2, 400)
+                r3 = 0
+                r4 = 40
+                "sol_get_sysvar"()
+                r3 = r2[16]
+                assert(CondOp.EQ(r3, 2))
+                exit()
+            }
+        }
+        println("$cfg")
+        val globals = GlobalVariables(ClockSysvarElfView)
+        val memSummaries = MemorySummaries()
+        val prog = MutableSbfCallGraph(mutableListOf(cfg), setOf(cfg.getName()), globals)
+        Assertions.assertEquals(true, verify(toTACWithGlobalInference(prog, memSummaries)))
+    }
 
 }

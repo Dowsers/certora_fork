@@ -73,7 +73,10 @@ class Clock(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
     ): List<TACCmd.Simple> {
         val inst = locInst.inst
         check(inst is SbfInstruction.Call)
-        check(SolanaFunction.from(inst.name) == SolanaFunction.SOL_GET_CLOCK_SYSVAR)
+        check(
+            SolanaFunction.from(inst.name) == SolanaFunction.SOL_GET_CLOCK_SYSVAR ||
+            SolanaFunction.from(inst.name) == SolanaFunction.CVT_SOL_GET_CLOCK_SYSVAR
+        )
 
         val cmds = mutableListOf<TACCmd.Simple>()
         val tacVars = getTACVariables(locInst, cmds)

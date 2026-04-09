@@ -951,9 +951,11 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                     SolanaFunction.SOL_MEMCPY_ZEXT -> translateMemcpyZExt(locInst)
                     SolanaFunction.SOL_MEMCMP -> translateMemcmp(locInst)
                     SolanaFunction.SOL_MEMSET -> translateMemset(locInst)
-                    SolanaFunction.SOL_GET_CLOCK_SYSVAR -> clock.get(locInst)
+                    SolanaFunction.SOL_GET_CLOCK_SYSVAR,
+                    SolanaFunction.CVT_SOL_GET_CLOCK_SYSVAR -> clock.get(locInst)
                     SolanaFunction.SOL_SET_CLOCK_SYSVAR -> clock.set(locInst)
-                    SolanaFunction.SOL_GET_RENT_SYSVAR -> rent.get(locInst)
+                    SolanaFunction.SOL_GET_RENT_SYSVAR,
+                    SolanaFunction.CVT_SOL_GET_RENT_SYSVAR -> rent.get(locInst)
                     else -> summarizeCall(locInst)
                 }
             }

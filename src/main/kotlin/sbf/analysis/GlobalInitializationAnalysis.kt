@@ -46,6 +46,45 @@ data class GlobalVarInitializer(val gv: SbfGlobalVariable,
 
 
 /**
+ * Read the initial values of a global variable from the ELF binary data.
+ *
+ * Reads [largestOffset] bytes starting at [address], splits them into words of [stride] bytes each,
+ * and converts each word to a signed [Long] (interpreting bytes as unsigned, respecting endianness).
+ */
+fun readGlobalVarValues(
+    address: Long,
+    largestOffset: Short,
+    stride: Short,
+    elf: IElfFileView
+): List<Long> {
+    val content = elf.getAsConstantString(address, largestOffset.toLong())
+    val bytes = content.map { it.code.toUByte() }
+    var j = 0
+    val word = ArrayList<UByte>()
+    val values = ArrayList<Long>()
+    for (byte in bytes) {
+        word.add(byte)
+        j++
+        if (j == stride.toInt()) {
+            // Converts the unsigned value a BigInteger
+            val bigInteger = if (elf.isLittleEndian()) {
+                word.reversed()
+            } else {
+                word
+            }.toPositiveBigInteger()
+            // Converts the positive BigInteger to a signed decimal
+            val decimalVal = bigInteger.toLong()
+            values.add(decimalVal)
+            // reset word
+            j = 0
+            word.clear()
+        }
+    }
+    return values
+}
+
+
+/**
  * It extracts information about the initialization of some global variables.
  * This info (`GlobalVarInitializer`) will be used during TAC encoding to emit TAC code.
  *
@@ -150,31 +189,7 @@ private fun populateValues(
     elf: IElfFileView
 ): GlobalVarInitializer {
     check(gvInit.values.isEmpty()) {"populateValues expects an empty list of values"}
-
-    val gv = gvInit.gv
-    val content = elf.getAsConstantString(gv.address, gvInit.largestOffset.toLong())
-    val bytes = content.map { it.code.toUByte() }
-    var j = 0
-    val word = ArrayList<UByte>()
-    val values = ArrayList<Long>()
-    for (byte in bytes) {
-        word.add(byte)
-        j++
-        if (j == gvInit.stride.toInt()) {
-            // Converts the unsigned value a BigInteger
-            val bigInteger = if (elf.isLittleEndian()) {
-                word.reversed()
-            } else {
-                word
-            }.toPositiveBigInteger()
-            // Converts the positive BigInteger to a signed decimal
-            val decimalVal = bigInteger.toLong()
-            values.add(decimalVal)
-            // reset word
-            j = 0
-            word.clear()
-        }
-    }
+    val values = readGlobalVarValues(gvInit.gv.address, gvInit.largestOffset, gvInit.stride, elf)
     return gvInit.copy(values = values)
 }
 

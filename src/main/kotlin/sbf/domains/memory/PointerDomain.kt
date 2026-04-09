@@ -4774,7 +4774,9 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
                 SolanaFunction.SOL_ALLOC_FREE ->
                     throw PointerDomainError("TODO(5): support sol_alloc_free")
                 SolanaFunction.SOL_GET_CLOCK_SYSVAR,
-                SolanaFunction.SOL_GET_RENT_SYSVAR ->
+                SolanaFunction.SOL_GET_RENT_SYSVAR,
+                SolanaFunction.CVT_SOL_GET_CLOCK_SYSVAR,
+                SolanaFunction.CVT_SOL_GET_RENT_SYSVAR ->
                     summarizeCall(locInst, scalars)
                 SolanaFunction.SOL_SET_CLOCK_SYSVAR ->
                     forget(Value.Reg(SbfRegister.R0))
