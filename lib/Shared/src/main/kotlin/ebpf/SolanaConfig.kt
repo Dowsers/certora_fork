@@ -365,11 +365,21 @@ object SolanaConfig {
         )
     ) {}
 
+    val HeapSize = object : ConfigType.IntCmdLine(
+        32768,
+        Option(
+            "solanaHeapSize", true,
+            "Total size in bytes of the SBF heap region. " +
+            "The TAC symbolic allocator uses this to bound heap pointer ranges during verification. " +
+            "The default 32_768 bytes (32 KB) matches the actual SBF runtime constraint. [default: 32_768]"
+        )
+    ) {}
+
     val TACHeapAllocSize = object : ConfigType.IntCmdLine(
         512,
         Option(
             "solanaTACHeapAllocSize", true,
-            "Default size of an unknown heap allocation. This size is used by the TAC symbolic allocator. [default: 512]"
+            "Default size in bytes of an unknown heap allocation. This size is used by the TAC symbolic allocator. [default: 512]"
         )
     ) {}
 
