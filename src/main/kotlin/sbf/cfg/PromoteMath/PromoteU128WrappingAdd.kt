@@ -30,11 +30,14 @@ data class U128WrappingAddPattern(
     override val intrinsicName: String,
     override val instructions: List<LocatedSbfInstruction>,
     val params: Int128BinaryParams,
+    val result: Int128OperationResult.TupleResult,
     val trailingStores: List<SbfInstruction> = emptyList()
 ): MathIntrinsicPattern
 
 /** Replace u128-bit wrapping addition patterns with calls to `CVT_u128_wrapping_add` **/
 val U128WrappingAddTransform = object : MathIntrinsicsTransform<U128WrappingAddPattern> {
+
+    override val name: String = CvlrFunctions.CVT_u128_wrapping_add
     /**
      * Scan for u128-bit wrapping addition patterns inside [bb] and return the matched
      * instructions paired with their parameters.
@@ -135,13 +138,16 @@ val U128WrappingAddTransform = object : MathIntrinsicsTransform<U128WrappingAddP
 
             // we only allow non-pattern stores interleaves with [1]-[5] if the stored value is resLow or resHigh
             val firstPos = minOf(p1, p2, p3, p4, p5)
-            val trailingStoreLocInsts = collectTrailingStores(bb, insts, firstPos, p5, patternPositions, resLow, resHigh)
-                ?: continue
+            val trailingStoreLocInsts = collectTrailingStores(bb, insts, firstPos, p5, patternPositions) { memInstruction ->
+                check(!memInstruction.isLoad){ "Expected a store memory instruction" }
+                memInstruction.value == resLow || memInstruction.value == resHigh
+            } ?: continue
 
             val newPattern =  U128WrappingAddPattern(
                 intrinsicName = CvlrFunctions.CVT_u128_wrapping_add,
                 instructions = (listOf(inst1, inst2, inst3, locInst, inst5) + trailingStoreLocInsts).sortedBy { it.pos },
-                params = Int128BinaryParams(xLowParam, xHighParam, yLowParam, yHighParam, resLow, resHigh),
+                params = Int128BinaryParams(xLowParam, xHighParam, yLowParam, yHighParam),
+                result = Int128OperationResult.TupleResult(resLow, resHigh),
                 trailingStores = trailingStoreLocInsts.map { it.inst }
             )
 
@@ -152,7 +158,7 @@ val U128WrappingAddTransform = object : MathIntrinsicsTransform<U128WrappingAddP
     }
 
     override fun lower(pattern: U128WrappingAddPattern, useDynFrames: Boolean) =
-        lowerImpl(pattern.intrinsicName, pattern.params, useDynFrames) + pattern.trailingStores
+        lowerImpl(pattern.intrinsicName, pattern.params, pattern.result, useDynFrames) + pattern.trailingStores
 
     override fun abstractStateFilter(locInst: LocatedSbfInstruction): Boolean {
         val inst = locInst.inst

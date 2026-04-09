@@ -38,8 +38,8 @@ internal fun isMayLiveAfter(bb: SbfBasicBlock, reg: Value.Reg, afterPos: Int): B
 
 /**
  * Scan positions `[firstPos, lastPos]` and collects non-pattern store instructions whose
- * stored value is [resLow] or [resHigh].  Returns `null` if any other non-pattern store is
- * found, otherwise returns the list of store instructions.
+ * stored value is matches by the predicate [storedValueMatches].  Returns `null` if any
+ * other non-pattern store is found, otherwise returns the list of store instructions.
  */
 internal fun collectTrailingStores(
     bb: SbfBasicBlock,
@@ -47,8 +47,7 @@ internal fun collectTrailingStores(
     firstPos: Int,
     lastPos: Int,
     patternPositions: Set<Int>,
-    resLow: Value.Reg,
-    resHigh: Value.Reg
+    mayWriteToI128Result: (SbfInstruction.Mem) -> Boolean
 ): List<LocatedSbfInstruction>? {
     val trailingStoreLocInsts = mutableListOf<LocatedSbfInstruction>()
     for (pos in firstPos..lastPos) {
@@ -58,7 +57,7 @@ internal fun collectTrailingStores(
         val nonPatternInst = insts[pos]
         val nonPatternLocInst = LocatedSbfInstruction(bb.getLabel(), pos, nonPatternInst)
         if (nonPatternInst is SbfInstruction.Mem && !nonPatternInst.isLoad) {
-            if (nonPatternInst.value == resLow || nonPatternInst.value == resHigh) {
+            if(mayWriteToI128Result(nonPatternInst)){
                 trailingStoreLocInsts.add(nonPatternLocInst)
             } else {
                 return null

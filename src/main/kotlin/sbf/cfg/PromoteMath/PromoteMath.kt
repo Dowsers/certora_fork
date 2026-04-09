@@ -31,13 +31,17 @@ import sbf.domains.MemorySummaries
 import sbf.domains.ScalarRegisterStackEqualityDomainFactory
 import kotlin.toULong
 import datastructures.stdcollections.*
+import log.regression
 
 private val logger = Logger(LoggerTypes.SBF_MATH_PROMOTION)
-private fun dbg(msg: () -> Any) { logger.info(msg)}
+private fun dbg(msg: () -> Any) {
+    logger.info(msg)
+}
 
 interface MathIntrinsicPattern {
     /** Name of the math intrinsics **/
     val intrinsicName: String
+
     /** Instructions that implement a recognized math intrinsics pattern **/
     val instructions: List<LocatedSbfInstruction>
 }
@@ -46,7 +50,10 @@ interface MathIntrinsicPattern {
  * A CFG-to-CFG transformation that promotes sequences of low-level instructions
  * implementing a math operation into a call to a special intrinsic function.
  */
-interface MathIntrinsicsTransform<Pattern: MathIntrinsicPattern> {
+interface MathIntrinsicsTransform<Pattern : MathIntrinsicPattern> {
+
+    /** A name of this transformer, used in debug logs **/
+    val name: String
 
     /** Recognize the low-level instruction pattern in a block **/
     fun matchInBlock(
@@ -132,13 +139,21 @@ fun promoteMathIntrinsics(
 
 
     val useDynFrames = globals.elf.useDynamicFrames()
+    val replacementCount = mutableMapOf<String, Int>()
+    dbg { "Proceeding with Promote Math analysis in ${cfg.getName()}" }
     for (bb in cfg.getMutableBlocks().values) {
         // Collect all (oldInsts, newInsts) replacements from every transformer before modifying
         // the block, since matchInBlock uses equalAt which relies on instruction positions that
         // would be invalidated by earlier replacements.
         val allReplacements = transformers.flatMap { transformer ->
             collectReplacements(transformer, bb, equalAt, useDynFrames)
+                .also {
+                    replacementCount.getOrPut(transformer.name) { 0 }.let { oldCount: Int ->
+                        replacementCount[transformer.name] = oldCount + it.size
+                    }
+                }
         }
+
         // Process replacements from highest to lowest first instruction position, skipping any
         // whose instructions overlap with an already-accepted replacement.
         val usedPositions = mutableSetOf<Int>()
@@ -162,6 +177,9 @@ fun promoteMathIntrinsics(
             }
         }
     }
+    Logger.regression {
+        replacementCount.entries.joinToString(separator = "\n") { "Transformer ${it.key} replaced ${it.value} patterns in ${cfg.getName()}" }
+    }
 }
 
 /**
@@ -169,7 +187,7 @@ fun promoteMathIntrinsics(
  * The type parameter [P] ensures `matchInBlock` and `lower` are called on the same transformer
  * with a consistent pattern type, even when [promoteMathIntrinsics] holds a heterogeneous list.
  */
-private fun <P: MathIntrinsicPattern> collectReplacements(
+private fun <P : MathIntrinsicPattern> collectReplacements(
     transformer: MathIntrinsicsTransform<P>,
     bb: SbfBasicBlock,
     equalAt: (LocatedSbfInstruction, Value, Value.Reg) -> Boolean,

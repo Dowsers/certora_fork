@@ -54,10 +54,30 @@ data class Int128BinaryParams(
     val xLow: RegOrStack,
     val xHigh: RegOrStack,
     val yLow: RegOrStack,
-    val yHigh: RegOrStack,
-    val resLow: Value.Reg,
-    val resHigh: Value.Reg
+    val yHigh: RegOrStack
 )
+
+sealed interface Int128OperationResult{
+    fun lower(): List<SbfInstruction>
+
+    data class TupleResult(
+        val resLow: Value.Reg,
+        val resHigh: Value.Reg
+    ) : Int128OperationResult {
+        override fun lower() = listOf (
+                SbfInstruction.Mem(Deref(8, Value.Reg(SbfRegister.R0), 0), resLow, true),
+                SbfInstruction.Mem(Deref(8, Value.Reg(SbfRegister.R0), 8), resHigh, true),
+            )
+    }
+
+    data class SingleResult(
+        val res: Value.Reg,
+    ) : Int128OperationResult {
+        override fun lower() = listOf (
+            SbfInstruction.Bin(BinOp.MOV, res, Value.Reg(SbfRegister.R0), is64 = true),
+        )
+    }
+}
 
 /**
  * Lowers a call to a math intrinsic with [Int128BinaryParams] into a sequence of SBF instructions.
@@ -72,6 +92,7 @@ data class Int128BinaryParams(
 fun lowerImpl(
     intrinsicName: String,
     intrinsicParams: Int128BinaryParams,
+    intrinsicResult: Int128OperationResult,
     useDynFrames: Boolean
 ): List<SbfInstruction> {
 
@@ -81,8 +102,6 @@ fun lowerImpl(
     val xHigh = intrinsicParams.xHigh
     val yLow = intrinsicParams.yLow
     val yHigh = intrinsicParams.yHigh
-    val resLow = intrinsicParams.resLow
-    val resHigh = intrinsicParams.resHigh
 
     val frameLowering = if (useDynFrames) {
         DynamicFrameLowering(32UL) // Allocate 4 local variables
@@ -150,11 +169,6 @@ fun lowerImpl(
 
     val epilogue = frameLowering.emitEpilogue()
 
-    val prepareResultForCaller = listOf (
-        SbfInstruction.Mem(Deref(8, regs[0], 0), resLow, true),
-        SbfInstruction.Mem(Deref(8, regs[0], 8), resHigh, true),
-    )
-
     return prologue +
         saveOperandsOnStack +
         saveIntrinsicsArgs +
@@ -162,7 +176,7 @@ fun lowerImpl(
         callToIntrinsics +
         restoreIntrinsicsArgs +
         epilogue +
-        prepareResultForCaller
+        intrinsicResult.lower()
 
 }
 

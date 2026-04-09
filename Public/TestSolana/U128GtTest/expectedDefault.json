@@ -1,0 +1,12 @@
+{
+  "assertMessages": {},
+  "rules": {
+    "check_u128_gt_basic": "FAIL",
+    "check_u128_lt_basic": "FAIL",
+    "check_u128_gt_verified": "SUCCESS",
+    "check_u128_lt_fail": "FAIL",
+    "check_u128_gt_large_numbers": "SUCCESS",
+    "check_u128_double_branch_simple": "FAIL",
+    "negative_test_check_u64_gt_basic": "FAIL"
+  }
+}
