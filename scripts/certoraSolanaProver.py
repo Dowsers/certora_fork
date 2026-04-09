@@ -94,6 +94,8 @@ def run_solana_prover(args: List[str]) -> Optional[CertoraRunResult]:
             additional_commands += ["-solanaSummaries", ",".join(context.solana_summaries)]
         if context.solana_inlining:
             additional_commands += ["-solanaInlining", ",".join(context.solana_inlining)]
+        if context.assert_on_panic is not None:
+            additional_commands += ["-solanaAssertOnPanic", str(context.assert_on_panic).lower()]
         # Run local verification
         exit_code = run_local(context, timings, additional_commands)
     else:

@@ -611,6 +611,9 @@ class CloudVerification:
                     rust_jar_settings.append('-solanaInlining')
                     rust_jar_settings.append(paths_in_source_dir(self.context.solana_inlining))
 
+                if self.context.assert_on_panic is not None:
+                    rust_jar_settings.extend(['-solanaAssertOnPanic', str(self.context.assert_on_panic).lower()])
+
             auth_data["jarSettings"] = rust_jar_settings + jar_settings
 
         elif Attrs.is_sui_app():

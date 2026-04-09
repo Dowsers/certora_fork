@@ -281,6 +281,15 @@ object SolanaConfig {
         )
     ) {}
 
+    val AssertOnPanic = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaAssertOnPanic",
+            true,
+            "Replace calls that always fail with calls to \"assert(false)\" [default: false]"
+        )
+    ) {}
+
     // TAC options
     val AddMemLayoutAssumptions = object : ConfigType.BooleanCmdLine(
         false,

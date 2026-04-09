@@ -29,7 +29,7 @@ from CertoraProver.certoraCollectConfigurationLayout import AttributeJobConfigDa
 
 attributes_logger = logging.getLogger("attributes")
 
-FORBIDDEN_PROVER_ARGS = ['-solanaInlining', '-solanaSummaries']
+FORBIDDEN_PROVER_ARGS = ['-solanaInlining', '-solanaSummaries', '-solanaAssertOnPanic']
 
 
 def validate_prover_args(value: str) -> str:
@@ -2070,6 +2070,17 @@ class SolanaProverAttributes(CommonAttributes, InternalUseAttributes, BackendAtt
         config_data=AttributeJobConfigData(
             main_section=MainSection.NEW_SECTION
         )
+    )
+
+    ASSERT_ON_PANIC = AttrUtil.AttributeDefinition(
+        arg_type=AttrUtil.AttrArgType.BOOLEAN,
+        help_msg="Treat calls to Rust panic functions as assertion violations",
+        default_desc="Rust panic functions are not treated as assertion violations",
+        argparse_args={
+            'action': AttrUtil.STORE_TRUE
+        },
+        affects_build_cache_key=False,
+        disables_build_cache=False
     )
 
     SOLANA_INLINING = AttrUtil.AttributeDefinition(
