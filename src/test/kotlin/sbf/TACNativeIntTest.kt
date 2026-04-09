@@ -316,6 +316,57 @@ class TACNativeIntTest {
     }
 
     @Test
+    fun `into_u128(5) stores low=5 and high=0`() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(0) {
+                r1 = r10
+                BinOp.SUB(r1, 32)   // stack pointer for output: *(r1+0)=low, *(r1+8)=high
+                r2 = 5              // nativeint value
+                "CVT_nativeint_u64_into_u128"()
+                r2 = r1[0]          // low
+                r3 = r1[8]          // high
+                assert(CondOp.EQ(r2, 5UL))
+                assert(CondOp.EQ(r3, 0UL))
+                exit()
+            }
+        }
+
+        println("$cfg")
+        val tacProg = toTAC(cfg)
+        println(dumpTAC(tacProg))
+        Assertions.assertEquals(true, verify(tacProg))
+    }
+
+    @Test
+    fun `into_u128(from_u128(3, 7)) stores low=3 and high=7`() {
+        val cfg = SbfTestDSL.makeCFG("test") {
+            bb(0) {
+                // Build nativeint(7 * 2^64 + 3) from low=3, high=7
+                r1 = 3
+                r2 = 7
+                "CVT_nativeint_u64_from_u128"()
+                // r0 = nativeint(7 * 2^64 + 3); save it in r4
+                r4 = r0
+                // Set up stack pointer for output and pass the nativeint in r2
+                r1 = r10
+                BinOp.SUB(r1, 32)
+                r2 = r4
+                "CVT_nativeint_u64_into_u128"()
+                r2 = r1[0]   // low
+                r3 = r1[8]   // high
+                assert(CondOp.EQ(r2, 3UL))
+                assert(CondOp.EQ(r3, 7UL))
+                exit()
+            }
+        }
+
+        println("$cfg")
+        val tacProg = toTAC(cfg)
+        println(dumpTAC(tacProg))
+        Assertions.assertEquals(true, verify(tacProg))
+    }
+
+    @Test
     fun `unsupported bitwidth should throw an exception`() {
         val cfg = SbfTestDSL.makeCFG("test") {
             bb(0) {

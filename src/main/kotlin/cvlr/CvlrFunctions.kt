@@ -75,6 +75,7 @@ object CvlrFunctions {
     const val CVT_nativeint_u64_nondet = "CVT_nativeint_u64_nondet"
     const val CVT_nativeint_u64_from_u128 = "CVT_nativeint_u64_from_u128"
     const val CVT_nativeint_u64_from_u256 = "CVT_nativeint_u64_from_u256"
+    const val CVT_nativeint_u64_into_u128 = "CVT_nativeint_u64_into_u128"
     const val CVT_nativeint_u64_u64_max = "CVT_nativeint_u64_u64_max"
     const val CVT_nativeint_u64_u128_max = "CVT_nativeint_u64_u128_max"
     const val CVT_nativeint_u64_u256_max = "CVT_nativeint_u64_u256_max"

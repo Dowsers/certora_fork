@@ -199,7 +199,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     val cmds = mutableListOf<TACCmd.Simple>()
     cmds += Debug.startFunction(inst.name)
     cmds += inRange(res, BigInteger.ZERO,  BigInteger.TWO.pow(128))
-    cmds += splitU128(res, resLow.tacVar, resHigh.tacVar)
+    cmds += splitU128(res.asSym(), resLow.tacVar, resHigh.tacVar)
     cmds += Debug.endFunction(inst.name)
     return cmds
 }

@@ -332,6 +332,9 @@ enum class CVTNativeInt(val function: ExternalFunction) {
         setOf(Value.Reg(SbfRegister.R0)),
         listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())
     ),
+    NATIVE_INTO_U128(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_into_u128,
+        setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())),
     NATIVEINT_U64_MAX(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_u64_max,
         setOf(Value.Reg(SbfRegister.R0)),
         setOf())
@@ -363,7 +366,16 @@ enum class CVTNativeInt(val function: ExternalFunction) {
         override fun from(name: String) = nameMap[name]
         override fun addSummaries(memSummaries: MemorySummaries) {
             for (f in nameMap.values) {
-                val summaryArgs = listOf(MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.NUM))
+                val summaryArgs = when (f) {
+                    NATIVE_INTO_U128 ->
+                        listOf(
+                            MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.ANY),
+                            MemSummaryArgument(r = SbfRegister.R1, offset = 0, width = 8, type = MemSummaryArgumentType.NUM),
+                            MemSummaryArgument(r = SbfRegister.R1, offset = 8, width = 8, type = MemSummaryArgumentType.NUM)
+                        )
+                    else ->
+                        listOf(MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.NUM))
+                }
                 memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
             }
         }

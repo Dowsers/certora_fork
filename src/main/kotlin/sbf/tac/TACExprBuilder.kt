@@ -114,9 +114,9 @@ abstract class TACExprBase(private val regVars: ArrayList<TACSymbol.Var>) {
      *  high = e >> 64
      *  ```
      **/
-    fun splitU128(e: TACSymbol.Var): Pair<TACExpr, TACExpr> {
-        val low  = mask(e.asSym(), 64)
-        val high = TACExpr.BinOp.ShiftRightLogical(mask(e.asSym(), 128) , c64)
+    fun splitU128(e: TACExpr): Pair<TACExpr, TACExpr> {
+        val low  = mask(e, 64)
+        val high = TACExpr.BinOp.ShiftRightLogical(mask(e, 128) , c64)
         return low to high
     }
 }

@@ -70,7 +70,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     } else {
         val res = vFac.mkFreshIntVar()
         cmds.addAll(inRange(res, BigInteger.ZERO, BigInteger.TWO.pow(128), true))
-        cmds.addAll(splitU128(res, lowV, highV))
+        cmds.addAll(splitU128(res.asSym(), lowV, highV))
     }
 
     return cmds

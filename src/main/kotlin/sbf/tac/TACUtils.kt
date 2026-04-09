@@ -147,7 +147,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>>
     splitU128(
-    e: TACSymbol.Var, low: TACSymbol.Var, high: TACSymbol.Var): List<TACCmd.Simple> {
+    e: TACExpr, low: TACSymbol.Var, high: TACSymbol.Var): List<TACCmd.Simple> {
 
     val (x, y) = sbfTacB.splitU128(e)
     return listOf(
@@ -221,7 +221,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     val x = mergeU128(args.xLow, args.xHigh, cmds)
     val y = mergeU128(args.yLow, args.yHigh, cmds)
     op(res, args.overflow, x, y)
-    cmds.addAll(splitU128(res, args.resLow, args.resHigh))
+    cmds.addAll(splitU128(res.asSym(), args.resLow, args.resHigh))
 }
 
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
@@ -234,7 +234,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     val x = mergeU128(args.xLow, args.xHigh, cmds)
     val shift = args.shift
     op(res, x, shift)
-    cmds.addAll(splitU128(res, args.resLow, args.resHigh))
+    cmds.addAll(splitU128(res.asSym(), args.resLow, args.resHigh))
 }
 
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
