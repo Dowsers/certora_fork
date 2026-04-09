@@ -32,6 +32,12 @@ import sbf.domains.*
  * known global variable containing the sysvar public key.
  */
 fun resolveGetSysvarCalls(cfg: MutableSbfCFG, globals: GlobalVariables, memSummaries: MemorySummaries) {
+    val hasSysvarCall = cfg.getBlocks().values.any { b ->
+        b.getInstructions().any { it is SbfInstruction.Call && it.name == SolanaFunction.SOL_GET_SYSVAR.syscall.name }
+    }
+    if (!hasSysvarCall) {
+        return
+    }
     val sbfTypesFac = ConstantSetSbfTypeFactory(SolanaConfig.ScalarMaxVals.get().toULong())
     val scalarAnalysis = GenericScalarAnalysis(
         cfg,
