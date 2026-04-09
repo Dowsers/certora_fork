@@ -114,14 +114,16 @@ fun PatternRewriter.solanaPatternsList() = listOf(
                 maybeNarrow(lSym(A) intMul c(C1)) intDiv c(C2)
             },
             handle = {
-                when {
-                    C1.n % C2.n == BigInteger.ZERO ->
-                        IntMul(sym(A), (C1.n / C2.n).asTACExpr)
+                runIf(C1.n != BigInteger.ZERO && C2.n != BigInteger.ZERO) {
+                    when {
+                        C1.n % C2.n == BigInteger.ZERO ->
+                            IntMul(sym(A), (C1.n / C2.n).asTACExpr)
 
-                    C2.n % C1.n == BigInteger.ZERO ->
-                        IntDiv(sym(A), (C2.n / C1.n).asTACExpr)
+                        C2.n % C1.n == BigInteger.ZERO ->
+                            IntDiv(sym(A), (C2.n / C1.n).asTACExpr)
 
-                    else -> null
+                        else -> null
+                    }
                 }
             },
             TACExpr.BinOp.IntDiv::class.java
@@ -142,14 +144,16 @@ fun PatternRewriter.solanaPatternsList() = listOf(
                 safeMathNarrow(lSym(A) intMul c(C1)) div c(C2)
             },
             handle = {
-                when {
-                    C1.n % C2.n == BigInteger.ZERO ->
-                        safeMathNarrow(IntMul(sym(A), (C1.n / C2.n).asTACExpr), Tag.Bit256)
+                runIf(C1.n != BigInteger.ZERO && C2.n != BigInteger.ZERO) {
+                    when {
+                        C1.n % C2.n == BigInteger.ZERO ->
+                            safeMathNarrow(IntMul(sym(A), (C1.n / C2.n).asTACExpr), Tag.Bit256)
 
-                    C2.n % C1.n == BigInteger.ZERO ->
-                        safeMathNarrow(IntDiv(sym(A), (C2.n / C1.n).asTACExpr), Tag.Bit256)
+                        C2.n % C1.n == BigInteger.ZERO ->
+                            safeMathNarrow(IntDiv(sym(A), (C2.n / C1.n).asTACExpr), Tag.Bit256)
 
-                    else -> null
+                        else -> null
+                    }
                 }
             },
             TACExpr.BinOp.Div::class.java
