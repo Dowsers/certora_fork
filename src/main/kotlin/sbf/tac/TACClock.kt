@@ -83,17 +83,16 @@ class Clock(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
         check(tacVars.size == 5) {"TAC Clock::get expected to extract 5 TAC variables from ${locInst.inst}"}
         val (v1, v2, v3, v4, v5) = tacVars
         cmds += Debug.startFunction("sol_get_clock_sysvar")
-        // TODO CERT-10019: These ranges should be adjusted to BigInteger.ZERO ..< BigInteger.TWO.pow(64)
         cmds += assign(v1, slot.asSym())
-        cmds += inRange(v1, BigInteger.ZERO ..< BigInteger.TWO.pow(64) - BigInteger.ONE)
+        cmds += inRange(v1, BigInteger.ZERO ..< BigInteger.TWO.pow(64))
         cmds += assign(v2, epochStartTimestamp.asSym())
-        cmds += inRange(v2, BigInteger.ZERO ..< BigInteger.TWO.pow(64) - BigInteger.ONE)
+        cmds += inRange(v2, BigInteger.ZERO ..< BigInteger.TWO.pow(64))
         cmds += assign(v3, epoch.asSym())
-        cmds += inRange(v3, BigInteger.ZERO ..< BigInteger.TWO.pow(64) - BigInteger.ONE)
+        cmds += inRange(v3, BigInteger.ZERO ..< BigInteger.TWO.pow(64))
         cmds += assign(v4, leaderScheduleEpoch.asSym())
-        cmds += inRange(v4, BigInteger.ZERO ..< BigInteger.TWO.pow(64) - BigInteger.ONE)
+        cmds += inRange(v4, BigInteger.ZERO ..< BigInteger.TWO.pow(64))
         cmds += assign(v5, unixTimestamp.asSym())
-        cmds += inRange(v5, BigInteger.ZERO ..< BigInteger.TWO.pow(64) - BigInteger.ONE)
+        cmds += inRange(v5, BigInteger.ZERO ..< BigInteger.TWO.pow(64))
 
         val r0 = sbfTacB.mkVar(SbfRegister.R0)
         cmds += havoc(r0)

@@ -62,16 +62,14 @@ class Rent(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
         cmds += Debug.startFunction("sol_get_rent_sysvar")
         // Add assumption `lamports_per_byte_year > 0`
         cmds += assign(v1,  lamportsPerByteYear.asSym())
-        // TODO CERT-10019: range should be adjusted to BigInteger.ONE ..< BigInteger.TWO.pow(64)
-        cmds += inRange(v1, BigInteger.ONE ..< BigInteger.TWO.pow(64) - BigInteger.ONE)
+        cmds += inRange(v1, BigInteger.ONE ..< BigInteger.TWO.pow(64))
         // `exemptionThreshold` is a f64 number.
         cmds += assign(v2,  exemptionThreshold.asSym())
         // Add the assumption that `exemptionThreshold == 2`.
         cmds += assume(SummarizeFPCompilerRt<TNum, TOffset, TFlags>().isTwo(v2), "exemption_threshold == 2")
         // Add assumption that `burn_percent` is between 0 and 100
         cmds += assign(v3,  burnPercent.asSym())
-        // TODO CERT-10019: range should be adjusted to BigInteger.ZERO .. BigInteger.valueOf(100)
-        cmds += inRange(v3, BigInteger.ZERO ..< BigInteger.valueOf(100))
+        cmds += inRange(v3, BigInteger.ZERO .. BigInteger.valueOf(100))
         // Havoc r0
         cmds += havoc(sbfTacB.mkVar(SbfRegister.R0))
         cmds += Debug.endFunction("sol_get_rent_sysvar")
