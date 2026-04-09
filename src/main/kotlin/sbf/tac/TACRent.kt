@@ -24,6 +24,8 @@ import sbf.domains.*
 import vc.data.TACCmd
 import vc.data.TACSymbol
 import java.math.BigInteger
+import datastructures.stdcollections.*
+import sbf.SolanaConfig
 
 /** TAC modeling of solana rent **/
 class Rent(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
@@ -34,6 +36,22 @@ class Rent(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
     // The percentage of collected rent that is burned. Valid values are in the range [0, 100].
     // The remaining percentage is distributed to validators.
     private val burnPercent: TACSymbol.Var = mkFreshIntVar("rent.burn_percent")
+
+    private val getRentResult: TACSymbol.Var = mkFreshIntVar("rent.get_rent_result")
+
+    /**
+     * Emit TAC code
+     * ```
+     *  get_rent_result = havoc
+     * ```
+     */
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> init() =
+        if (SolanaConfig.TACRentDeterministicReturn.get()) {
+            listOf(havoc(getRentResult))
+        } else {
+            listOf()
+        }
 
     /**
      * Emit TAC code for `sol_get_rent_sysvar`.
@@ -70,8 +88,12 @@ class Rent(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
         // Add assumption that `burn_percent` is between 0 and 100
         cmds += assign(v3,  burnPercent.asSym())
         cmds += inRange(v3, BigInteger.ZERO .. BigInteger.valueOf(100))
-        // Havoc r0
-        cmds += havoc(sbfTacB.mkVar(SbfRegister.R0))
+        val r0 = sbfTacB.mkVar(SbfRegister.R0)
+        cmds += if (SolanaConfig.TACRentDeterministicReturn.get()) {
+            assign(r0, getRentResult.asSym())
+        } else {
+            havoc(r0)
+        }
         cmds += Debug.endFunction("sol_get_rent_sysvar")
         return cmds
     }

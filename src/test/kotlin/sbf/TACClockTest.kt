@@ -187,4 +187,62 @@ class TACClockTest {
             Assertions.assertEquals(true, verify(toTACWithGlobalInference(prog, memSummaries)))
         }
     }
+    /**
+     * Calls `sol_get_clock_sysvar` twice and asserts both calls return the same value in r0.
+     *
+     * ```
+     * r1 = r10 - 200
+     * sol_get_clock_sysvar()   // first call; r0 = return code
+     * r6 = r0                  // save r0
+     * r1 = r10 - 200
+     * sol_get_clock_sysvar()   // second call; r0 must equal r6
+     * assert(r0 == r6)
+     * ```
+     */
+    @Test
+    fun `call get_clock_sysvar twice should return same result`() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                r1 = r10
+                BinOp.SUB(r1, 200)
+                "sol_get_clock_sysvar"()
+                r6 = r0
+                r1 = r10
+                BinOp.SUB(r1, 200)
+                "sol_get_clock_sysvar"()
+                assert(CondOp.EQ(r0, r6))
+                exit()
+            }
+        }
+        println("$cfg")
+        ConfigScope(SolanaConfig.TACClockDeterministicReturn, true).use {
+            val tacProg = toTAC(cfg)
+            println(dumpTAC(tacProg))
+            Assertions.assertEquals(true, verify(tacProg))
+        }
+    }
+
+    @Test
+    fun `call get_clock_sysvar twice can return different result`() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                r1 = r10
+                BinOp.SUB(r1, 200)
+                "sol_get_clock_sysvar"()
+                r6 = r0
+                r1 = r10
+                BinOp.SUB(r1, 200)
+                "sol_get_clock_sysvar"()
+                assert(CondOp.EQ(r0, r6))
+                exit()
+            }
+        }
+        println("$cfg")
+        ConfigScope(SolanaConfig.TACClockDeterministicReturn, false).use {
+            val tacProg = toTAC(cfg)
+            println(dumpTAC(tacProg))
+            Assertions.assertEquals(false, verify(tacProg))
+        }
+    }
+
 }

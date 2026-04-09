@@ -1211,6 +1211,8 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
             if (entry.getLabel() == block.getLabel()) {
                 val cmds = ArrayList<TACCmd.Simple>()
                 cmds += addGlobalInitializers()
+                cmds += rent.init()
+                cmds += clock.init()
                 cmds += addInitialPreconditions()
                 cmds += translate(block)
                 code[tacBB] = cmds

@@ -364,6 +364,24 @@ object SolanaConfig {
         )
     ) {}
 
+    val TACRentDeterministicReturn = object : ConfigType.BooleanCmdLine(
+        true,
+        Option(
+            "solanaTACRentDeterministicReturn",
+            true,
+            "Assume that repeated calls to sol_get_rent_sysvar return the same value in r0. [default: true]"
+        )
+    ) {}
+
+    val TACClockDeterministicReturn = object : ConfigType.BooleanCmdLine(
+        true,
+        Option(
+            "solanaTACClockDeterministicReturn",
+            true,
+            "Assume that repeated calls to sol_get_clock_sysvar return the same value in r0. [default: true]"
+        )
+    ) {}
+
     val TACPromoteOverflow = object : ConfigType.BooleanCmdLine(
         true,
         Option(

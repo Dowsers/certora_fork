@@ -17,6 +17,8 @@
 
 package sbf.tac
 
+import datastructures.stdcollections.listOf
+import sbf.SolanaConfig
 import sbf.callgraph.SolanaFunction
 import sbf.cfg.LocatedSbfInstruction
 import sbf.cfg.SbfInstruction
@@ -39,6 +41,23 @@ class Clock(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
     // the future epoch for which the leader schedule has most recently been calculated
     private val leaderScheduleEpoch: TACSymbol.Var = mkFreshIntVar("clock.leader_schedule_epoch")
     private val unixTimestamp: TACSymbol.Var = mkFreshIntVar("clock.unix_timestamp")
+
+    private val getClockResult: TACSymbol.Var = mkFreshIntVar("clock.get_clock_result")
+
+
+    /**
+     * Emit TAC code
+     * ```
+     *  get_clock_result = havoc
+     * ```
+     */
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> init() =
+        if (SolanaConfig.TACClockDeterministicReturn.get()) {
+            listOf(havoc(getClockResult))
+        } else {
+            listOf()
+        }
 
     /** Emit TAC code for `sol_set_clock_sysvar` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
@@ -93,9 +112,12 @@ class Clock(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
         cmds += inRange(v4, BigInteger.ZERO ..< BigInteger.TWO.pow(64))
         cmds += assign(v5, unixTimestamp.asSym())
         cmds += inRange(v5, BigInteger.ZERO ..< BigInteger.TWO.pow(64))
-
         val r0 = sbfTacB.mkVar(SbfRegister.R0)
-        cmds += havoc(r0)
+        cmds += if (SolanaConfig.TACClockDeterministicReturn.get()) {
+            assign(r0, getClockResult.asSym())
+        } else {
+            havoc(r0)
+        }
         cmds += Debug.endFunction("sol_get_clock_sysvar")
         return cmds
     }
