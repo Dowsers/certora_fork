@@ -17,6 +17,7 @@
 
 package sbf.tac
 
+import sbf.*
 import sbf.cfg.*
 import sbf.disassembler.SbfRegister
 import datastructures.stdcollections.*
@@ -36,7 +37,7 @@ open class SummarizeIntegerU128CompilerRt<TNum : INumValue<TNum>, TOffset : IOff
     internal open fun summarizeMulti3(args: U128BinaryOperands): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
         applyU128BinaryOperation(args, cmds) { res, _, x, y ->
-            cmds += assign(res, sbfTacB { x.asSym() mul y.asSym() })
+            cmds += assign(res, natIntTacB { x.asSym() mul y.asSym() })
         }
         return cmds
     }
@@ -45,24 +46,35 @@ open class SummarizeIntegerU128CompilerRt<TNum : INumValue<TNum>, TOffset : IOff
     internal open fun summarizeUDivti3(args: U128BinaryOperands): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
         applyU128BinaryOperation(args, cmds) { res, _, x, y ->
-            cmds += assign(res, sbfTacB { x.asSym() div y.asSym() })
+            cmds += assign(res, natIntTacB { x.asSym() div y.asSym() })
         }
         return cmds
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     internal open fun summarizeDivti3(args: U128BinaryOperands): List<TACCmd.Simple> {
-        return listOf(
-            assign(args.resLow, sbfTacB { args.xLow sDiv args.yLow }),
-            havoc(args.resHigh)
-        )
+        return when (sbfTacB) {
+            // In "lazy masking" mode, we summarize __divti3...oddly.  Rather than try to abstract this behavior into
+            // TACExprBuilder, it's easier to just handle it directly here.
+            is LazyMaskSbfTACBuilder -> listOf(
+                assign(args.resLow, sbfTacB { args.xLow sDiv args.yLow }),
+                havoc(args.resHigh)
+            )
+            else -> {
+                mutableListOf<TACCmd.Simple>().also { cmds ->
+                    applyU128BinaryOperation(args, cmds) { res, _, x, y ->
+                        cmds += assign(res, sbfTacB { x.asSym() sDiv128 y.asSym() })
+                    }
+                }
+            }
+        }
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     internal open fun summarizeAshlti3(args: U128ShiftOperands): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
         applyU128ShiftOperation(args, cmds) { res, x, shift ->
-            cmds += assign(res, sbfTacB { mask128(x.asSym() shiftL  shift) } )
+            cmds += assign(res, sbfTacB { x.asSym() shiftL128 shift })
         }
         return cmds
     }
@@ -71,7 +83,7 @@ open class SummarizeIntegerU128CompilerRt<TNum : INumValue<TNum>, TOffset : IOff
     internal open fun summarizeAshrti3(args: U128ShiftOperands): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
         applyU128ShiftOperation(args, cmds) { res, x, shift ->
-            cmds += assign(res, sbfTacB { mask128(x.asSym()) shiftRArith  shift})
+            cmds += assign(res, sbfTacB { x.asSym() shiftRArith128 shift })
         }
         return cmds
     }

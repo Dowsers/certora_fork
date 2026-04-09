@@ -17,12 +17,15 @@
 
 package sbf
 
+import config.*
 import sbf.callgraph.MutableSbfCallGraph
 import sbf.cfg.*
 import sbf.disassembler.*
 import sbf.domains.MemorySummaries
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
+import org.junit.jupiter.params.*
+import org.junit.jupiter.params.provider.*
 
 class TACClockTest {
 
@@ -66,64 +69,70 @@ class TACClockTest {
      * assert(*(r1+16) == 2)
      * ```
      */
-    @Test
-    fun test1() {
-        val cfg = SbfTestDSL.makeCFG("entrypoint") {
-            bb(0) {
-                r1 = r10
-                BinOp.SUB(r1, 200)
-                r1[0] = 0
-                r1[8] = 1
-                r1[16] = 2
-                r1[24] = 3
-                r1[32] = 4
-                "sol_set_clock_sysvar"()
-                r2 = 0
-                r3 = 40
-                "sol_memset_" ()
-                r1 = r10
-                BinOp.SUB(r1, 400)
-                "sol_get_clock_sysvar"()
-                r2 = r1[16]
-                assert(CondOp.EQ(r2, 2))
-                exit()
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun test1(sound: Boolean) {
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            val cfg = SbfTestDSL.makeCFG("entrypoint") {
+                bb(0) {
+                    r1 = r10
+                    BinOp.SUB(r1, 200)
+                    r1[0] = 0
+                    r1[8] = 1
+                    r1[16] = 2
+                    r1[24] = 3
+                    r1[32] = 4
+                    "sol_set_clock_sysvar"()
+                    r2 = 0
+                    r3 = 40
+                    "sol_memset_" ()
+                    r1 = r10
+                    BinOp.SUB(r1, 400)
+                    "sol_get_clock_sysvar"()
+                    r2 = r1[16]
+                    assert(CondOp.EQ(r2, 2))
+                    exit()
+                }
             }
+            println("$cfg")
+            val tacProg = toTAC(cfg)
+            println(dumpTAC(tacProg))
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        println("$cfg")
-        val tacProg = toTAC(cfg)
-        println(dumpTAC(tacProg))
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
 
     /** Similar to test1 but we pass heap to sol_set_clock_sysvar instead of stack.**/
-    @Test
-    fun test2() {
-        val cfg = SbfTestDSL.makeCFG("entrypoint") {
-            bb(0) {
-                "__rust_alloc"()
-                r1 = r0
-                r1[0] = 0
-                r1[8] = 1
-                r1[16] = 2
-                r1[24] = 3
-                r1[32] = 4
-                "sol_set_clock_sysvar"()
-                r2 = 0
-                r3 = 40
-                "sol_memset_" ()
-                r1 = r10
-                BinOp.SUB(r1, 400)
-                "sol_get_clock_sysvar"()
-                r2 = r1[16]
-                assert(CondOp.EQ(r2, 2))
-                exit()
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun test2(sound: Boolean) {
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            val cfg = SbfTestDSL.makeCFG("entrypoint") {
+                bb(0) {
+                    "__rust_alloc"()
+                    r1 = r0
+                    r1[0] = 0
+                    r1[8] = 1
+                    r1[16] = 2
+                    r1[24] = 3
+                    r1[32] = 4
+                    "sol_set_clock_sysvar"()
+                    r2 = 0
+                    r3 = 40
+                    "sol_memset_" ()
+                    r1 = r10
+                    BinOp.SUB(r1, 400)
+                    "sol_get_clock_sysvar"()
+                    r2 = r1[16]
+                    assert(CondOp.EQ(r2, 2))
+                    exit()
+                }
             }
+            println("$cfg")
+            val tacProg = toTAC(cfg)
+            println(dumpTAC(tacProg))
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        println("$cfg")
-        val tacProg = toTAC(cfg)
-        println(dumpTAC(tacProg))
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
 
@@ -146,34 +155,36 @@ class TACClockTest {
      * recognize the immediate value [CLOCK_SYSVAR_ADDR] as a global pointer so that
      * [sbf.callgraph.SolGetSysvar.getSysvarId] can identify the sysvar as CLOCK.
      */
-    @Test
-    fun test3() {
-        val cfg = SbfTestDSL.makeCFG("entrypoint") {
-            bb(0) {
-                r1 = r10
-                BinOp.SUB(r1, 200)
-                r1[0] = 0
-                r1[8] = 1
-                r1[16] = 2
-                r1[24] = 3
-                r1[32] = 4
-                "sol_set_clock_sysvar"()
-                r1 = CLOCK_SYSVAR_ADDR
-                r2 = r10
-                BinOp.SUB(r2, 400)
-                r3 = 0
-                r4 = 40
-                "sol_get_sysvar"()
-                r3 = r2[16]
-                assert(CondOp.EQ(r3, 2))
-                exit()
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun test3(sound: Boolean) {
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            val cfg = SbfTestDSL.makeCFG("entrypoint") {
+                bb(0) {
+                    r1 = r10
+                    BinOp.SUB(r1, 200)
+                    r1[0] = 0
+                    r1[8] = 1
+                    r1[16] = 2
+                    r1[24] = 3
+                    r1[32] = 4
+                    "sol_set_clock_sysvar"()
+                    r1 = CLOCK_SYSVAR_ADDR
+                    r2 = r10
+                    BinOp.SUB(r2, 400)
+                    r3 = 0
+                    r4 = 40
+                    "sol_get_sysvar"()
+                    r3 = r2[16]
+                    assert(CondOp.EQ(r3, 2))
+                    exit()
+                }
             }
+            println("$cfg")
+            val globals = GlobalVariables(ClockSysvarElfView)
+            val memSummaries = MemorySummaries()
+            val prog = MutableSbfCallGraph(mutableListOf(cfg), setOf(cfg.getName()), globals)
+            Assertions.assertEquals(true, verify(toTACWithGlobalInference(prog, memSummaries)))
         }
-        println("$cfg")
-        val globals = GlobalVariables(ClockSysvarElfView)
-        val memSummaries = MemorySummaries()
-        val prog = MutableSbfCallGraph(mutableListOf(cfg), setOf(cfg.getName()), globals)
-        Assertions.assertEquals(true, verify(toTACWithGlobalInference(prog, memSummaries)))
     }
-
 }

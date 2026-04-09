@@ -72,12 +72,12 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
             /**
              *  build a nativeint from u128 (two 64-bit registers: r1:low, r2:high)
              **/
-            cmds += assign(r0, natIntTacB.mergeU128(r1, r2, false))
+            cmds += assign(r0, sbfTacB.mergeU128(r1, r2, mayMaskLowBits = false))
         CVTNativeInt.NATIVEINT_FROM_U256 ->
             /**
              * build a nativeint from u256 (four 64-bit registers)
              **/
-            cmds += assign(r0, natIntTacB.mergeU256(r1, r2, r3, r4, false))
+            cmds += assign(r0, sbfTacB.mergeU256(r1, r2, r3, r4, mayMaskLowBits = false))
         CVTNativeInt.NATIVE_INTO_U128 -> {
             /**
              *  r1 is stack pointer where *(r1+0) = u128-low and *(r1+8) = u128-high

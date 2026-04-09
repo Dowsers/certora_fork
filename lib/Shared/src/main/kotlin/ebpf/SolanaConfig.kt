@@ -346,6 +346,15 @@ object SolanaConfig {
         )
     ) {}
 
+    val TACSoundSignedMath = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaTACSoundSignedMath",
+            true,
+            "Enable experimental sound signed math in TAC. [default: false]"
+        )
+    ) {}
+
     val TACPromoteOverflow = object : ConfigType.BooleanCmdLine(
         true,
         Option(

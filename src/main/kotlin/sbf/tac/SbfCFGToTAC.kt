@@ -163,7 +163,12 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
             regVars.add(vFac.getRegisterVar(i))
         }
 
-        sbfTacB = LazyMaskSbfTACBuilder(regVars)
+        sbfTacB = if (SolanaConfig.TACSoundSignedMath.get()) {
+            EagerMaskSbfTACBuilder(regVars)
+        } else {
+            LazyMaskSbfTACBuilder(regVars)
+        }
+
         natIntTacB = NativeIntTACBuilder(regVars)
 
         mem = if (memoryAnalysis != null) {
@@ -269,22 +274,28 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
         return cmds
     }
 
-    private fun inRange(v: TACSymbol.Var, lb: Long, ub: Long, isUnsigned: Boolean = true) =
-        inRange(v, lb.toBigInteger(), ub.toBigInteger(), isUnsigned)
+    @JvmName("inLongRange")
+    private fun inRange(v: TACSymbol.Var, range: OpenEndRange<Long>, isUnsigned: Boolean = true) =
+        inRange(v, range.start.toBigInteger() ..< range.endExclusive.toBigInteger(), isUnsigned)
 
     /**
      * Emit TAC code for `assume(lb <= v < ub)`
      * - If isUnsigned=true then unsigned comparison
      * - otherwise signed comparison
      **/
-    fun inRange(v: TACSymbol.Var, lb: BigInteger, ub: BigInteger, isUnsigned: Boolean = true): List<TACCmd.Simple>{
+    fun inRange(v: TACSymbol.Var, range: ClosedRange<BigInteger>, isUnsigned: Boolean = true): List<TACCmd.Simple>{
         return if (isUnsigned) {
-            assume(CondOp.GE(v.asSym(), lb, sbfTacB), "inRange LB") +
-                assume(CondOp.LT(v.asSym(), ub, sbfTacB), "inRange UB")
+            assume(CondOp.GE(v.asSym(), range.start, sbfTacB), "inRange LB") +
+                assume(CondOp.LE(v.asSym(), range.endInclusive, sbfTacB), "inRange UB")
         } else {
-            assume(CondOp.SGE(v.asSym(), lb, sbfTacB), "inRange LB") +
-                assume(CondOp.SLT(v.asSym(), ub, sbfTacB), "inRange UB")
+            assume(CondOp.SGE(v.asSym(), range.start, sbfTacB), "inRange LB") +
+                assume(CondOp.SLE(v.asSym(), range.endInclusive, sbfTacB), "inRange UB")
         }
+    }
+
+    fun inRange(v: TACSymbol.Var, range: OpenEndRange<BigInteger>, isUnsigned: Boolean = true): List<TACCmd.Simple> {
+        check(range.endExclusive > range.start) { "inRange got empty open-end range $range" }
+        return inRange(v, range.start .. (range.endExclusive - BigInteger.ONE), isUnsigned)
     }
 
     /**
@@ -349,7 +360,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
             SBF_INPUT_END
         }
 
-        return inRange(ptr, lb, ub)
+        return inRange(ptr, lb ..< ub)
     }
 
     private fun translateBin(inst: SbfInstruction.Bin, useMathInt: Boolean = false): List<TACCmd.Simple> {
@@ -415,7 +426,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
     private fun translateSelect(inst: SbfInstruction.Select): List<TACCmd.Simple> {
         val overflowCond = inst.metaData.getVal(SbfMeta.PROMOTED_OVERFLOW_CHECK)
 
-        return if (SolanaConfig.TACPromoteOverflow.get() && overflowCond != null) {
+        return if (sbfTacB.needOverflowPromotion && overflowCond != null) {
             // This is another 64 vs 256-bit arithmetic fix. See comments from `translateJump`
             val overflowCondTac = translateOverflowCond(overflowCond)
             val overflowVar = overflowCondTac.getRhs().filterIsInstance<TACSymbol.Var>().single()
@@ -572,7 +583,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
             // This fix ensures that after the overflow check has being done (i.e., A and B) x fits in 64 bits.
             //
             val overflowCond = jumpInst.metaData.getVal(SbfMeta.PROMOTED_OVERFLOW_CHECK)
-            if (SolanaConfig.TACPromoteOverflow.get() && overflowCond != null) {
+            if (sbfTacB.needOverflowPromotion && overflowCond != null) {
                 val x = sbfTacB.mkVar(overflowCond.left)
                 listOf(assign(x, sbfTacB.mask64(x.asSym())))
             } else {
@@ -641,7 +652,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
 
                 val newCmds = mutableListOf<TACCmd.Simple>()
                 val overflowCond = inst.metaData.getVal(SbfMeta.PROMOTED_OVERFLOW_CHECK)
-                val cmd = if (SolanaConfig.TACPromoteOverflow.get() && overflowCond != null) {
+                val cmd = if (sbfTacB.needOverflowPromotion && overflowCond != null) {
                     /**
                      * We replace the original condition with the metadata's condition.
                      * Thus, by default the SBF code:
@@ -1057,7 +1068,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                             // the value of the lhs then we don't read from the map
                             listOf(assign(lhsV, sbfTacB.mkConst(lhsVal).asSym()))
                         } else {
-                            sbfTacB.load(lhsV, loc,  inst.access.width, memVar.tacVar)
+                            sbfTacB.load(lhsV, loc, inst.access.width, memVar.tacVar)
                         }
                     } else {
                         if (SolanaConfig.UsePTA.get()) {

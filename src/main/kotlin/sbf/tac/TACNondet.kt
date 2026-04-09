@@ -18,13 +18,11 @@
 package sbf.tac
 
 import datastructures.stdcollections.*
-import sbf.SolanaConfig
 import sbf.callgraph.CVTNondet
 import sbf.cfg.SbfInstruction
 import sbf.disassembler.SbfRegister
 import sbf.domains.*
 import vc.data.TACCmd
-import java.math.BigInteger
 
 /** Emit TAC code for nondet functions **/
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
@@ -41,13 +39,7 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
                 CVTNondet.NONDET_I64 ->  64
                 else -> throw TACTranslationError("Unexpected CVT_nondet signed integer function ${inst.name}")
             }
-            val n = BigInteger.TWO.pow(if (SolanaConfig.UseTACSignedMath.get()) { bits }  else { bits - 1 })
-            val rangeAssume = if (SolanaConfig.UseTACSignedMath.get()) {
-                // if this flag is enabled then range similar to unsigned counterparts
-                inRange(r0, BigInteger.ZERO, n, true)
-            } else {
-                inRange(r0, -n, n, false)
-            }
+            val rangeAssume = sbfTacB.assumeSignedIntRange(r0, bits)
             return listOf(Debug.externalCall(inst),
                    havoc(r0)) +
                    rangeAssume +
@@ -55,13 +47,13 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
         }
         CVTNondet.NONDET_U8, CVTNondet.NONDET_U16, CVTNondet.NONDET_U32, CVTNondet.NONDET_U64, CVTNondet.NONDET_USIZE -> {
             val r0 = sbfTacB.mkVar(SbfRegister.R0)
-            val n = when (nondetFn) {
-                CVTNondet.NONDET_U8  -> BigInteger.TWO.pow(8)
-                CVTNondet.NONDET_U16 -> BigInteger.TWO.pow(16)
-                CVTNondet.NONDET_U32 -> BigInteger.TWO.pow(32)
+            val bits = when (nondetFn) {
+                CVTNondet.NONDET_U8  ->  8
+                CVTNondet.NONDET_U16 ->  16
+                CVTNondet.NONDET_U32 ->  32
                 CVTNondet.NONDET_U64, CVTNondet.NONDET_USIZE -> {
                     /// usize is the size of a pointer
-                    BigInteger.TWO.pow(64)
+                    64
                 }
                 else -> throw TACTranslationError("Unexpected CVT_nondet unsigned integer function ${inst.name}")
             }
@@ -69,7 +61,7 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
                     Debug.externalCall(inst),
                     havoc(r0)
                     ) +
-                    inRange(r0, BigInteger.ZERO, n) +
+                    sbfTacB.assumeUnsignedIntRange(r0, bits) +
                     Calltrace.externalCall(inst, listOf(r0))
         }
     }

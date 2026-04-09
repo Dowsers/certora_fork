@@ -21,12 +21,15 @@ import config.ConfigScope
 import sbf.cfg.*
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
+import org.junit.jupiter.params.*
+import org.junit.jupiter.params.provider.*
 
 class TACU128Test {
 
     /** 128-bits unsigned ceil division **/
-    @Test
-    fun test1() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun test1(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("test1") {
             bb(0) {
                 r1 = r10
@@ -45,17 +48,20 @@ class TACU128Test {
         }
 
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits unsigned floor division **/
-    @Test
-    fun test2() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun test2(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("test2") {
             bb(0) {
                 r1 = r10
@@ -74,17 +80,20 @@ class TACU128Test {
         }
 
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits less or equal **/
-    @Test
-    fun test3() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun test3(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("test3") {
             bb(0) {
                 r1 = 10
@@ -98,17 +107,20 @@ class TACU128Test {
         }
 
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits less or equal **/
-    @Test
-    fun test4() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun test4(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("test4") {
             bb(0) {
                 r1 = 10
@@ -122,17 +134,20 @@ class TACU128Test {
         }
 
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits less or equal: high(x)==0, high(y)!=0 → true **/
-    @Test
-    fun `u128 leq returns true when high(x) is zero and high(y) is non-zero`() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `u128 leq returns true when high(x) is zero and high(y) is non-zero`(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("u128 leq returns true when high(x) is zero and high(y) is non-zero") {
             bb(0) {
                 r1 = 10
@@ -145,17 +160,20 @@ class TACU128Test {
             }
         }
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits less or equal: both highs non-zero, x > y → false **/
-    @Test
-    fun `u128 leq returns false when both highs are non-zero and x is greater than y`() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `u128 leq returns false when both highs are non-zero and x is greater than y`(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("u128 leq returns false when both highs are non-zero and x is greater than y") {
             bb(0) {
                 r1 = 5
@@ -168,17 +186,20 @@ class TACU128Test {
             }
         }
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits less or equal: x == y → true **/
-    @Test
-    fun `u128 leq returns true when x equals y`() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `u128 leq returns true when x equals y`(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("u128 leq returns true when x equals y") {
             bb(0) {
                 r1 = 10
@@ -191,17 +212,20 @@ class TACU128Test {
             }
         }
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits greater than zero: x == 0 → false **/
-    @Test
-    fun `u128 gt0 returns false when x is zero`() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `u128 gt0 returns false when x is zero`(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("u128 gt0 returns false when x is zero") {
             bb(0) {
                 r1 = 0
@@ -212,17 +236,20 @@ class TACU128Test {
             }
         }
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits greater than zero: low != 0, high == 0 → true **/
-    @Test
-    fun `u128 gt0 returns true when low is non-zero and high is zero`() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `u128 gt0 returns true when low is non-zero and high is zero`(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("u128 gt0 returns true when low is non-zero and high is zero") {
             bb(0) {
                 r1 = 5
@@ -233,17 +260,20 @@ class TACU128Test {
             }
         }
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 
     /** 128-bits greater than zero: low == 0, high != 0 → true **/
-    @Test
-    fun `u128 gt0 returns true when low is zero and high is non-zero`() {
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `u128 gt0 returns true when low is zero and high is non-zero`(sound: Boolean) {
         val cfg = SbfTestDSL.makeCFG("u128 gt0 returns true when low is zero and high is non-zero") {
             bb(0) {
                 r1 = 0
@@ -254,11 +284,13 @@ class TACU128Test {
             }
         }
 
-        ConfigScope(SolanaConfig.UseTACMathInt, true).use {
-            println("$cfg")
-            val tacProg = toTAC(cfg)
-            println(dumpTAC(tacProg))
-            Assertions.assertEquals(true, verify(tacProg))
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            ConfigScope(SolanaConfig.UseTACMathInt, true).use {
+                println("$cfg")
+                val tacProg = toTAC(cfg)
+                println(dumpTAC(tacProg))
+                Assertions.assertEquals(true, verify(tacProg))
+            }
         }
     }
 

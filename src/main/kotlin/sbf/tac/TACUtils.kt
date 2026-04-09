@@ -121,10 +121,11 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     low: TACExpr.Sym,
     high: TACExpr.Sym,
     cmds: MutableList<TACCmd.Simple>,
-    maskLowBits: Boolean = true
+    /** If true, the implementation is allowed to mask the low bits (ignored in "eager masking" mode) */
+    mayMaskLowBits: Boolean = true
 ): TACSymbol.Var {
     val res = vFac.mkFreshIntVar()
-    cmds.add(mergeU128(res, low, high, maskLowBits))
+    cmds.add(mergeU128(res, low, high, mayMaskLowBits))
     return res
 }
 /** `res = high << 64 + low` **/
@@ -134,8 +135,9 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     res: TACSymbol.Var,
     low: TACExpr.Sym,
     high: TACExpr.Sym,
-    maskLowBits: Boolean
-): TACCmd.Simple.AssigningCmd = assign(res, sbfTacB.mergeU128(low, high, maskLowBits))
+    /** If true, the implementation is allowed to mask the low bits (ignored in "eager masking" mode) */
+    mayMaskLowBits: Boolean
+): TACCmd.Simple.AssigningCmd = assign(res, sbfTacB.mergeU128(low, high, mayMaskLowBits))
 
 /**
  *  Split [e] into [low] and [high] such that:
@@ -149,7 +151,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     splitU128(
     e: TACExpr, low: TACSymbol.Var, high: TACSymbol.Var): List<TACCmd.Simple> {
 
-    val (x, y) = sbfTacB.splitU128(e)
+    val (x, y) = natIntTacB.splitU128(e)
     return listOf(
         assign(low, x),
         assign(high, y)

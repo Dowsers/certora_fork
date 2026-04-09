@@ -60,7 +60,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     val highV = resHigh.tacVar
 
     val cmds = mutableListOf(Debug.externalCall(inst))
-    if (!SolanaConfig.UseTACSignedMath.get()) {
+    if (!sbfTacB.useTACSignedMath) {
         // add some warning msg in a TAC annotation for better debugging
         val msg = "Run with option \"-${SolanaConfig.UseTACSignedMath.name} true\" to support ${CVTI128Intrinsics.I128_NONDET.function.name}"
         cmds.add(Debug.unsupported(msg, listOf(lowV, highV)))
@@ -69,7 +69,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
         cmds.add(havoc(highV))
     } else {
         val res = vFac.mkFreshIntVar()
-        cmds.addAll(inRange(res, BigInteger.ZERO, BigInteger.TWO.pow(128), true))
+        cmds.addAll(inRange(res, BigInteger.ZERO ..< BigInteger.TWO.pow(128), true))
         cmds.addAll(splitU128(res.asSym(), lowV, highV))
     }
 

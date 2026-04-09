@@ -65,7 +65,9 @@ interface ModZm {
 
     fun BigInteger.to2s() =
         when {
-            !inSignedBounds -> throw OutOfBoundsException("$this is cannot be converted to a 2s complement bit-vector of width $bitwidth")
+            !inSignedBounds -> throw OutOfBoundsException(
+                "0x${this.toString(16)} cannot be converted to a 2s complement bit-vector of width $bitwidth"
+            )
             this >= BigInteger.ZERO -> this
             else -> this + modulus
         }
