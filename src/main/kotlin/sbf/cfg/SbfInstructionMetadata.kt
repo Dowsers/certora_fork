@@ -147,7 +147,7 @@ fun toString(metaData: MetaData): String {
             }
             SbfMeta.SBF_DWARF_DEBUG_ANNOTATIONS -> {
                 metaData.getVal(SbfMeta.SBF_DWARF_DEBUG_ANNOTATIONS)?.let { scopeEnds ->
-                    strB.append(scopeEnds.joinToString("\n"))
+                    strB.append(scopeEnds.filter { it.persist }.joinToString("\n"))
                 }
             }
             SbfMeta.MANGLED_NAME -> {}
