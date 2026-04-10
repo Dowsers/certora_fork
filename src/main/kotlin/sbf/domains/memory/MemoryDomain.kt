@@ -376,16 +376,23 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTA
     }
 
     /**
-     * Set the value of [reg] to [newVal] only if its old value is top
-     * Return true if the scalar value has been updated.
+     * Set the value of [reg] to an arbitrary number in the scalar domain.
+     * Return true if the scalar value of [reg] has been updated.
      **/
-    private fun refineScalarValue(reg: Value.Reg, newVal: ScalarValue<TNum, TOffset>): Boolean {
+    private fun refineToNum(reg: Value.Reg): Boolean {
         val oldVal = scalars.getAsScalarValue(reg)
-        if (oldVal.isTop() && !newVal.isTop()) {
-            scalars.setScalarValue(reg, newVal)
-            return true
+        if (oldVal.type() is SbfType.PointerType.Global<TNum, TOffset>) {
+            // we don't touch a global variable
+            return false
         }
-        return false
+        val newType = scalars.getTypeFac().anyNum()
+        return if (!oldVal.type().lessOrEqual(newType)) {
+            // newType is strictly more precise
+            scalars.setScalarValue(reg, ScalarValue(newType))
+            true
+        } else {
+            false
+        }
     }
 
     /**
@@ -404,7 +411,7 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTA
             if (x != null && x.isConcrete()) {
                 val c = x.concretize()
                 if (c.getNode().mustBeInteger()) {
-                    val change = refineScalarValue(reg, ScalarValue(scalars.getTypeFac().anyNum()))
+                    val change = refineToNum(reg)
                     if (change) {
                         val topNum =  scalars.getTypeFac().anyNum().concretize()
                         check(topNum != null) {"concretize on anyNum cannot be null"}
@@ -421,7 +428,7 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTA
             /// even if the pointer analysis lost precision and cannot infer that fact anymore.
             locInst.inst.metaData.getVal(SbfMeta.REG_TYPE)?.let { (refinedReg, type) ->
                 if (refinedReg == reg && type is SbfRegisterType.NumType) {
-                    refineScalarValue(reg, ScalarValue(scalars.getTypeFac().anyNum()))
+                    refineToNum(reg)
                 }
             }
         }

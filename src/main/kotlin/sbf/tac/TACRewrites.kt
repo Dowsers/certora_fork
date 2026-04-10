@@ -114,14 +114,16 @@ fun PatternRewriter.solanaPatternsList() = listOf(
                 maybeNarrow(lSym(A) intMul c(C1)) intDiv c(C2)
             },
             handle = {
-                when {
-                    C1.n % C2.n == BigInteger.ZERO ->
-                        IntMul(sym(A), (C1.n / C2.n).asTACExpr)
+                runIf(C1.n != BigInteger.ZERO && C2.n != BigInteger.ZERO) {
+                    when {
+                        C1.n % C2.n == BigInteger.ZERO ->
+                            IntMul(sym(A), (C1.n / C2.n).asTACExpr)
 
-                    C2.n % C1.n == BigInteger.ZERO ->
-                        IntDiv(sym(A), (C2.n / C1.n).asTACExpr)
+                        C2.n % C1.n == BigInteger.ZERO ->
+                            IntDiv(sym(A), (C2.n / C1.n).asTACExpr)
 
-                    else -> null
+                        else -> null
+                    }
                 }
             },
             TACExpr.BinOp.IntDiv::class.java
@@ -129,12 +131,43 @@ fun PatternRewriter.solanaPatternsList() = listOf(
 
 
         /**
+         * `safeMathNarrow(a *int const1) / const2` ~~~>
+         *    `safeMathNarrow(a *int (const1/const2))` if const2 is a divisor of const1
+         *    `safeMathNarrow(a /int (const2/const1))` if const1 is a divisor of const2
+         *
+         * Sound because: safeMathNarrow guarantees `a *int const1` fits in [0, 2^256),
+         * so the bv256 division equals mathematical division (no wrapping, divisor != 0).
+         */
+        PatternHandler(
+            name = "bv-div-mul-consts",
+            pattern = {
+                safeMathNarrow(lSym(A) intMul c(C1)) div c(C2)
+            },
+            handle = {
+                runIf(C1.n != BigInteger.ZERO && C2.n != BigInteger.ZERO) {
+                    when {
+                        C1.n % C2.n == BigInteger.ZERO ->
+                            safeMathNarrow(IntMul(sym(A), (C1.n / C2.n).asTACExpr), Tag.Bit256)
+
+                        C2.n % C1.n == BigInteger.ZERO ->
+                            safeMathNarrow(IntDiv(sym(A), (C2.n / C1.n).asTACExpr), Tag.Bit256)
+
+                        else -> null
+                    }
+                }
+            },
+            TACExpr.BinOp.Div::class.java
+        ),
+
+        /**
          * `safeMathNarrow(a:bv256)` ~~~> a:bv256
+         * Follows copy chains: if the operand is a Tag.Int copy of a Tag.Bit256 variable,
+         * the pattern still matches (e.g., `safeMathNarrow(I1078)` where `I1078 = R1066:bv256`).
          */
         PatternHandler(
             name = "redundant-narrow",
             pattern = {
-                safeMathNarrow(lSym256(A))
+                safeMathNarrow(defChainLSym(A) { it.tag is Tag.Bit256 })
             },
             handle = {
                 sym(A)

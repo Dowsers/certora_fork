@@ -281,6 +281,15 @@ object SolanaConfig {
         )
     ) {}
 
+    val AssertOnPanic = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaAssertOnPanic",
+            true,
+            "Replace calls that always fail with calls to \"assert(false)\" [default: false]"
+        )
+    ) {}
+
     // TAC options
     val AddMemLayoutAssumptions = object : ConfigType.BooleanCmdLine(
         false,
@@ -346,6 +355,33 @@ object SolanaConfig {
         )
     ) {}
 
+    val TACSoundSignedMath = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaTACSoundSignedMath",
+            true,
+            "Enable experimental sound signed math in TAC. [default: false]"
+        )
+    ) {}
+
+    val TACRentDeterministicReturn = object : ConfigType.BooleanCmdLine(
+        true,
+        Option(
+            "solanaTACRentDeterministicReturn",
+            true,
+            "Assume that repeated calls to sol_get_rent_sysvar return the same value in r0. [default: true]"
+        )
+    ) {}
+
+    val TACClockDeterministicReturn = object : ConfigType.BooleanCmdLine(
+        true,
+        Option(
+            "solanaTACClockDeterministicReturn",
+            true,
+            "Assume that repeated calls to sol_get_clock_sysvar return the same value in r0. [default: true]"
+        )
+    ) {}
+
     val TACPromoteOverflow = object : ConfigType.BooleanCmdLine(
         true,
         Option(
@@ -356,11 +392,30 @@ object SolanaConfig {
         )
     ) {}
 
+    val UseTACSignedMath = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaTACSignedArithmetic",
+            true,
+            "Experimental flag for supporting signed math in TAC. [default: false]"
+        )
+    ) {}
+
+    val HeapSize = object : ConfigType.IntCmdLine(
+        32768,
+        Option(
+            "solanaHeapSize", true,
+            "Total size in bytes of the SBF heap region. " +
+            "The TAC symbolic allocator uses this to bound heap pointer ranges during verification. " +
+            "The default 32_768 bytes (32 KB) matches the actual SBF runtime constraint. [default: 32_768]"
+        )
+    ) {}
+
     val TACHeapAllocSize = object : ConfigType.IntCmdLine(
         512,
         Option(
             "solanaTACHeapAllocSize", true,
-            "Default size of an unknown heap allocation. This size is used by the TAC symbolic allocator. [default: 512]"
+            "Default size in bytes of an unknown heap allocation. This size is used by the TAC symbolic allocator. [default: 512]"
         )
     ) {}
 
@@ -402,15 +457,6 @@ object SolanaConfig {
             true,
             "The initialization of a global variable is part of the TAC encoding if the number of bytes being " +
                       "initialized is less or equal that this number. [default: 64]"
-        )
-    ) {}
-
-    val TACSignedMath = object : ConfigType.BooleanCmdLine(
-        false,
-        Option(
-            "solanaTACSignedArithmetic",
-            true,
-            "Experimental flag for supporting signed math in TAC. [default: false]"
         )
     ) {}
 

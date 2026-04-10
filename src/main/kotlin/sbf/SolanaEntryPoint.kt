@@ -202,7 +202,8 @@ private fun solanaRuleToTAC(
         ptaFlagsFac
       ).let {
         timeIt(target, "Inference of global variables") {
-            runGlobalInferenceAnalysis(it, memSummaries)
+            val p = runGlobalInferenceAnalysis(it, memSummaries)
+            runPostGlobalInferenceTransformations(p, memSummaries)
         }
     }
 
@@ -342,18 +343,20 @@ private fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, Flags: IPTANodeF
     val p3 = timeIt(target, "lowering of CPI calls") {
         // Run an analysis to infer global variables by use
         val p2 = runGlobalInferenceAnalysis(p1, memSummaries)
+        // Remove/replace some special intrinsics
+        val p3 = runPostGlobalInferenceTransformations(p2, memSummaries)
 
-        val invokes = getInvokes(p2)
+        val invokes = getInvokes(p3)
         val processor = InvokeInstructionListener<TNum, TOffset, Flags>(
             cpisSubstitutionMap,
             invokes,
-            p2.getGlobals()
+            p3.getGlobals()
         )
 
         val memDomOpts = MemoryDomainOpts(useEqualityDomain = true)
         val memAnalysis = getMemoryAnalysis(
             target,
-            p2,
+            p3,
             memSummaries,
             sbfTypesFac,
             ptaFlagsFac,

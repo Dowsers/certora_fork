@@ -21,6 +21,7 @@ import sbf.SolanaConfig
 import sbf.callgraph.SbfCallGraph
 import sbf.domains.MemorySummaries
 import sbf.disassembler.GlobalVariables
+import datastructures.stdcollections.*
 
 /**
  * Simple (local) CFG optimizations that help the pointer analysis.
@@ -72,7 +73,7 @@ fun runPTAOptimizations(prog: SbfCallGraph, memSummaries: MemorySummaries, itera
 }
 
 /** CFG optimizations that should be executed only once **/
-fun runPostSlicingOptimizations(prog: SbfCallGraph): SbfCallGraph {
+fun runPostSlicingOptimizations(prog: SbfCallGraph, memSummaries: MemorySummaries): SbfCallGraph {
     return prog.transformSingleEntry { entryCFG ->
         val optEntryCFG = entryCFG.clone(entryCFG.getName())
         // prerequisite for detectOverflowPatterns
@@ -82,6 +83,17 @@ fun runPostSlicingOptimizations(prog: SbfCallGraph): SbfCallGraph {
         optEntryCFG.verify(false, "[after markAddWithOverflow]")
         simplifyByteSwapInsts(optEntryCFG)
         optEntryCFG.verify(false, "[after simplifyByteSwapInsts]")
+        promoteMathIntrinsics(
+            optEntryCFG,
+            transformers = listOf(
+                U128WrappingSubTransform,
+                U128WrappingAddTransform,
+                U128GtTransform
+                ),
+            globals = prog.getGlobals(),
+            memSummaries
+        )
+        optEntryCFG.verify(false, "[after promoteMathIntrinsics]")
         markLoadedAsNumForPTA(optEntryCFG)
         optEntryCFG.verify(false, "[after markAddWithOverflow]")
         optEntryCFG.normalize()

@@ -138,7 +138,8 @@ enum class CVTCore(val function: ExternalFunction) {
 
 enum class CVTCalltrace(val function: ExternalFunction,
                         // From all registers (r1-r5), which registers contain the string or strings passed to the function
-                        val strings: Set<CalltraceStr>) {
+                        val strings: Set<CalltraceStr>,
+                        val consumeStickyTag: Boolean = false) {
     PRINT_U64_1(CexPrintValue(CvlrFunctions.CVT_calltrace_print_u64_1, 3), setOf(CalltraceStr(SbfRegister.R1))),
     PRINT_U64_2(CexPrintValue(CvlrFunctions.CVT_calltrace_print_u64_2, 4), setOf(CalltraceStr(SbfRegister.R1))),
     PRINT_U64_3(CexPrintValue(CvlrFunctions.CVT_calltrace_print_u64_3, 5), setOf(CalltraceStr(SbfRegister.R1))),
@@ -166,9 +167,28 @@ enum class CVTCalltrace(val function: ExternalFunction,
         setOf(CalltraceStr(SbfRegister.R1))),
     PRINT_STRING(CexPrintValue(CvlrFunctions.CVT_calltrace_print_string, 4),
                  setOf(CalltraceStr(SbfRegister.R1), CalltraceStr(SbfRegister.R3))),
+    /**
+     *  `r1`-`r4` contains the four words of u64 bytes of the pubkey (from lowest to highest).
+     *  This intrinsics does not have any string argument.
+     */
+    PRINT_PUBKEY(ExternalFunction(
+        CvlrFunctions.CVT_calltrace_print_pubkey, setOf(),
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it) }.toSet()
+        ),
+        setOf(),
+        consumeStickyTag = true
+    ),
     RULE_LOCATION(ExternalFunction(CvlrFunctions.CVT_rule_location, setOf(),
                   listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3).map{ Value.Reg(it)}.toSet()),
-                  setOf(CalltraceStr(SbfRegister.R1)));
+                  setOf(CalltraceStr(SbfRegister.R1))),
+    /**
+     * Carries a tag that will be consumed by the next CVTCalltrace function requiring a tag.
+     * Used as a workaround when a CVTCalltrace function needs more than 5 SBF registers:
+     * the tag is passed separately, freeing up two registers for other arguments.
+     **/
+    STICKY_TAG(ExternalFunction(CvlrFunctions.CVT_calltrace_sticky_tag, setOf(),
+        listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it) }.toSet()),
+        setOf(CalltraceStr(SbfRegister.R1)));
 
     companion object: ExternalLibrary<CVTCalltrace>  {
         private val nameMap = CVTCalltrace.entries.associateBy { it.function.name }
@@ -206,7 +226,17 @@ enum class CVTU128Intrinsics(val function: ExternalFunction) {
         listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())),
     U128_CEIL_DIV(ExternalFunction(CvlrFunctions.CVT_u128_ceil_div,
         setOf(),
-        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4, SbfRegister.R5).map{ Value.Reg(it)}.toSet()));
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4, SbfRegister.R5).map{ Value.Reg(it)}.toSet())),
+    U128_WRAPPING_SUBTRACTION(ExternalFunction(CvlrFunctions.CVT_u128_wrapping_sub,
+        setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())),
+    U128_WRAPPING_ADDITION(ExternalFunction(CvlrFunctions.CVT_u128_wrapping_add,
+        setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())),
+    U128_GT(ExternalFunction(CvlrFunctions.CVT_u128_gt,
+            setOf(Value.Reg(SbfRegister.R0)),
+            listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet()),
+    );
 
 
     companion object: ExternalLibrary<CVTU128Intrinsics>  {
@@ -217,13 +247,23 @@ enum class CVTU128Intrinsics(val function: ExternalFunction) {
         override fun addSummaries(memSummaries: MemorySummaries) {
             for (f in nameMap.values) {
                 when (f) {
-                    U128_LEQ, U128_GT0 -> {
+                    U128_LEQ, U128_GT0, U128_GT -> {
                         val summaryArgs = listOf(MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.NUM))
                         memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
                     }
                     U128_CEIL_DIV, U128_NONDET  -> {
-                        val summaryArgs = listOf(MemSummaryArgument(r = SbfRegister.R1, offset = 0 , width = 8, type = MemSummaryArgumentType.NUM),
-                            MemSummaryArgument(r = SbfRegister.R1, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM))
+                        val summaryArgs = listOf(
+                            MemSummaryArgument(r = SbfRegister.R1, offset = 0 , width = 8, type = MemSummaryArgumentType.NUM),
+                            MemSummaryArgument(r = SbfRegister.R1, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM)
+                        )
+                        memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
+                    }
+                    U128_WRAPPING_SUBTRACTION, U128_WRAPPING_ADDITION -> {
+                        val summaryArgs = listOf(
+                            MemSummaryArgument(r = SbfRegister.R0, allocatedSpace = 16UL, type = MemSummaryArgumentType.PTR_HEAP),
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 0 , width = 8, type = MemSummaryArgumentType.NUM),
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM)
+                        )
                         memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
                     }
                 }
@@ -315,6 +355,9 @@ enum class CVTNativeInt(val function: ExternalFunction) {
         setOf(Value.Reg(SbfRegister.R0)),
         listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())
     ),
+    NATIVE_INTO_U128(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_into_u128,
+        setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())),
     NATIVEINT_U64_MAX(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_u64_max,
         setOf(Value.Reg(SbfRegister.R0)),
         setOf())
@@ -327,13 +370,17 @@ enum class CVTNativeInt(val function: ExternalFunction) {
         setOf(Value.Reg(SbfRegister.R0)),
         setOf())
     ),
-    NATIVEINT_U64_SEXT(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_sext,
+    NATIVEINT_SEXT(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_sext,
         setOf(Value.Reg(SbfRegister.R0)),
         setOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
     ),
-    NATIVEINT_U64_NEG(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_neg,
+    NATIVEINT_NEG(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_neg,
         setOf(Value.Reg(SbfRegister.R0)),
         setOf(Value.Reg(SbfRegister.R1)))
+    ),
+    NATIVEINT_MASK(ExternalFunction(CvlrFunctions.CVT_nativeint_u64_mask,
+        setOf(Value.Reg(SbfRegister.R0)),
+        setOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())
     );
 
     companion object: ExternalLibrary<CVTNativeInt>  {
@@ -342,7 +389,16 @@ enum class CVTNativeInt(val function: ExternalFunction) {
         override fun from(name: String) = nameMap[name]
         override fun addSummaries(memSummaries: MemorySummaries) {
             for (f in nameMap.values) {
-                val summaryArgs = listOf(MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.NUM))
+                val summaryArgs = when (f) {
+                    NATIVE_INTO_U128 ->
+                        listOf(
+                            MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.ANY),
+                            MemSummaryArgument(r = SbfRegister.R1, offset = 0, width = 8, type = MemSummaryArgumentType.NUM),
+                            MemSummaryArgument(r = SbfRegister.R1, offset = 8, width = 8, type = MemSummaryArgumentType.NUM)
+                        )
+                    else ->
+                        listOf(MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.NUM))
+                }
                 memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
             }
         }

@@ -148,6 +148,7 @@ enum class LoggerTypes : LoggerName {
     SBF_DEBUG_ANNOTATOR,
     SBF_MEMCPY_PROMOTION,
     SBF_MEMSET_PROMOTION,
+    SBF_MATH_PROMOTION,
     WASM,
     WASM_ANALYSIS,
     CVLR,

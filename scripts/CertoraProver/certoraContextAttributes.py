@@ -29,7 +29,7 @@ from CertoraProver.certoraCollectConfigurationLayout import AttributeJobConfigDa
 
 attributes_logger = logging.getLogger("attributes")
 
-FORBIDDEN_PROVER_ARGS = ['-solanaInlining', '-solanaSummaries']
+FORBIDDEN_PROVER_ARGS = ['-solanaInlining', '-solanaSummaries', '-solanaAssertOnPanic']
 
 
 def validate_prover_args(value: str) -> str:
@@ -1842,6 +1842,28 @@ class RustAttributes(AttrUtil.Attributes):
         disables_build_cache=False
     )
 
+    CARGO_BUILD_VERBOSE = AttrUtil.AttributeDefinition(
+        arg_type=AttrUtil.AttrArgType.BOOLEAN,
+        help_msg="Show stderr output from the Rust build process",
+        default_desc="Stderr from the build process is suppressed on success",
+        argparse_args={
+            'action': AttrUtil.STORE_TRUE
+        },
+        affects_build_cache_key=False,
+        disables_build_cache=False
+    )
+
+    SOLANA_SBF_ARCH = AttrUtil.AttributeDefinition(
+        attr_validation_func=Vf.validate_solana_sbf_arch,
+        help_msg="Target architecture for certora-sbf. Legal values: sbf, v0, v1, v2, v3",
+        default_desc="Default architecture chosen by certora-sbf",
+        argparse_args={
+            'action': AttrUtil.UniqueStore
+        },
+        affects_build_cache_key=True,
+        disables_build_cache=False
+    )
+
 
 class EvmRuleAttribute(AttrUtil.Attributes):
     RULE = AttrUtil.AttributeDefinition(
@@ -1892,8 +1914,8 @@ class ConcordAttributes(EvmProverAttributes):
 
     @classmethod
     def unsupported_attributes(cls) -> List[AttrUtil.AttributeDefinition]:
-        return [cls.VERIFY, cls.MSG, cls.PROTOCOL_NAME, cls.PROTOCOL_AUTHOR, cls.RULE, cls.EXCLUDE_RULE,
-                cls.SPLIT_RULES, cls.EXCLUDE_METHOD, cls.PARAMETRIC_CONTRACTS, cls.COVERAGE_INFO, cls.FOUNDRY,
+        return [cls.VERIFY, cls.PROTOCOL_NAME, cls.PROTOCOL_AUTHOR, cls.EXCLUDE_RULE,
+                cls.EXCLUDE_METHOD, cls.PARAMETRIC_CONTRACTS, cls.COVERAGE_INFO, cls.FOUNDRY,
                 cls.INDEPENDENT_SATISFY, cls.MULTI_ASSERT_CHECK, cls.MULTI_EXAMPLE, cls.PROJECT_SANITY,
                 cls.RULE_SANITY, cls.ADDRESS, cls.CONTRACT_EXTENSIONS, cls.CONTRACT_RECURSION_LIMIT, cls.LINK,
                 cls.OPTIMISTIC_CONTRACT_RECURSION, cls.STRUCT_LINK, cls.DYNAMIC_BOUND, cls.DYNAMIC_DISPATCH,
@@ -2050,6 +2072,17 @@ class SolanaProverAttributes(CommonAttributes, InternalUseAttributes, BackendAtt
         )
     )
 
+    ASSERT_ON_PANIC = AttrUtil.AttributeDefinition(
+        arg_type=AttrUtil.AttrArgType.BOOLEAN,
+        help_msg="Treat calls to Rust panic functions as assertion violations",
+        default_desc="Rust panic functions are not treated as assertion violations",
+        argparse_args={
+            'action': AttrUtil.STORE_TRUE
+        },
+        affects_build_cache_key=False,
+        disables_build_cache=False
+    )
+
     SOLANA_INLINING = AttrUtil.AttributeDefinition(
         attr_validation_func=Vf.validate_readable_file,
         arg_type=AttrUtil.AttrArgType.LIST,
@@ -2070,6 +2103,25 @@ class SolanaProverAttributes(CommonAttributes, InternalUseAttributes, BackendAtt
             'nargs': AttrUtil.ONE_OR_MORE_OCCURRENCES,
             'action': AttrUtil.APPEND
         },
+        affects_build_cache_key=False,
+        disables_build_cache=False
+    )
+
+    SPLIT_RULES = AttrUtil.AttributeDefinition(
+        arg_type=AttrUtil.AttrArgType.LIST,
+        attr_validation_func=Vf.validate_evm_rule_name,
+        help_msg="List of rules to be sent to Prover each on a separate run",
+        default_desc="Verifies all rules in a single run",
+        argparse_args={
+            'nargs': AttrUtil.MULTIPLE_OCCURRENCES,
+            'action': AttrUtil.APPEND
+        },
+        affects_build_cache_key=False,
+        disables_build_cache=False
+    )
+
+    GROUP_ID = AttrUtil.AttributeDefinition(
+        attr_validation_func=Vf.validate_uuid,
         affects_build_cache_key=False,
         disables_build_cache=False
     )

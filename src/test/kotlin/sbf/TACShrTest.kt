@@ -17,38 +17,47 @@
 
 package sbf
 
+import config.*
 import sbf.cfg.*
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
+import org.junit.jupiter.params.*
+import org.junit.jupiter.params.provider.*
 
 class TACShrTest {
 
-    @Test
-    fun test1() {
-        /**
-         * This code is generated from
-         *  ```
-         *  let x:i64 = nondet()
-         *  cvt_assume(x>=0)
-         *  cvt_assume(x< i64::max())
-         *  ```
-         */
-        val cfg = SbfTestDSL.makeCFG("entrypoint") {
-            bb(0) {
-                r2 = r1
-                BinOp.XOR(r1, -1)
-                BinOp.ARSH(r1, 63)
-                assume(CondOp.EQ(r1, 1UL))        // assume MSB(r1) == 0 (i.e., positive number)
-                assume(CondOp.LT(r2, Long.MAX_VALUE))  // assume r1 < MAX
-                r3 = 1
-                assert(CondOp.EQ(r3, 0)) // assert(false)
-                exit()
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun test1(sound: Boolean) {
+        ConfigScope(SolanaConfig.TACSoundSignedMath, sound).use {
+            // The "unsound" mode does not sign-extend the shifted value
+            val bitsToTest = if (sound) { -1L } else { 1L }
+
+            /**
+            * This code is generated from
+            *  ```
+            *  let x:i64 = nondet()
+            *  cvt_assume(x>=0)
+            *  cvt_assume(x< i64::max())
+            *  ```
+            */
+            val cfg = SbfTestDSL.makeCFG("entrypoint") {
+                bb(0) {
+                    r2 = r1
+                    BinOp.XOR(r1, -1)
+                    BinOp.ARSH(r1, 63)
+                    assume(CondOp.EQ(r1, bitsToTest)) // assume MSB(r2) == 0 (i.e., positive number)
+                    assume(CondOp.LT(r2, Long.MAX_VALUE))  // assume r2 < MAX
+                    r3 = 1
+                    assert(CondOp.EQ(r3, 0)) // assert(false)
+                    exit()
+                }
             }
+            println("$cfg")
+            val tacProg = toTAC(cfg)
+            println(dumpTAC(tacProg))
+            Assertions.assertEquals(false, verify(tacProg))
         }
-        println("$cfg")
-        val tacProg = toTAC(cfg)
-        println(dumpTAC(tacProg))
-        Assertions.assertEquals(false, verify(tacProg))
     }
 
 

@@ -306,7 +306,8 @@ private class GlobalInferenceAnalysis<D, TNum: INumValue<TNum>, TOffset: IOffset
                             inferAndAddGlobalVariable(locInst, Value.Reg(SbfRegister.R1))
                             inferAndAddGlobalVariable(locInst, Value.Reg(SbfRegister.R2))
                         }
-                        SolanaFunction.SOL_MEMSET -> {
+                        SolanaFunction.SOL_MEMSET,
+                        SolanaFunction.SOL_GET_SYSVAR -> {
                             inferAndAddGlobalVariable(locInst, Value.Reg(SbfRegister.R1))
                         }
                         else -> {

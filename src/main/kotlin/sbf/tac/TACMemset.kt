@@ -22,8 +22,9 @@ import sbf.domains.INumValue
 import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
 import sbf.domains.PTAOffset
-import tac.Tag
-import vc.data.*
+import vc.data.TACCmd
+import vc.data.TACSymbol
+import datastructures.stdcollections.*
 
 /**
  * Emit TAC code for a memset of non-stack memory.
@@ -41,27 +42,14 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
     value: Long
 ): List<TACCmd.Simple> {
     val initMap = vFac.getByteMapVar("memset")
-    return datastructures.stdcollections.listOf(
-        TACCmd.Simple.AssigningCmd.AssignExpCmd(
-            lhs = initMap.tacVar,
-            rhs = TACExpr.MapDefinition(
-                defParams = datastructures.stdcollections.listOf(
-                    TACKeyword.TMP(Tag.Bit256, "!idx").toUnique("!").asSym()
-                ),
-                tag = Tag.ByteMap,
-                definition = if (value == 0L) {
-                    exprBuilder.mkConst(value).asSym()
-                } else {
-                    TACExpr.Unconstrained(Tag.Bit256)
-                }
-            )
-        ),
+    return listOf(
+        assign(initMap.tacVar, sbfTacB.defineMap(value)),
         TACCmd.Simple.ByteLongCopy(
             srcBase = initMap.tacVar,
             srcOffset = TACSymbol.Zero,
             dstBase = mapV.tacVar,
-            dstOffset = exprBuilder.mkVar(SbfRegister.R1),
-            length = exprBuilder.mkConst(len),
+            dstOffset = sbfTacB.mkVar(SbfRegister.R1),
+            length = sbfTacB.mkConst(len),
         )
     )
 }
@@ -76,14 +64,14 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
     value: Long
 ): List<TACCmd.Simple> {
     val valueS = if (value == 0L) {
-        exprBuilder.mkConst(value)
+        sbfTacB.mkConst(value)
     } else {
         // this is an over-approximation. See comment in `memsetNonStackWithMapDef` for details.
         vFac.mkFreshIntVar()
     }
     val cmds = mutableListOf<TACCmd.Simple>()
     for (i in 0 until len) {
-        cmds.addAll(mapStores(mapV, exprBuilder.mkVar(SbfRegister.R1), PTAOffset(i), valueS))
+        cmds += mapStores(mapV, sbfTacB.mkVar(SbfRegister.R1), PTAOffset(i), valueS)
     }
     return cmds
 }

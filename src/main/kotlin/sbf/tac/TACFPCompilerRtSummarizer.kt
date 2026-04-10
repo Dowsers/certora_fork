@@ -17,11 +17,12 @@
 
 package sbf.tac
 
-import vc.data.*
 import datastructures.stdcollections.*
 import sbf.domains.*
 import utils.*
-import vc.data.TACExprFactUntyped as txf
+import vc.data.TACCmd
+import vc.data.TACExpr
+import vc.data.TACSymbol
 
 /**
  * Summarize floating point operations assuming IEEE-754 double precision (f64).
@@ -54,68 +55,67 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     private fun isf64NaN(v: TACSymbol): TACExpr {
-        val plusInf = exprBuilder.mkConst(plusInfBits).asSym()
-        val v64 = exprBuilder.mask64(v.asSym())
-        return txf { v64 gt plusInf}
+        val plusInf = sbfTacB.mkConst(plusInfBits).asSym()
+        val v64 = sbfTacB.mask64(v.asSym())
+        return sbfTacB { v64 gt plusInf}
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isNotf64NaN(v: TACSymbol) = txf { not(isf64NaN(v)) }
+    private fun isNotf64NaN(v: TACSymbol) = sbfTacB { not(isf64NaN(v)) }
 
     /** Build expression for [v] to be `+oo` or `-oo` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     private fun isf64Inf(v: TACSymbol): TACExpr {
-        val plusInf = exprBuilder.mkConst(plusInfBits).asSym()
-        val minusInf = exprBuilder.mkConst(minusInfBits).asSym()
-        val v64 = exprBuilder.mask64(v.asSym())
-        return txf { (v64 eq plusInf) or (v64 eq minusInf)}
+        val plusInf = sbfTacB.mkConst(plusInfBits).asSym()
+        val minusInf = sbfTacB.mkConst(minusInfBits).asSym()
+        val v64 = sbfTacB.mask64(v.asSym())
+        return sbfTacB { (v64 eq plusInf) or (v64 eq minusInf)}
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isNotf64Inf(v: TACSymbol) = txf { not(isf64Inf(v)) }
+    private fun isNotf64Inf(v: TACSymbol) = sbfTacB { not(isf64Inf(v)) }
 
     /** Build expression for [v] to be `+0` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     private fun isf64PlusZero(v: TACSymbol): TACExpr {
-        val v64 = exprBuilder.mask64(v.asSym())
-        return txf { (v64 eq exprBuilder.ZERO.asSym())}
+        val v64 = sbfTacB.mask64(v.asSym())
+        return sbfTacB { (v64 eq sbfTacB.ZERO)}
     }
 
     /** Build expression for [v] to be `-0` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     private fun isf64MinusZero(v: TACSymbol): TACExpr {
-        val v64 = exprBuilder.mask64(v.asSym())
-        return txf { v64 eq exprBuilder.mkConst(minusZeroBits).asSym() }
+        val v64 = sbfTacB.mask64(v.asSym())
+        return sbfTacB { v64 eq sbfTacB.mkConst(minusZeroBits).asSym() }
     }
 
     /** Build expression for [v] to be `+0` or `-0` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64Zero(v: TACSymbol) = txf { isf64PlusZero(v) or isf64MinusZero(v) }
+    private fun isf64Zero(v: TACSymbol) = sbfTacB { isf64PlusZero(v) or isf64MinusZero(v) }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64NonZero(v: TACSymbol) = txf { not(isf64Zero(v)) }
+    private fun isf64NonZero(v: TACSymbol) = sbfTacB { not(isf64Zero(v)) }
 
     /** Build expression for [v] to be any positive number, included infinite, zero and subnormal numbers **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     private fun isf64Positive(v: TACSymbol): TACExpr {
         // v >> 63 == 0
-        val msb = exprBuilder.mkRshExpr(v.asSym(), exprBuilder.mkConst(63).asSym())
-        return txf { msb eq exprBuilder.ZERO.asSym() }
+        return sbfTacB { (v.asSym() shiftRLog  mkConst(63).asSym())  eq sbfTacB.ZERO }
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64Negative(v: TACSymbol) = txf { not(isf64Positive(v)) }
+    private fun isf64Negative(v: TACSymbol) = sbfTacB { not(isf64Positive(v)) }
 
     // REVISIT: the bitwise-and to clear MSB might be too complex for prover's axioms
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     private fun isf64Subnormal(v: TACSymbol): TACExpr {
         // clear MSB
-        val posNum = txf { v.asSym() bwAnd exprBuilder.mkConst(0x7FFF_FFFF_FFFF_FFFFUL.toBigInteger()) }
-        return  txf { posNum gt exprBuilder.ZERO.asSym() and (posNum lt exprBuilder.mkConst(minPositiveBits).asSym()) }
+        val posNum = sbfTacB { v.asSym() bwAnd sbfTacB.mkConst(0x7FFF_FFFF_FFFF_FFFFUL.toBigInteger()) }
+        return  sbfTacB { posNum gt sbfTacB.ZERO and (posNum lt sbfTacB.mkConst(minPositiveBits).asSym()) }
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64NonSubnormal(v: TACSymbol) = txf {  not(isf64Subnormal(v)) }
+    private fun isf64NonSubnormal(v: TACSymbol) = sbfTacB {  not(isf64Subnormal(v)) }
 
     /**
      * Build expression for [v] to be finite number, included subnormal numbers.
@@ -124,15 +124,15 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     private fun isFinite(v: TACSymbol): TACExpr {
-        val plusInf = exprBuilder.mkConst(plusInfBits).asSym()
-        return txf { v.asSym() lt plusInf}
+        val plusInf = sbfTacB.mkConst(plusInfBits).asSym()
+        return sbfTacB { v.asSym() lt plusInf}
     }
 
     /** Build expression if [v] is equal to 2 as f64 **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     internal fun isTwo(v: TACSymbol): TACExpr {
-        val two = exprBuilder.mkConst(twoBits).asSym()
-        return txf { v.asSym() eq two }
+        val two = sbfTacB.mkConst(twoBits).asSym()
+        return sbfTacB { v.asSym() eq two }
     }
 
     /**
@@ -150,11 +150,14 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
     ): List<TACCmd.Simple> =
         listOf(
             assign(res,
-                switch(
-                    listOf(txf { isf64NaN(arg1) or isf64NaN(arg2) } to exprBuilder.ONE.asSym()),
-                    exprBuilder.ZERO.asSym()
-                )
+                sbfTacB{
+                    switch(
+                        isf64NaN(arg1) or isf64NaN(arg2)  to ONE,
+                        default = ZERO
+                    )
+                }
             )
+
         )
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
@@ -164,11 +167,8 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg1: TACSymbol,
         @Suppress("UNUSED_PARAMETER")
         arg2: TACSymbol
-    ): List<TACCmd.Simple> {
-        return listOf(
-            TACCmd.Simple.AssigningCmd.AssignHavocCmd(res)
-        )
-    }
+    ): List<TACCmd.Simple> = listOf(havoc(res))
+
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     internal fun summarizeSubdf3(
@@ -177,11 +177,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg1: TACSymbol,
         @Suppress("UNUSED_PARAMETER")
         arg2: TACSymbol
-    ): List<TACCmd.Simple> {
-        return listOf(
-            TACCmd.Simple.AssigningCmd.AssignHavocCmd(res)
-        )
-    }
+    ): List<TACCmd.Simple> = listOf(havoc(res))
 
     /**
      * ```
@@ -219,18 +215,19 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
                     )
                 ) +
                 assign(res,
-                switch(
-                        listOf(
-                            txf { isf64NaN(arg1) or isf64NaN(arg2) } to nanV.asSym(),
-                            txf { (isf64Inf(arg1) and isf64Zero(arg2)) or (isf64Zero(arg1) and isf64NaN(arg2)) } to nanV.asSym(),
-                            txf { isf64Inf(arg1) or isf64Inf(arg2) } to infV.asSym(),
-                            txf { isf64Zero(arg1) } to arg1.asSym(),
-                            txf { isf64Zero(arg2) } to arg2.asSym(),
-                            txf { isf64NonSubnormal(arg1) and isf64NonSubnormal(arg2)} to nonZeroFiniteV.asSym()
-                        ),
-                        default = finiteV.asSym()
-                    )
-            )
+                    sbfTacB {
+                        switch(
+                            isf64NaN(arg1) or isf64NaN(arg2) to nanV.asSym(),
+                            (isf64Inf(arg1) and isf64Zero(arg2)) or (isf64Zero(arg1) and isf64NaN(arg2)) to nanV.asSym(),
+                            isf64Inf(arg1) or isf64Inf(arg2)  to infV.asSym(),
+                            isf64Zero(arg1) to arg1.asSym(),
+                            isf64Zero(arg2) to arg2.asSym(),
+                            isf64NonSubnormal(arg1) and isf64NonSubnormal(arg2) to nonZeroFiniteV.asSym(),
+                            default = finiteV.asSym()
+                        )
+                    }
+                )
+
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
@@ -240,22 +237,15 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg1: TACSymbol,
         @Suppress("UNUSED_PARAMETER")
         arg2: TACSymbol
-    ): List<TACCmd.Simple> {
-        return listOf(
-            TACCmd.Simple.AssigningCmd.AssignHavocCmd(res)
-        )
-    }
+    ): List<TACCmd.Simple> = listOf(havoc(res))
+
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     internal fun summarizeNegdf3(
         res: TACSymbol.Var,
         @Suppress("UNUSED_PARAMETER")
         arg: TACSymbol
-    ): List<TACCmd.Simple> {
-        return listOf(
-            TACCmd.Simple.AssigningCmd.AssignHavocCmd(res)
-        )
-    }
+    ): List<TACCmd.Simple> = listOf(havoc(res))
 
     /**
      * Convert [arg] as f64 to u64
@@ -275,17 +265,16 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         res: TACSymbol.Var,
         arg: TACSymbol
     ): List<TACCmd.Simple> {
-
         // `defaultV` models a u64 number
         val nonZeroV  = vFac.mkFreshIntVar()
-        return nondetWithAssumptions(nonZeroV, listOf(txf { nonZeroV neq exprBuilder.ZERO.asSym()})) +
+        return nondetWithAssumptions(nonZeroV, listOf(sbfTacB { nonZeroV neq sbfTacB.ZERO})) +
                assign(res,
-                    switch (
-                        listOf(
-                            txf { isf64Zero(arg) or isf64NaN(arg) or isf64Negative(arg) or isf64Subnormal(arg) } to exprBuilder.ZERO.asSym(),
-                        ),
-                        default = nonZeroV.asSym()
-                    )
+                   sbfTacB {
+                       switch(
+                           isf64Zero(arg) or isf64NaN(arg) or isf64Negative(arg) or isf64Subnormal(arg) to ZERO,
+                           default = nonZeroV.asSym()
+                       )
+                   }
                 )
     }
 
@@ -318,10 +307,12 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
                 ) +
                 nondetWithAssumptions(zeroV, listOf(isf64Zero(zeroV))) +
                 assign(res,
-                    switch(
-                            listOf(txf{ arg eq exprBuilder.ZERO.asSym()} to zeroV.asSym()),
+                    sbfTacB {
+                        switch(
+                            arg eq sbfTacB.ZERO to zeroV.asSym(),
                             default = defaultV.asSym()
-                    )
+                        )
+                    }
                 )
     }
 
@@ -333,20 +324,20 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         // `trueS` represents a u64 number
-        val trueS = exprBuilder.ZERO.asSym()
+        val trueS = sbfTacB.ZERO
         // `falseV` represents a u64 number
         val falseV = vFac.mkFreshIntVar()
-        return nondetWithAssumptions(falseV, listOf(txf { falseV.asSym() neq trueS })) +
+        return nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() neq trueS })) +
             assign(res,
-                switch(
-                    listOf(
-                        txf { isf64NaN(arg1) or isf64NaN(arg2) } to falseV.asSym(),
+                sbfTacB {
+                    switch(
+                        isf64NaN(arg1) or isf64NaN(arg2) to falseV.asSym(),
                         // +0 and -0 are equal
-                        txf { (isf64PlusZero(arg1) and isf64MinusZero(arg2)) or (isf64MinusZero(arg1) and isf64PlusZero(arg2)) } to trueS,
-                        txf { arg1 eq arg2} to trueS,
-                    ),
-                    default = falseV.asSym()
-                )
+                        (isf64PlusZero(arg1) and isf64MinusZero(arg2)) or (isf64MinusZero(arg1) and isf64PlusZero(arg2)) to trueS,
+                        arg1 eq arg2  to trueS,
+                        default = falseV.asSym()
+                    )
+                }
             )
     }
 
@@ -360,17 +351,17 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         // `trueV` represents a u64 number
         val trueV = vFac.mkFreshIntVar()
         // `falseS` represents a u64 number
-        val falseS = exprBuilder.ZERO.asSym()
-        return  nondetWithAssumptions(trueV, listOf(txf { trueV.asSym() neq falseS })) +
+        val falseS = sbfTacB.ZERO
+        return  nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() neq falseS })) +
             assign(res,
-                switch(
-                    listOf(
+                sbfTacB {
+                    switch(
                         // +0 and -0 are equal
-                        txf { (isf64PlusZero(arg1) and isf64MinusZero(arg2)) or (isf64MinusZero(arg1) and isf64PlusZero(arg2)) } to falseS,
-                        txf { isf64NaN(arg1) or isf64NaN(arg2) or (arg1 neq arg2)} to trueV.asSym()
-                    ),
-                    default = falseS
-                )
+                        (isf64PlusZero(arg1) and isf64MinusZero(arg2)) or (isf64MinusZero(arg1) and isf64PlusZero(arg2)) to falseS,
+                        isf64NaN(arg1) or isf64NaN(arg2) or (arg1 neq arg2) to trueV.asSym(),
+                        default = falseS
+                    )
+                }
             )
     }
 
@@ -382,9 +373,9 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         // `trueV` and `falseV` represent u64 numbers
-        val (trueV, falseV) = vFac.mkFreshIntVar() to  vFac.mkFreshIntVar()
-        return  nondetWithAssumptions(trueV, listOf(txf { trueV.asSym() sLt  exprBuilder.ZERO.asSym()})) +
-            nondetWithAssumptions(falseV, listOf(txf { falseV.asSym() sGe exprBuilder.ZERO.asSym()})) +
+        val (trueV, falseV) = vFac.mkFreshIntVar() to vFac.mkFreshIntVar()
+        return  nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sLt ZERO})) +
+            nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sGe ZERO})) +
             summarizeBinRel(res, arg1, arg2,
                 eitherNaN = falseV.asSym(),
                 bothZero = falseV.asSym(),
@@ -401,9 +392,9 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         // `trueV` and `falseV` represent u64 numbers
-        val (trueV, falseV) = vFac.mkFreshIntVar() to  vFac.mkFreshIntVar()
-        return  nondetWithAssumptions(trueV, listOf(txf { trueV.asSym() sLe  exprBuilder.ZERO.asSym()})) +
-            nondetWithAssumptions(falseV, listOf(txf { falseV.asSym() sGt exprBuilder.ZERO.asSym()})) +
+        val (trueV, falseV) = vFac.mkFreshIntVar() to vFac.mkFreshIntVar()
+        return  nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sLe ZERO})) +
+            nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sGt ZERO})) +
             summarizeBinRel(res, arg1, arg2,
                 eitherNaN = falseV.asSym(),
                 bothZero = trueV.asSym(),
@@ -422,9 +413,9 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         // `trueV` and `falseV` represent u64 numbers
-        val (trueV, falseV) = vFac.mkFreshIntVar() to  vFac.mkFreshIntVar()
-        return  nondetWithAssumptions(trueV, listOf(txf { trueV.asSym() sGe  exprBuilder.ZERO.asSym()})) +
-            nondetWithAssumptions(falseV, listOf(txf { falseV.asSym() sLt exprBuilder.ZERO.asSym()})) +
+        val (trueV, falseV) = vFac.mkFreshIntVar() to vFac.mkFreshIntVar()
+        return  nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sGe ZERO})) +
+            nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sLt ZERO})) +
             summarizeBinRel(res, arg1, arg2,
                 eitherNaN = falseV.asSym(),
                 bothZero = trueV.asSym(),
@@ -443,9 +434,9 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         // `trueV` and `falseV` represent u64 numbers
-        val (trueV, falseV) = vFac.mkFreshIntVar() to  vFac.mkFreshIntVar()
-        return  nondetWithAssumptions(trueV, listOf(txf { trueV.asSym() sGt  exprBuilder.ZERO.asSym()})) +
-                nondetWithAssumptions(falseV, listOf(txf { falseV.asSym() sLe  exprBuilder.ZERO.asSym()})) +
+        val (trueV, falseV) = vFac.mkFreshIntVar() to vFac.mkFreshIntVar()
+        return  nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sGt  ZERO})) +
+                nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sLe ZERO})) +
                 summarizeBinRel(res, arg1, arg2,
                     eitherNaN = falseV.asSym(),
                     bothZero = falseV.asSym(),
@@ -491,15 +482,15 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         val nondetV = vFac.mkFreshIntVar()
         return  nondetWithAssumptions(nondetV) +
             assign(res,
-                switch(
-                    listOf(
-                        txf { isf64NaN(arg1) or  isf64NaN(arg1) } to eitherNaN,
-                        txf { isf64Zero(arg1) and  isf64Zero(arg1) } to bothZero,
-                        isf64Zero(arg1)  to firstZero,
-                        isf64Zero(arg2)  to secondZero
-                    ),
-                    default = nondetV.asSym()
-                )
+                sbfTacB {
+                    switch(
+                        isf64NaN(arg1) or isf64NaN(arg1) to eitherNaN,
+                            isf64Zero(arg1) and isf64Zero(arg1) to bothZero,
+                            isf64Zero(arg1) to firstZero,
+                            isf64Zero(arg2) to secondZero,
+                        default = nondetV.asSym()
+                    )
+                }
             )
     }
 }

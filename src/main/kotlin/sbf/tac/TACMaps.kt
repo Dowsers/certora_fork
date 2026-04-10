@@ -25,6 +25,10 @@ import sbf.domains.INumValue
 import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
 
+/** Return a TAC instruction that stores [value] in [map] at index [idx] **/
+fun store(map: TACSymbol.Var, idx: TACSymbol, value: TACSymbol) =
+    TACCmd.Simple.AssigningCmd.ByteStore(idx,  value, map)
+
 /** Return instructions that havoc the indexes [loc] + [indexes] of the byte map [base] **/
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>>
@@ -33,10 +37,10 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     val cmds = mutableListOf<TACCmd.Simple>()
     indexes.forEach { _ ->
         val value = vFac.mkFreshIntVar()
-        cmds.add(TACCmd.Simple.AssigningCmd.AssignHavocCmd(value))
+        cmds += havoc(value)
         values.add(value)
     }
-    cmds.addAll(mapStores(base, loc, indexes, values))
+    cmds += mapStores(base, loc, indexes, values)
     return cmds
 }
 
@@ -45,7 +49,7 @@ context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>>
     computeTACMapIndex(base: TACSymbol.Var, offset: PTAOffset, cmds: MutableList<TACCmd.Simple>): TACSymbol.Var {
     val index = vFac.mkFreshIntVar()
-    cmds.add(assign(index, exprBuilder.mkAddExpr(base.asSym(), exprBuilder.mkConst(offset.v).asSym(), useMathInt = false)))
+    cmds += assign(index, sbfTacB { base.asSym() add sbfTacB.mkConst(offset.v).asSym() })
     return index
 }
 
@@ -65,9 +69,9 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
 
     val cmds = mutableListOf<TACCmd.Simple>()
     for ( (offset, value) in offsets.zip(values)) {
-        val loc = computeTACMapIndex(base, offset, cmds)
+        val idx = computeTACMapIndex(base, offset, cmds)
         // REVISIT: ByteStore assumes 32 bytes are written so the actual width is being ignored
-        cmds.add(TACCmd.Simple.AssigningCmd.ByteStore(loc, value, byteMap.tacVar))
+        cmds += store(byteMap.tacVar, idx, value)
     }
     return cmds
 }
@@ -99,8 +103,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     for (i in 0 until numOfWords) {
         val loc = computeTACMapIndex(base, PTAOffset(wordSize.toLong() * i.toLong()), cmds)
         val x = vFac.mkFreshIntVar()
-        // REVISIT: ByteLoad assumes 32 bytes are read so the actual width (wordSize) is being ignored
-        cmds.add(TACCmd.Simple.AssigningCmd.ByteLoad(x, loc, byteMap.tacVar))
+        cmds += sbfTacB.load(x, loc, wordSize.toShort(), byteMap.tacVar)
         intVars.add(x)
     }
     // We should add at each loop iteration that [loc] cannot be greater than SBF_INPUT_END
@@ -108,6 +111,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     // be greater than SBF_INPUT_END. Note that our solution is still sound, but it might produce spurious
     // counterexamples is numOfWords is too large. In fact, right now this cannot happen since we use 256 bits to
     // represent integers.
-    cmds.addAll(addMemoryLayoutAssumptions(base, null))
+    cmds += addMemoryLayoutAssumptions(base, null)
     return intVars
 }
+

@@ -172,8 +172,8 @@ fun Range.Range?.toHeuristicSourceSegment(): SourceSegment? {
     // is that content of the returned SourceSegment will be the start line until the end of this line.
     val endIndex = lineStarts.lineNumberStartOffset(start.line.toInt() + 1) ?: allBytes.size
 
-    if (startIndex >= allBytes.size) {
-        logger.warn { "Trying to source contents starting at ($startIndex) which is out of the bounds of the file content of ($sourceFile)" }
+    if (startIndex >= allBytes.size || endIndex <= startIndex) {
+        logger.warn { "Trying to source contents with invalid range [$startIndex, $endIndex) in file ($sourceFile)" }
         return null
     }
     return SourceSegment(

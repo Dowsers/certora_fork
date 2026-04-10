@@ -64,6 +64,9 @@ sealed interface DWARFCfgEdgeLabel {
 
     fun usedRegisters(): Set<Value.Reg>
 
+    val persist: Boolean
+        get() = true
+
 
     /**
      * A label that marks the end of a scope - i.e. matches either [SubProgramStart] or [CallSiteWithSources]
@@ -72,10 +75,10 @@ sealed interface DWARFCfgEdgeLabel {
         data class FunctionEnds(
             val depth: ULong,
             val allMatchingPushesInSources: Boolean,
-            val persist: Boolean = true
+            override val persist: Boolean = true
         ) : ScopeEnd {
             override fun toString(): String {
-                return ")_fn_$depth (${persist})"
+                return ")_fn_$depth"
             }
 
             override fun toAnnotations(
@@ -112,7 +115,7 @@ sealed interface DWARFCfgEdgeLabel {
             val functionName: String,
             val callSiteRange: Range.Range,
             val declRange: Range.Range,
-            val persist: Boolean = true,
+            override val persist: Boolean = true,
             override val node: DwarfMethod
         ) : ScopeStart(node) {
             override fun toAnnotations(
@@ -138,7 +141,7 @@ sealed interface DWARFCfgEdgeLabel {
 
             override fun asPersistent(persistent: Boolean) = this.copy(persist = persistent)
             override fun toString(): String {
-                return "(_fn_${node.getDepth()}_${node.getMethodName()} (Inlined callee: call site at $callSiteRange, function body in source: $declRange) (${persist})"
+                return "(_fn_${node.getDepth()}_${node.getMethodName()} (Inlined callee: call site at $callSiteRange, function body in source: $declRange)"
             }
 
             override fun usedRegisters(): Set<Value.Reg> = setOf()
@@ -152,7 +155,7 @@ sealed interface DWARFCfgEdgeLabel {
         data class SubProgramStart(
             val functionName: String,
             val declRange: Range.Range,
-            val persist: Boolean = true,
+            override val persist: Boolean = true,
             override val node: DwarfMethod
         ) : ScopeStart(node) {
             override fun toString(): String {
@@ -210,7 +213,7 @@ sealed interface DWARFCfgEdgeLabel {
     data class VariableBecomingLive(
         val stackLevel: CallStackLevel,
         val variableInfo: SourceVariableDebugInformation,
-        val persist: Boolean = true
+        override val persist: Boolean = true
     ) : DWARFCfgEdgeLabel {
         private fun toAnnotations(displayPathExpressions: Map<Offset, DWARFExpression>): List<TACCmd.Simple.AnnotationCmd> {
             if (stackLevel.scopes.any { !it.getDeclRange().isInSources() } || variableInfo.variableType == null) {
@@ -288,7 +291,7 @@ sealed interface DWARFCfgEdgeLabel {
             } else {
                 "stored in DWARF .debug_loc ${variableInfo.operations}"
             }
-            return "Variable `${variableInfo.variableName}` $postFix (persist=${persist})"
+            return "Source variable named `${variableInfo.variableName}` (of method ${stackLevel.scopes.joinToString { it.getMethodName() }}) $postFix"
         }
 
         override fun usedRegisters(): Set<Value.Reg> {
@@ -311,7 +314,7 @@ sealed interface DWARFCfgEdgeLabel {
         val instruction: SbfInstruction,
         /** if instruction is a load then operand is the lhs, otherwise it is the stored value **/
         val operand: Value,
-        val persist: Boolean = true
+        override val persist: Boolean = true
     ) : DWARFCfgEdgeLabel {
         override fun toAnnotations(
             locInst: LocatedSbfInstruction,
@@ -344,7 +347,7 @@ sealed interface DWARFCfgEdgeLabel {
 
         override fun asPersistent(persistent: Boolean) = this.copy(persist = persistent)
         override fun toString(): String {
-            return "Memory load on variable ${variableDebugInfo.variableName} at ($offsetIntoStruct) via ${variableDebugInfo.operations}  (${persist})"
+            return "Memory load on source variable named `${variableDebugInfo.variableName}` (of method ${stackLevel.scopes.joinToString { it.getMethodName() }}) at offset (${offsetIntoStruct.offset}) via ${variableDebugInfo.operations}"
         }
 
         override fun usedRegisters(): Set<Value.Reg> {

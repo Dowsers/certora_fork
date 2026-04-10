@@ -150,7 +150,6 @@ class SimplifyBoolsTest {
         Assertions.assertEquals(true, numOfLogicalOr(cfg) == 0)
     }
 
-
     @Test
     fun test6() {
         val cfg = SbfTestDSL.makeCFG("test6") {
@@ -173,4 +172,88 @@ class SimplifyBoolsTest {
         println("After transformation\n$cfg")
         Assertions.assertEquals(true, numOfLogicalOr(cfg) == 0)
     }
+
+    @Test
+    fun test7() {
+        val cfg = SbfTestDSL.makeCFG("test7") {
+            bb(0) {
+                CvlrFunctions.CVT_nondet_u64()
+                r1 = r0
+                CvlrFunctions.CVT_nondet_u64()
+                r2 = r0
+                BinOp.OR(r2, r1)
+                BinOp.AND(r2, 1UL)
+                assume(CondOp.EQ(r2, 0))
+                exit()
+            }
+        }
+        println("Before transformation\n$cfg")
+        simplifyBools(cfg)
+        println("After transformation\n$cfg")
+        Assertions.assertEquals(true, numOfLogicalOr(cfg) == 0)
+    }
+
+    /**
+     * ```
+     * r0 = r0 or r3
+     * ...
+     * r1 = r0
+     * r1 = r1 and 1
+     * assume(r1 == 0)
+     * ```
+     **/
+    @Test
+    fun test8() {
+
+        val cfg = SbfTestDSL.makeCFG("test8") {
+            bb(0) {
+                CvlrFunctions.CVT_nondet_u64()
+                r3 = r0
+                CvlrFunctions.CVT_nondet_u64()
+                BinOp.OR(r0, r3)
+                r1 = r0
+                BinOp.AND(r1, 1UL)
+                assume(CondOp.EQ(r1, 0))
+                exit()
+            }
+        }
+        println("Before transformation\n$cfg")
+        simplifyBools(cfg)
+        println("After transformation\n$cfg")
+        Assertions.assertEquals(true, numOfLogicalOr(cfg) == 0)
+    }
+
+    /**
+     * ```
+     * r0 = r0 or r3
+     * ...
+     * r1 = r0
+     * r1 = r1 and 1
+     * assume(r1 == 0)
+     * r4 = r3
+     * ```
+     **/
+    @Test
+    fun test9() {
+        // Transformation not done: r3 (right operand of OR) is not dead after the assume instruction
+        val cfg = SbfTestDSL.makeCFG("test9") {
+            bb(0) {
+                CvlrFunctions.CVT_nondet_u64()
+                r3 = r0
+                CvlrFunctions.CVT_nondet_u64()
+                BinOp.OR(r0, r3)
+                r1 = r0
+                BinOp.AND(r1, 1UL)
+                assume(CondOp.EQ(r1, 0))
+                r4 = r3
+                exit()
+            }
+        }
+        println("Before transformation\n$cfg")
+        simplifyBools(cfg)
+        println("After transformation\n$cfg")
+        Assertions.assertEquals(true, numOfLogicalOr(cfg) == 1)
+    }
 }
+
+

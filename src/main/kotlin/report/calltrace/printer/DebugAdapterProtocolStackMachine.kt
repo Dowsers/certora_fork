@@ -776,6 +776,10 @@ class DebugAdapterProtocolStackMachine(
                     snippet.tryToSarif(model)
                 }
 
+                is SnippetCmd.CvlrSnippetCmd.PrintPubkey -> {
+                    snippet.tryToSarif(model)
+                }
+
                 is SnippetCmd.CvlrSnippetCmd.ScopeStart -> {
                     Sarif.fromPlainStringUnchecked(snippet.scopeName)
                 }

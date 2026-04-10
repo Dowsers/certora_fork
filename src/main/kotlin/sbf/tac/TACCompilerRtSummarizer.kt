@@ -20,7 +20,6 @@ package sbf.tac
 import sbf.callgraph.CompilerRtFunction
 import sbf.cfg.*
 import sbf.disassembler.SbfRegister
-import vc.data.*
 import datastructures.stdcollections.*
 import sbf.SolanaConfig
 import sbf.callgraph.FPCompilerRtFunction
@@ -30,6 +29,8 @@ import sbf.domains.INumValue
 import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
 import sbf.support.UnsupportedCall
+import vc.data.TACCmd
+import vc.data.TACSymbol
 
 /**
  * Summarize compiler-rt functions.
@@ -47,9 +48,9 @@ open class SummarizeCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffset
         val function = CompilerRtFunction.from(inst.name) ?: return listOf()
         return when (function) {
             is CompilerRtFunction.SignedInteger64 -> {
-                val res = exprBuilder.mkVar(SbfRegister.R0)
-                val arg1 = exprBuilder.mkVar(SbfRegister.R1)
-                val arg2 = exprBuilder.mkVar(SbfRegister.R2)
+                val res = sbfTacB.mkVar(SbfRegister.R0)
+                val arg1 = sbfTacB.mkVar(SbfRegister.R1)
+                val arg2 = sbfTacB.mkVar(SbfRegister.R2)
                 val summarizer = SummarizeSignedInteger64CompilerRt<TNum, TOffset, TFlags>()
                 val cmds = when (function.value) {
                     SignedInteger64CompilerRtFunction.DIVDI3 -> summarizer.summarizeDivdi3(res, arg1, arg2)
@@ -95,9 +96,9 @@ open class SummarizeCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffset
                 } + listOf(Debug.endFunction(inst.name))
             }
             is CompilerRtFunction.FP -> {
-                val res = exprBuilder.mkVar(SbfRegister.R0)
-                val arg1 = exprBuilder.mkVar(SbfRegister.R1)
-                val arg2 = exprBuilder.mkVar(SbfRegister.R2)
+                val res = sbfTacB.mkVar(SbfRegister.R0)
+                val arg1 = sbfTacB.mkVar(SbfRegister.R1)
+                val arg2 = sbfTacB.mkVar(SbfRegister.R2)
                 val cmds = when (function.value) {
                     FPCompilerRtFunction.UNORDDF2 -> SummarizeFPCompilerRt<TNum, TOffset, TFlags>().summarizeUnorddf2(res, arg1, arg2)
                     FPCompilerRtFunction.ADDDF3 -> SummarizeFPCompilerRt<TNum, TOffset, TFlags>().summarizeAdddf3(res, arg1, arg2)
@@ -123,10 +124,10 @@ open class SummarizeCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffset
     private fun debugCompilerRtFunction(inst: SbfInstruction.Call, numArgs: Int, cmds: List<TACCmd.Simple>): List<TACCmd.Simple> {
         val inputArgs = mutableListOf<Pair<TACSymbol.Var, SbfFuncArgInfo>>()
         for (i in 1..numArgs) {
-            inputArgs.add(exprBuilder.mkVar(SbfRegister.getByValue(i.toByte())) to SbfFuncArgInfo(SbfArgSort.SCALAR, true))
+            inputArgs.add(sbfTacB.mkVar(SbfRegister.getByValue(i.toByte())) to SbfFuncArgInfo(SbfArgSort.SCALAR, true))
         }
         val fakeStartFuncAnnotation = SbfInlinedFuncStartAnnotation(inst.name, inst.name, id = -1, inputArgs, mockFor = null)
-        val fakeEndFuncAnnotation = SbfInlinedFuncEndAnnotation(inst.name, -1, exprBuilder.mkVar(SbfRegister.R0))
+        val fakeEndFuncAnnotation = SbfInlinedFuncEndAnnotation(inst.name, -1, sbfTacB.mkVar(SbfRegister.R0))
         return  listOf(Debug.startFunction(fakeStartFuncAnnotation)) +
             cmds +
             listOf(Debug.endFunction(fakeEndFuncAnnotation))

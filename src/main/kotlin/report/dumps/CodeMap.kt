@@ -402,6 +402,17 @@ data class CodeMap(
                             color=Color.ORANGE
                         )
                     }
+                    is SnippetCmd.CvlrSnippetCmd.PrintPubkey -> {
+                        val prefix = if (metaValue.displayMessage != "") {
+                            "${metaValue.displayMessage.sanitize()}: "
+                        } else {
+                            ""
+                        }
+                        colorText (
+                            s="$prefix${getHtmlRep(metaValue.w0)}::${getHtmlRep(metaValue.w1)}::${getHtmlRep(metaValue.w2)}::${getHtmlRep(metaValue.w3)}",
+                            color=Color.ORANGE
+                        )
+                    }
                     is SnippetCmd.CvlrSnippetCmd.ScopeStart -> colorText("$rarrow ${metaValue.scopeName.sanitize()}", Color.DARKBLUE)
                     is SnippetCmd.CvlrSnippetCmd.ScopeEnd -> colorText("$larrow ${metaValue.scopeName.sanitize()}", Color.DARKBLUE)
                     is InternalFuncStartAnnotation -> colorText("$rarrow Method call ${wrapInternalFunStart(metaValue.id)} to ${

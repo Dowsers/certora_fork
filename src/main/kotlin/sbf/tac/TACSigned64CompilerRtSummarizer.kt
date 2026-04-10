@@ -36,7 +36,7 @@ open class SummarizeSignedInteger64CompilerRt<TNum : INumValue<TNum>, TOffset : 
     ): List<TACCmd.Simple> {
         return  listOf(
             Debug.unsupported("Warning: __divdi3 is not modeled precisely in TAC", listOf(res)),
-            TACCmd.Simple.AssigningCmd.AssignHavocCmd(res)
+            havoc(res)
         )
     }
 
@@ -50,7 +50,7 @@ open class SummarizeSignedInteger64CompilerRt<TNum : INumValue<TNum>, TOffset : 
     ): List<TACCmd.Simple> {
         return listOf(
             Debug.unsupported("Warning: __moddi3 is not modeled precisely in TAC", listOf(res)),
-            TACCmd.Simple.AssigningCmd.AssignHavocCmd(res)
+            havoc(res)
         )
     }
 

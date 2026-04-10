@@ -51,11 +51,14 @@ const val SBF_CODE_START = 0x100_000_000
 val SBF_STACK_FRAME_SIZE = SolanaConfig.StackFrameSize.get().toLong()
 const val SBF_STACK_START = 0x200_000_000
 const val SBF_INPUT_START = 0x400_000_000
-const val SBF_HEAP_SIZE = 32_768
 const val SBF_HEAP_START = 0x300_000_000
-
+/* Maximum heap size in bytes */
+const val MAX_HEAP_SIZE = (SBF_INPUT_START - SBF_HEAP_START)
+val SBF_HEAP_SIZE = SolanaConfig.HeapSize.get().toLong().also {
+    check(it < MAX_HEAP_SIZE) { "solanaHeapSize must be less than MAX_HEAP_SIZE ($MAX_HEAP_SIZE), got $it" }
+}
 // -- Parameters needed for TAC encoding
-const val SBF_HEAP_END = SBF_HEAP_START + SBF_HEAP_SIZE
+val SBF_HEAP_END = SBF_HEAP_START + SBF_HEAP_SIZE
 // In SVM, there is no explicit limit for the input area, but probably, it's the last addressable virtual address.
 // For TAC encoding purposes, we need to choose an end. We don't really care the exact value.
 const val SBF_INPUT_END = SBF_INPUT_START + (2 * MAX_SOLANA_ACCOUNTS * SOLANA_ACCOUNT_SIZE)

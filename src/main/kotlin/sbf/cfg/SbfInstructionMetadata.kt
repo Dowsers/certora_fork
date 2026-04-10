@@ -61,7 +61,8 @@ object SbfMeta {
     val REG_TYPE =  MetaKey<Pair<Value.Reg, SbfRegisterType>>("reg_type")
     // Address of the instruction
     val SBF_ADDRESS = MetaKey<ULong>("sbf_bytecode_address")
-
+    // Tag to be consumed by calltrace function
+    val STICKY_TAG = MetaKey<String>("tag")
     val SBF_DWARF_DEBUG_ANNOTATIONS = MetaKey<List<DWARFCfgEdgeLabel>>("sbf_debug_edge_annotation")
     // The value is true if the loaded register affects the control flow of the program
     val LOADED_AS_NUM_FOR_PTA = MetaKey<Boolean>("loaded_as_number_for_pta")
@@ -81,6 +82,7 @@ object SbfMeta {
     // These keys have empty strings as values. The values are irrelevant
     val HINT_OPTIMIZED_WIDE_STORE =  MetaKey<Unit>("hint_optimized_wide_store")
     val MEMCPY_PROMOTION = MetaKey<Unit>("promoted_memcpy")
+    val MATH_PROMOTION = MetaKey<Unit>("math_promotion")
     val MEMCPY_ZEXT_PROMOTION = MetaKey<Unit>("promoted_memcpy_zext")
     val MEMCPY_TRUNC_PROMOTION = MetaKey<Unit>("promoted_memcpy_trunc")
     val MEMSET_PROMOTION = MetaKey<Unit>("promoted_memset")
@@ -116,8 +118,10 @@ fun toString(metaData: MetaData): String {
             SbfMeta.MEMSET_PROMOTION,
             SbfMeta.UNHOISTED_STORE, SbfMeta.UNHOISTED_LOAD,
             SbfMeta.UNHOISTED_MEMCPY, SbfMeta.UNHOISTED_MEMCMP,
-            SbfMeta.LOWERED_SELECT, SbfMeta.LOWERED_OR, SbfMeta.LOADED_AS_NUM_FOR_PTA, SbfMeta.REMOVED_MEMMOVE,
-            SbfMeta.SAFE_MATH, SbfMeta.SET_GLOBAL, SbfMeta.NARROWED_LOAD -> {
+            SbfMeta.LOWERED_SELECT, SbfMeta.LOWERED_OR, SbfMeta.LOADED_AS_NUM_FOR_PTA,
+            SbfMeta.REMOVED_MEMMOVE,
+            SbfMeta.SAFE_MATH, SbfMeta.SET_GLOBAL, SbfMeta.NARROWED_LOAD,
+            SbfMeta.MATH_PROMOTION -> {
                 strB.append(" /*${k.name}*/")
             }
             SbfMeta.CALL_ID,
@@ -143,7 +147,7 @@ fun toString(metaData: MetaData): String {
             }
             SbfMeta.SBF_DWARF_DEBUG_ANNOTATIONS -> {
                 metaData.getVal(SbfMeta.SBF_DWARF_DEBUG_ANNOTATIONS)?.let { scopeEnds ->
-                    strB.append(scopeEnds.joinToString("\n"))
+                    strB.append(scopeEnds.filter { it.persist }.joinToString("\n"))
                 }
             }
             SbfMeta.MANGLED_NAME -> {}

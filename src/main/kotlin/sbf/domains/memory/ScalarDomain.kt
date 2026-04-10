@@ -294,6 +294,18 @@ class ScalarDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> private con
     }
 
     /**
+     * Skip validation for promotions, as they normalize stack pointers relative to r10,
+     * which can result in offsets exceeding the current frame size when accessing caller stacks
+    **/
+    private fun skipStackInBoundsValidation(locInst: LocatedSbfInstruction) =
+        listOf(
+            SbfMeta.MEMCPY_PROMOTION,
+            SbfMeta.MEMCPY_ZEXT_PROMOTION,
+            SbfMeta.MEMCPY_TRUNC_PROMOTION,
+            SbfMeta.MATH_PROMOTION
+        ).any { locInst.inst.metaData.getVal(it) != null }
+
+    /**
      * Check that stack is not being smashed after pointer arithmetic [locInst]
      * @param [oldType] is the type of destination before executing the instruction.
      * @param [newType] is the type of destination after executing the instruction.
@@ -307,21 +319,12 @@ class ScalarDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> private con
             return
         }
 
-        val inst = locInst.inst
-        check(inst is SbfInstruction.Bin)
-
-        val isMemcpyPromotion = listOf(
-            SbfMeta.MEMCPY_PROMOTION,
-            SbfMeta.MEMCPY_ZEXT_PROMOTION,
-            SbfMeta.MEMCPY_TRUNC_PROMOTION
-        ).any { locInst.inst.metaData.getVal(it) != null }
-
-        // Skip validation for memcpy promotions, as they normalize stack pointers relative to r10,
-        // which can result in offsets exceeding the current frame size when accessing caller stacks
-        if (isMemcpyPromotion) {
+        if (skipStackInBoundsValidation(locInst)) {
             return
         }
 
+        val inst = locInst.inst
+        check(inst is SbfInstruction.Bin)
         val oldOffset = (oldType as? SbfType.PointerType.Stack<TNum, TOffset>)?.offset?.toLongOrNull() ?: return
         val newOffset = (newType as? SbfType.PointerType.Stack<TNum, TOffset>)?.offset?.toLongOrNull() ?: return
         checkOffsetInBoundsWithStaticFrames(oldOffset, newOffset, locInst)
@@ -336,9 +339,12 @@ class ScalarDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> private con
             return
         }
 
+        if (skipStackInBoundsValidation(locInst)) {
+            return
+        }
+
         val inst = locInst.inst
         check(inst is SbfInstruction.Mem)
-
         val baseOffset = (baseType as? SbfType.PointerType.Stack<TNum, TOffset>)?.offset?.toLongOrNull() ?: return
         checkOffsetInBoundsWithStaticFrames(baseOffset, baseOffset + inst.access.offset, locInst)
     }
