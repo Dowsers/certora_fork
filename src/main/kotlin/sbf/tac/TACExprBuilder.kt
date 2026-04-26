@@ -772,8 +772,10 @@ class NativeIntTACBuilder(regVars: ArrayList<TACSymbol.Var>) : TACExprBase(regVa
      *  ```
      **/
     fun splitU128(e: TACExpr): Pair<TACExpr, TACExpr> {
-        val low  = mask(e, 64)
-        val high = TACExpr.BinOp.ShiftRightLogical(mask(e, 128), c64)
+        val twoPowerOf128 = BigInteger.TWO.pow(128).asTACExpr()
+        val x =  TACExpr.BinOp.Mod(e, twoPowerOf128)
+        val low  = mask(x, 64)
+        val high = TACExpr.BinOp.ShiftRightLogical(x, c64)
         return low to high
     }
 }
