@@ -124,7 +124,7 @@ object StorageLinkResolver {
                 }
                 storageReadId to linkMatch
             }
-        }.toMap()
+        }.toList().distinctBy { it.first }.toMap()
 
         fun CallGraphBuilder.CalledContract.resolvedMatch(): Pair<Int, LinkMatch>? {
             val id = (this as? CallGraphBuilder.CalledContract.UnresolvedRead)?.storageReadId ?: return null

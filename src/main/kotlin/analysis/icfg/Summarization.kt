@@ -321,6 +321,7 @@ object Summarization {
                     is CallGraphBuilder.CalledContract.Invalidated,
                     is CallGraphBuilder.CalledContract.SymbolicInput,
                     is CallGraphBuilder.CalledContract.UnresolvedRead,
+                    is CallGraphBuilder.CalledContract.UnresolvedImmutable,
                     is CallGraphBuilder.CalledContract.Unresolved-> {
                         // nothing to do here linking wise
                     }
