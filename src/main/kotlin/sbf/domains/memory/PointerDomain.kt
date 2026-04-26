@@ -3384,6 +3384,11 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
         loadFromSymCell(locInst, derefSc, scalars)
     }
 
+    enum class CellLayout {
+        SPLIT,
+        MERGE
+    }
+
     /**
      * A reconstructed cell is created either by merging multiple existing cells or
      * by splitting a single cell into parts.
@@ -3414,6 +3419,8 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
             val scalarType = scalarVal.type()
             return (scalarType as? SbfType.NumType)?.value?.toLongOrNull()
         }
+
+        fun cellLayout() = if (fields.size == 1) { CellLayout.SPLIT } else { CellLayout.MERGE }
 
         /**
          * Return the reconstructed integer cell.
