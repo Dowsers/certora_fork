@@ -88,7 +88,7 @@ fun runPostSlicingOptimizations(prog: SbfCallGraph, memSummaries: MemorySummarie
             transformers = listOf(
                 U128WrappingSubTransform,
                 U128WrappingAddTransform,
-                U128GtTransform
+                U128BinRelTransform
                 ),
             globals = prog.getGlobals(),
             memSummaries

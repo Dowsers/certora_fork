@@ -1,12 +1,12 @@
 [package]
-name = "u128_gt"
+name = "u128_binrel"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [lib]
 crate-type = ["cdylib"]
-path = "src/u128_gt.rs"
+path = "src/u128_binrel.rs"
 
 [features]
 certora = []

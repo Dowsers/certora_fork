@@ -55,7 +55,9 @@ data class Int128BinaryParams(
     val xHigh: RegOrStack,
     val yLow: RegOrStack,
     val yHigh: RegOrStack
-)
+){
+    fun swap() = Int128BinaryParams(yLow, yHigh, xLow, xHigh)
+}
 
 sealed interface Int128OperationResult{
     fun lower(): List<SbfInstruction>
