@@ -133,8 +133,11 @@ abstract class SbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : TACExprBase(re
      *
      * If [o2] is negative, calls [negF] with absolute value of o2.
      * Otherwise, calls [posF] with o2.
+     *
+     * Note that this only works for Int values, not Bit256 values, since Bit256 can't have a negative BigInteger
+     * value.
      */
-    protected fun flipIfNegative(
+    protected fun flipIfNegativeBigInteger(
         o1: TACExpr,
         o2: TACExpr,
         posF: (TACExpr, TACExpr) -> TACExpr,
@@ -148,36 +151,24 @@ abstract class SbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : TACExprBase(re
         }
     }
 
-    /** Convert add to sub if [o2] is negative **/
-    protected fun add(
+    protected fun flipIfNegativeBigInteger(
         ls: List<TACExpr>,
-        subF: (TACExpr, TACExpr) -> TACExpr,
-        addF: (List<TACExpr>) -> TACExpr
+        posF: (List<TACExpr>) -> TACExpr,
+        negF: (TACExpr, TACExpr) -> TACExpr
     ): TACExpr {
         return if (ls.size == 2) {
-            val (o1, o2) = ls
-            flipIfNegative(o1, o2, { a, b -> addF(listOf(a, b)) }, subF)
+            flipIfNegativeBigInteger(ls[0], ls[1], { a, b -> posF(listOf(a, b)) }, negF)
         } else {
-            addF(ls)
+            posF(ls)
         }
-    }
-
-    /** Convert sub to add if [o2] is negative **/
-    protected fun sub(
-        o1: TACExpr,
-        o2: TACExpr,
-        subF: (TACExpr, TACExpr) -> TACExpr,
-        addF: (List<TACExpr>) -> TACExpr
-    ): TACExpr {
-        return flipIfNegative(o1, o2, subF, { a, b -> addF(listOf(a, b)) })
     }
 
     /// Int operators
     private fun IntMul(ls: List<TACExpr>) = TACExpr.Vec.IntMul(ls)
     private fun IntAdd(ls: List<TACExpr>) =
-        add(ls, { x, y -> TACExpr.BinOp.IntSub(x, y)}, { TACExpr.Vec.IntAdd(it) })
+        flipIfNegativeBigInteger(ls, { TACExpr.Vec.IntAdd(it) }, { x, y -> TACExpr.BinOp.IntSub(x, y) })
     private fun IntSub(o1: TACExpr, o2: TACExpr) =
-        sub(o1, o2, { x,y -> TACExpr.BinOp.IntSub(x,y)}, { TACExpr.Vec.IntAdd(it) })
+        flipIfNegativeBigInteger(o1, o2, { x, y -> TACExpr.BinOp.IntSub(x, y) }, { x, y -> TACExpr.Vec.IntAdd(x, y) })
     private fun IntDiv(o1: TACExpr, o2: TACExpr) = TACExpr.BinOp.IntDiv(o1, o2)
     private fun IntMod(o1: TACExpr, o2: TACExpr) = TACExpr.BinOp.IntMod(o1, o2)
 
@@ -488,8 +479,10 @@ class LazyMaskSbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : SbfTACBuilder(r
         }
     }
 
-    override fun Add(ls: List<TACExpr>) = add(ls, { x,y -> TACExpr.BinOp.Sub(x,y)}, { TACExpr.Vec.Add(it) })
-    override fun Sub(o1: TACExpr, o2: TACExpr) = sub(o1, o2, { x,y -> TACExpr.BinOp.Sub(x,y)}, { TACExpr.Vec.Add(it) })
+    override fun Add(ls: List<TACExpr>) =
+        flipIfNegativeBigInteger(ls, { TACExpr.Vec.Add(it) }, { x, y -> TACExpr.BinOp.Sub(x, y) })
+    override fun Sub(o1: TACExpr, o2: TACExpr) =
+        flipIfNegativeBigInteger(o1, o2, { x, y -> TACExpr.BinOp.Sub(x, y) }, { x, y -> TACExpr.Vec.Add(x, y) })
     override fun Mul(ls: List<TACExpr>): TACExpr = TACExpr.Vec.Mul(ls)
     override fun Div(o1: TACExpr, o2: TACExpr): TACExpr  = TACExpr.BinOp.Div(o1,o2)
     override fun SDiv(o1: TACExpr, o2: TACExpr): TACExpr = TACExpr.BinOp.SDiv(o1,o2)
@@ -599,20 +592,54 @@ class EagerMaskSbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : SbfTACBuilder(
     override fun assumeUnsignedIntRange(v: TACSymbol.Var, bits: Int) =
         inRange(v, BigInteger.ZERO ..< BigInteger.TWO.pow(bits))
 
-    override fun mkConst(value: BigInteger) = TACSymbol.Const(
-        if (value < BigInteger.ZERO) {
-            modz64 { value.to2s() }
-        } else {
-            modz64 { check(value.inBounds) { "Constant 0x${value.toString(16)} is larger than 64 bits" } }
-            value
-        },
-        Tag.Bit256
-    )
+    override fun mkConst(value: BigInteger): TACSymbol.Const {
+        with(modz64) {
+            check(value.inBounds || value.inSignedBounds) {
+                "Constant 0x${value.toString(16)} is out of range for 64-bit unsigned or signed value"
+            }
+            return TACSymbol.Const(
+                value.letIf(value < BigInteger.ZERO) { value.to2s() },
+                Tag.Bit256
+            )
+        }
+    }
 
-    override fun Add(ls: List<TACExpr>) =
-        add(ls, { x,y -> TXF { (x sub y).mod64() }}, { TXF { Add(it).mod64() }})
-    override fun Sub(o1: TACExpr, o2: TACExpr) =
-        sub(o1, o2, { x,y -> TXF { (x sub y).mod64() }}, { TXF { Add(it).mod64() }})
+    /**
+        To avoid overflow (which is hard for solvers), we detect cases where we are adding (or subtracting) a constant
+        that is a 2's complement representation of a negative number, and flip the operation to subtract (or add) the
+        negation of that constant.
+     */
+    private fun maybeFlipSign(o: TACExpr): TACExpr? {
+        with (modz64) {
+            val encoded = o.evalAsConst() ?: return null
+            check(encoded.inBounds) {
+                "Constant 0x${encoded.toString(16)} is out of range for a 64-bit unsigned value"
+            }
+
+            val decoded = encoded.from2s()
+            if (decoded == encoded) {
+                // already positive
+                return null
+            }
+
+            val flipped = -decoded
+            if (!flipped.inSignedBounds) {
+                // value was -2^63.  Positive 2^63 cannot be represented in signed 64-bit range
+                return null
+            }
+
+            return flipped.asTACExpr
+        }
+    }
+
+    override fun Add(ls: List<TACExpr>) = TXF {
+        ls.takeIf { it.size == 2 }?.let { (a, b) -> maybeFlipSign(b)?.let { (a sub it).mod64() } }
+            ?: Add(ls).mod64()
+    }
+    override fun Sub(o1: TACExpr, o2: TACExpr) = TXF {
+        maybeFlipSign(o2)?.let { (o1 add it).mod64() }
+            ?: (o1 sub o2).mod64()
+    }
     override fun Mul(ls: List<TACExpr>) = TXF { Mul(ls).mod64() }
     override fun Div(o1: TACExpr, o2: TACExpr) = TXF { o1 div o2 }
     override fun SDiv(o1: TACExpr, o2: TACExpr) = TXF { (o1.signExt64() sDiv o2.signExt64()).mod64() }
