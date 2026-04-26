@@ -20,6 +20,7 @@ package sbf.cfg
 import datastructures.stdcollections.*
 import sbf.SolanaConfig
 import sbf.callgraph.AbortFunctions
+import sbf.callgraph.SolanaFunction
 import sbf.disassembler.SbfRegister
 
 /**
@@ -48,8 +49,10 @@ fun replaceAbortWithError(cfg: MutableSbfCFG) {
 }
 
 /**
- * Returns the list of SBF instructions that encode `assert(false)` with [functionName] as a comment.
- * We use r0 because it is always assumed to overwritten after a call returns.
+ * Returns the list of SBF instructions that encode `assert(false); abort` with [functionName] as a comment.
+ * We use r0 because it is always assumed to be overwritten after a call returns.
+ * The trailing `abort` has `isTerminator() == true`, which lets DCE recognize that
+ * everything after this sequence is unreachable.
  */
 private fun assertFalse(functionName: String, metadata: MetaData): List<SbfInstruction> {
     return listOf(
@@ -59,6 +62,8 @@ private fun assertFalse(functionName: String, metadata: MetaData): List<SbfInstr
         SbfInstruction.Assert(
             Condition(CondOp.EQ, Value.Reg(SbfRegister.R0), right = Value.Imm(0UL)),
             metadata.plus(SbfMeta.COMMENT to functionName)
-        )
+        ),
+        // abort: isTerminator() == true, so DCE treats subsequent instructions as unreachable
+        SolanaFunction.toCallInst(SolanaFunction.ABORT, metadata)
     )
 }
