@@ -269,23 +269,37 @@ data class ConstantSet private constructor(
 
     override fun filter(op: CondOp, other: ConstantSet): ConstantSet {
         return if (isBottom() || other.isBottom()) {
-            this
-        } else if (isTop() || other.isTop()){
-            if(op == CondOp.EQ) {
-                this.meet(other)
-            } else {
-                this
-            }
+            mkBottom(maxNumDisjuncts)
         } else {
-            this.values.filter { o1 ->
-                other.values.any { o2 ->
-                    !o1.assume(op, o2).isFalse()
+            val n = other.toLongOrNull()
+            when {
+                op == CondOp.EQ ->
+                    this.meet(other)
+                n != null && n in 0..maxNumDisjuncts.toLong() && op == CondOp.LE ->
+                    this.meet(ConstantSet((0..n).map { Constant(it) }.toSet(), maxNumDisjuncts))
+                n != null && n in 0..maxNumDisjuncts.toLong() && op == CondOp.LT -> {
+                    if (n == 0L) {
+                        mkBottom(maxNumDisjuncts)
+                    } else {
+                        this.meet(ConstantSet((0..<n).map { Constant(it) }.toSet(), maxNumDisjuncts))
+                    }
                 }
-            }.toSet().let {
-                if (it.isEmpty()) {
-                    mkBottom(maxNumDisjuncts)
-                } else {
-                    ConstantSet(it, maxNumDisjuncts)
+                else -> {
+                    if (isTop() || other.isTop()) {
+                        this
+                    } else {
+                        this.values.filter { o1 ->
+                            other.values.any { o2 ->
+                                !o1.assume(op, o2).isFalse()
+                            }
+                        }.toSet().let {
+                            if (it.isEmpty()) {
+                                mkBottom(maxNumDisjuncts)
+                            } else {
+                                ConstantSet(it, maxNumDisjuncts)
+                            }
+                        }
+                    }
                 }
             }
         }
