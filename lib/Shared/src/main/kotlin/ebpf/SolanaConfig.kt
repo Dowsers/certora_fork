@@ -290,6 +290,16 @@ object SolanaConfig {
         )
     ) {}
 
+    val PromoteMathIntrinsics = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaPromoteMathIntrinsics",
+            true,
+            "Promote sequences of low-level instructions that implement math intrinsics " +
+                "(e.g., u128 wrapping add/sub) to dedicated intrinsic calls. [default: false]"
+        )
+    ) {}
+
     // TAC options
     val AddMemLayoutAssumptions = object : ConfigType.BooleanCmdLine(
         false,
