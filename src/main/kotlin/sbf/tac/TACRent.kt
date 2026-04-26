@@ -57,7 +57,7 @@ class Rent(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
      * Emit TAC code for `sol_get_rent_sysvar`.
      *
      * Add extra assumptions:
-     * 1) `lamports_per_byte_year > 0`
+     * 1) `lamports_per_byte_year == 3480`
      * 2) `exemptionThreshold == 2`
      * 3) `burn_percent >= 0 && burn_percent <= 100`
      **/
@@ -78,12 +78,11 @@ class Rent(mkFreshIntVar: (prefix: String)-> TACSymbol.Var) {
         val (v1, v2, v3) = tacVars
 
         cmds += Debug.startFunction("sol_get_rent_sysvar")
-        // Add assumption `lamports_per_byte_year > 0`
+        // Add assumption `lamports_per_byte_year == 3480`
         cmds += assign(v1,  lamportsPerByteYear.asSym())
-        cmds += inRange(v1, BigInteger.ONE ..< BigInteger.TWO.pow(64))
-        // `exemptionThreshold` is a f64 number.
+        cmds += assume(sbfTacB { v1 eq mkConst(3480) } ,"lamports_per_byte_year == 3480")
+        // Add the assumption that `exemptionThreshold == 2`
         cmds += assign(v2,  exemptionThreshold.asSym())
-        // Add the assumption that `exemptionThreshold == 2`.
         cmds += assume(SummarizeFPCompilerRt<TNum, TOffset, TFlags>().isTwo(v2), "exemption_threshold == 2")
         // Add assumption that `burn_percent` is between 0 and 100
         cmds += assign(v3,  burnPercent.asSym())
