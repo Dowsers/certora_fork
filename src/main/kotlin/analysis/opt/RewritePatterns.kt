@@ -111,6 +111,29 @@ fun PatternRewriter.basicPatternsList() = listOf(
         TACExpr.BinRel.Eq::class.java
     ),
 
+    /**
+     * From the vyper compiler:
+     *    `a == ite(cond, a xor b, 0)` ~~> `ite(cond, b == 0, a == 0)`
+     */
+    PatternHandler(
+        name = "xor5",
+        pattern = {
+            lSym(C) eq ite(
+                lSymTag<Tag.Bool>(Cond),
+                lSym256(A) xor lSym256(B),
+                c(0)
+            )
+        },
+        handle = {
+            when (src(C)) {
+                src(A) -> ite(sym(Cond), Eq(sym(B), Zero), Eq(sym(C), Zero))
+                src(B) -> ite(sym(Cond), Eq(sym(A), Zero), Eq(sym(C), Zero))
+                else -> null
+            }
+        },
+        TACExpr.BinRel.Eq::class.java
+    ),
+
     /** `x - y > 0` ~~> `x != y` */
     PatternHandler(
         name = "nonEqViaMinus",
@@ -477,6 +500,7 @@ fun PatternRewriter.basicPatternsList() = listOf(
         TACExpr.BinRel.Eq::class.java,
         regressionMessage = true
     ),
+
 
 )
 
