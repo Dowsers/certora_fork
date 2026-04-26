@@ -2346,15 +2346,13 @@ class CVLCompiler(
                         0 -> listOf()
                         1 -> wrapCmdWithLabels(cmd.block.single())
                         else -> {
-                            val l = cmd.block.zipWithNext { firstCmd, nextCmd ->
-                                if (firstCmd is CVLCmd.Simple.Label.Start) {
-                                    listOf(nextCmd)
+                            cmd.block.foldIndexed(emptyList()) { idx, acc, cur ->
+                                if (isAlreadyWrapped(cmd.block, idx)) {
+                                    acc + cur
                                 } else {
-                                    wrapCmdWithLabels(nextCmd)
+                                    acc + wrapCmdWithLabels(cur)
                                 }
-                            }.flatten()
-
-                            wrapCmdWithLabels(cmd.block.first()) + l
+                            }
                         }
                     }
                 ))
@@ -2427,6 +2425,15 @@ class CVLCompiler(
                 )
             ).withDecls(lhs)
         }
+    }
+
+    private fun isAlreadyWrapped(block: List<CVLCmd>, idx: Int): Boolean {
+        val prev = block.getOrNull(idx - 1)
+        val next = block.getOrNull(idx + 1)
+
+        return prev is CVLCmd.Simple.Label.Start
+                && next is CVLCmd.Simple.Label.End
+                && prev.id == next.id
     }
 
     internal fun wrapWithCVL(cmds: CommandWithRequiredDecls<TACCmd.Spec>, msg: String): CommandWithRequiredDecls<TACCmd. Spec> {
