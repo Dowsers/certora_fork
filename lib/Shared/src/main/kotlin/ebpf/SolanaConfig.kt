@@ -472,25 +472,6 @@ object SolanaConfig {
 
     // Printing options
 
-    val PrintResultsToStdOut = object : ConfigType.BooleanCmdLine(
-        false,
-        Option(
-            "solanaPrintResults",
-            false,
-            "Print the SBF CFG analyzed by PTA and the PTA graph to standard output (very verbose). [default: false]"
-        )
-    ) {}
-
-    val PrintResultsToDot = object : ConfigType.BooleanCmdLine(
-        false,
-        Option(
-            "solanaPrintResultsToDot",
-            false,
-            "Generate a .dot file with the SBF CFG analyzed by PTA, and " +
-                       "the PTA graph at the entry of each basic block (very verbose, only for small programs). [default: false]"
-        )
-    ) {}
-
     val PrintOriginalToStdOut = object : ConfigType.BooleanCmdLine(
         false,
         Option(
@@ -500,6 +481,7 @@ object SolanaConfig {
         )
     ) {}
 
+    // We keep this option for cases where displaying a .dot file can be very expensive.
     val PrintAnalyzedToStdOut = object : ConfigType.BooleanCmdLine(
         false,
         Option(
@@ -514,7 +496,27 @@ object SolanaConfig {
         Option(
             "solanaPrintAnalyzedToDot",
             false,
-            "Generate a .dot file with the final SBF CFG after inlining and slicing. [default: false]"
+            "Generate a dot file with the final SBF CFG after inlining and slicing and " +
+                "stores in the \"outputs\" directory. [default: false]"
+        )
+    ) {}
+
+    val DumpPTAGraphsToDot: ConfigType.StringSetCmdLine = object : ConfigType.StringSetCmdLine(
+        null,
+        Option("solanaDumpPTAGraphsToDot",
+            true,
+            "Set of SBF basic block names. For each specified block, its PTA graph will be dumped into a separate .dot file. " +
+                "The block names must match those shown by ${PrintAnalyzedToDot.name}."
+        ),
+    ) {}
+
+    val PrintSbfToJson = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaPrintSbfToJson",
+            true,
+            "Generate a json file with the final SBF CFG after inlining and slicing and " +
+                "stores it in the \"Reports\" directory. [default: false]"
         )
     ) {}
 
@@ -543,15 +545,6 @@ object SolanaConfig {
         ),
     ) {}
 
-    val DumpPTAGraphsToDot: ConfigType.StringSetCmdLine = object : ConfigType.StringSetCmdLine(
-        null,
-        Option("solanaDumpPTAGraphsToDot",
-            true,
-            "Set of SBF basic block names. For each specified block, its PTA graph will be dumped into a separate .dot file. " +
-                       "The block names must match those shown by ${PrintAnalyzedToDot.name}."
-        ),
-    ) {}
-
     val AssertFilter: ConfigType.AssertFilterCmdLine = object : ConfigType.AssertFilterCmdLine(
         null,
         Option(
@@ -564,7 +557,6 @@ object SolanaConfig {
                 "[default: null (verify all)]"
         )
     ) {}
-
 
     val DumpDwarfDebugInfoInReports: ConfigType.BooleanCmdLine = object : ConfigType.BooleanCmdLine(
         false,

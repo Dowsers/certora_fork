@@ -235,6 +235,14 @@ private fun solanaRuleToTAC(
         inlineAttachedLocations(analyzedProg, memSummaries)
     }
 
+    if (SolanaConfig.PrintSbfToJson.get()) {
+        // Dump the CFG to a json file
+        progWithLocations.getCallGraphRootSingleOrFail().let {
+            val outFilename = "${ArtifactManagerFactory().mainReportsDir}${File.separator}${it.getName()}.sbf.json"
+            printToFile(outFilename, it.toJson())
+        }
+    }
+
     // 4. Perform memory analysis to map each memory operation to a memory partitioning
     val analysisResults =
         getMemoryAnalysis(
@@ -306,14 +314,6 @@ private fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
         analysis
     }
 
-    if (SolanaConfig.PrintResultsToStdOut.get()) {
-        sbfLogger.info { "[$target] Whole-program memory analysis results:\n${analysis}" }
-    }
-    if (SolanaConfig.PrintResultsToDot.get()) {
-        sbfLogger.info { "[$target] Writing CFGs annotated with PTA graphs to .dot files" }
-        // Print CFG + invariants (only PTA graphs)
-        analysis.toDot(printInvariants = true)
-    }
     val blocksToDump = SolanaConfig.DumpPTAGraphsToDot.getOrNull()
     if (!blocksToDump.isNullOrEmpty()) {
         analysis.dumpPTAGraphsSelectively(ArtifactManagerFactory().outputDir, target) { b ->
