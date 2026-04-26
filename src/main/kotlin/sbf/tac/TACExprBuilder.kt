@@ -518,7 +518,12 @@ class LazyMaskSbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : SbfTACBuilder(r
     override fun ShiftLeft(o1: TACExpr, o2: TACExpr) = mask64(TACExpr.BinOp.ShiftLeft(o1, o2))
     override fun ShiftLeft128(o1: TACExpr, o2: TACExpr) = mask128(TACExpr.BinOp.ShiftLeft(o1, o2))
     override fun ShiftRightLogical(o1: TACExpr, o2: TACExpr) = TACExpr.BinOp.ShiftRightLogical(mask64(o1), o2)
-    override fun ShiftRightArithmetical(o1: TACExpr, o2: TACExpr) = TACExpr.BinOp.ShiftRightArithmetical(mask64(o1), o2)
+    override fun ShiftRightArithmetical(o1: TACExpr, o2: TACExpr) =
+        if (useTACSignedMath) {
+            mask64(TACExpr.BinOp.ShiftRightArithmetical(signExtendSbfValue(o1, 64), o2))
+        } else {
+            TACExpr.BinOp.ShiftRightArithmetical(mask64(o1), o2)
+        }
     override fun ShiftRightArithmetical128(o1: TACExpr, o2: TACExpr) = TACExpr.BinOp.ShiftRightArithmetical(mask128(o1), o2)
 
     override fun ModNeg(value: TACExpr): TACExpr {
