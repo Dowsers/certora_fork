@@ -146,9 +146,16 @@ sealed class Callee: TreeViewReportable {
                 "${it.storageContractName}.${it.storageDisplayPath}"
             }
 
+        /** The resolved 4-byte selector hex string (e.g., "0x6ffce53"), or `null` if unresolved. */
+        val calledSelector: String?
+            get() = (this as? WithResolvedSighashInfo)?.resolvedSighashHex
+
         override val treeViewRepBuilder = TreeViewRepJsonObjectBuilder {
             put(CallResolutionTableReportView.Attribute.NAME(), toUIString())
             put(CallResolutionTableReportView.Attribute.JUMP_TO_DEFINITION(), TreeViewLocation.Empty)
+            calledSelector?.let {
+                put(CallResolutionTableReportView.Attribute.SELECTOR(), it)
+            }
             (unresolvedAddressStrategy as? CalleeContractResolveStrategy.Resolved)?.let { resolved ->
                 putJsonObject(CallResolutionTableReportView.Attribute.STORAGE_PATH()) {
                     put("baseContract", resolved.storageContractName)
