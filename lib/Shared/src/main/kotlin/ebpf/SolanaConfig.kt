@@ -411,6 +411,15 @@ object SolanaConfig {
         )
     ) {}
 
+    val UseTACFPDualEncoding = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaTACFPDualEncoding",
+            true,
+            "Use special TAC encoding for f64 operations by having a ghost integer value for f64 numbers that can be represented precisely by u64 [default: false]"
+        )
+    ) {}
+
     val HeapSize = object : ConfigType.IntCmdLine(
         32768,
         Option(

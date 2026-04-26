@@ -51,18 +51,18 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      *  - Mantissa: at least one non-zero bit
      **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64NaN(v: TACSymbol): TACExpr {
+    protected fun isf64NaN(v: TACSymbol): TACExpr {
         // Clear sign bit
         val absNum = sbfTacB { mask64(v.asSym()) bwAnd mkConst(0x7FFF_FFFF_FFFF_FFFFUL.toBigInteger()) }
         return sbfTacB { absNum gt mkConst(plusInfBits).asSym() }
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isNotf64NaN(v: TACSymbol) = sbfTacB { not(isf64NaN(v)) }
+    protected fun isNotf64NaN(v: TACSymbol) = sbfTacB { not(isf64NaN(v)) }
 
     /** Build expression for [v] to be `+oo` or `-oo` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64Inf(v: TACSymbol): TACExpr {
+    protected fun isf64Inf(v: TACSymbol): TACExpr {
         val plusInf = sbfTacB.mkConst(plusInfBits).asSym()
         val minusInf = sbfTacB.mkConst(minusInfBits).asSym()
         val v64 = sbfTacB.mask64(v.asSym())
@@ -70,37 +70,37 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isNotf64Inf(v: TACSymbol) = sbfTacB { not(isf64Inf(v)) }
+    protected fun isNotf64Inf(v: TACSymbol) = sbfTacB { not(isf64Inf(v)) }
 
     /** Build expression for [v] to be `+0` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64PlusZero(v: TACSymbol): TACExpr {
+    protected fun isf64PlusZero(v: TACSymbol): TACExpr {
         return sbfTacB { mask64(v.asSym()) eq sbfTacB.ZERO}
     }
 
     /** Build expression for [v] to be `-0` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64MinusZero(v: TACSymbol): TACExpr {
+    protected fun isf64MinusZero(v: TACSymbol): TACExpr {
         return sbfTacB { mask64(v.asSym()) eq mkConst(minusZeroBits).asSym() }
     }
 
     /** Build expression for [v] to be `+0` or `-0` **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64Zero(v: TACSymbol) = sbfTacB { isf64PlusZero(v) or isf64MinusZero(v) }
+    protected fun isf64Zero(v: TACSymbol) = sbfTacB { isf64PlusZero(v) or isf64MinusZero(v) }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64NonZero(v: TACSymbol) = sbfTacB { not(isf64Zero(v)) }
+    protected fun isf64NonZero(v: TACSymbol) = sbfTacB { not(isf64Zero(v)) }
 
     /** Build expression for [v] to be any positive number, included +oo, +0, and subnormal numbers **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64Positive(v: TACSymbol): TACExpr {
+    protected fun isf64Positive(v: TACSymbol): TACExpr {
         // v >> 63 == 0
         return sbfTacB { (v.asSym() shiftRLog  mkConst(63).asSym())  eq ZERO }
     }
 
     /** Build expression for [v] to be any negative number, included -oo, -0, and subnormal numbers **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64Negative(v: TACSymbol) = sbfTacB { not(isf64Positive(v)) }
+    protected fun isf64Negative(v: TACSymbol) = sbfTacB { not(isf64Positive(v)) }
 
     /**
      * A subnormal has:
@@ -109,19 +109,24 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      * - Mantissa: at least one non-zero bit
      */
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64Subnormal(v: TACSymbol): TACExpr {
+    protected fun isf64Subnormal(v: TACSymbol): TACExpr {
         // clear sign bit
         val absNum = sbfTacB { v.asSym() bwAnd mkConst(0x7FFF_FFFF_FFFF_FFFFUL.toBigInteger()) }
         return  sbfTacB { absNum gt ZERO and (absNum lt mkConst(minPositiveBits).asSym()) }
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun isf64NonSubnormal(v: TACSymbol) = sbfTacB {  not(isf64Subnormal(v)) }
+    protected fun isf64NonSubnormal(v: TACSymbol) = sbfTacB {  not(isf64Subnormal(v)) }
 
 
-    /** Build expression if [v] is equal to 2 as f64 **/
+    /** Build expression if the low 64 bits of [v] is equal to 2 as f64 **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun isTwo(v: TACSymbol): TACExpr = sbfTacB { mask64(v.asSym()) eq mkConst(twoBits).asSym() }
+    internal fun isTwo(v: TACSymbol): TACExpr {
+        // we need the in-bounds constraint because v is bv256
+        return sbfTacB {
+            (v lt U64_MAX) and (v eq mkConst(twoBits).asSym())
+        }
+    }
 
     /**
      * ```
@@ -131,7 +136,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      * ```
      */
      context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-     internal fun summarizeUnorddf2(
+     internal open fun summarizeUnorddf2(
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol
@@ -149,7 +154,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         )
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeAdddf3(
+    internal open fun summarizeAdddf3(
         res: TACSymbol.Var,
         @Suppress("UNUSED_PARAMETER")
         arg1: TACSymbol,
@@ -159,7 +164,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
 
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeSubdf3(
+    internal open fun summarizeSubdf3(
         res: TACSymbol.Var,
         @Suppress("UNUSED_PARAMETER")
         arg1: TACSymbol,
@@ -167,7 +172,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg2: TACSymbol
     ): List<TACCmd.Simple> = listOf(havoc(res))
 
-    private data class FP64(
+    protected data class FP64(
         val sign: TACExpr,
         val exp: TACExpr,
         val mantissa: TACExpr
@@ -182,8 +187,96 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         return v
     }
 
+    /**
+     * Returns `(trueValue, falseValue)` for the `==` (eq) comparison:
+     * - `trueValue  = 0`      (zero means "equal" )
+     * - `falseValue = nondet` constrained to `!= 0`
+     * All setup commands are appended to [cmds].
+     */
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun unpackFP64(n: TACSymbol, cmds: MutableList<TACCmd.Simple>): FP64 {
+    protected fun eqReturnValues(cmds: MutableList<TACCmd.Simple>): Pair<TACExpr.Sym, TACExpr.Sym> {
+        val trueS = sbfTacB.ZERO
+        val falseV = nondetU64(cmds)
+        cmds += nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() neq trueS }))
+        return trueS to falseV.asSym()
+    }
+
+    /**
+     * Returns `(trueValue, falseValue)` for the `!=` (ne) comparison:
+     * - `trueValue  = nondet` constrained to `!= 0`
+     * - `falseValue = 0`
+     * All setup commands are appended to [cmds].
+     */
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    protected fun neReturnValues(cmds: MutableList<TACCmd.Simple>): Pair<TACExpr.Sym, TACExpr.Sym> {
+        val falseS = sbfTacB.ZERO
+        val trueV = nondetU64(cmds)
+        cmds += nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() neq falseS }))
+        return trueV.asSym() to falseS
+    }
+
+    /**
+     * Returns `(trueValue, falseValue)` for the `<` (lt) comparison:
+     * - `trueValue  = nondet` constrained to `< 0`
+     * - `falseValue = nondet` constrained to `>= 0`
+     * All setup commands are appended to [cmds].
+     */
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    protected fun ltReturnValues(cmds: MutableList<TACCmd.Simple>): Pair<TACExpr.Sym, TACExpr.Sym> {
+        val trueV = nondetU64(cmds)
+        val falseV = nondetU64(cmds)
+        cmds += nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sLt ZERO }))
+        cmds += nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sGe ZERO }))
+        return trueV.asSym() to falseV.asSym()
+    }
+
+    /**
+     * Returns `(trueValue, falseValue)` for the `<=` (le) comparison:
+     * - `trueValue  = nondet` constrained to `<= 0`
+     * - `falseValue = nondet` constrained to `> 0`
+     * All setup commands are appended to [cmds].
+     */
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    protected fun leReturnValues(cmds: MutableList<TACCmd.Simple>): Pair<TACExpr.Sym, TACExpr.Sym> {
+        val trueV = nondetU64(cmds)
+        val falseV = nondetU64(cmds)
+        cmds += nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sLe ZERO }))
+        cmds += nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sGt ZERO }))
+        return trueV.asSym() to falseV.asSym()
+    }
+
+    /**
+     * Returns `(trueValue, falseValue)` for the `>=` (ge) comparison:
+     * - `trueValue  = nondet` constrained to `>= 0`
+     * - `falseValue = nondet` constrained to `< 0`
+     * All setup commands are appended to [cmds].
+     */
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    protected fun geReturnValues(cmds: MutableList<TACCmd.Simple>): Pair<TACExpr.Sym, TACExpr.Sym> {
+        val trueV = nondetU64(cmds)
+        val falseV = nondetU64(cmds)
+        cmds += nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sGe ZERO }))
+        cmds += nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sLt ZERO }))
+        return trueV.asSym() to falseV.asSym()
+    }
+
+    /**
+     * Returns `(trueValue, falseValue)` for the `>` (gt) comparison:
+     * - `trueValue  = nondet` constrained to `> 0`
+     * - `falseValue = nondet` constrained to `<= 0`
+     * All setup commands are appended to [cmds].
+     */
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    protected fun gtReturnValues(cmds: MutableList<TACCmd.Simple>): Pair<TACExpr.Sym, TACExpr.Sym> {
+        val trueV = nondetU64(cmds)
+        val falseV = nondetU64(cmds)
+        cmds += nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sGt ZERO }))
+        cmds += nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sLe ZERO }))
+        return trueV.asSym() to falseV.asSym()
+    }
+
+    context(SbfCFGToTAC<TNum, TOffset, TFlags>)
+    protected fun unpackFP64(n: TACSymbol, cmds: MutableList<TACCmd.Simple>): FP64 {
         val sign = vFac.mkFreshIntVar()
         val exp = vFac.mkFreshIntVar()
         val mantissa = vFac.mkFreshIntVar()
@@ -196,7 +289,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    private fun packFP64(n: FP64, cmds: MutableList<TACCmd.Simple>): TACSymbol {
+    protected fun packFP64(n: FP64, cmds: MutableList<TACCmd.Simple>): TACSymbol {
         val res = vFac.mkFreshIntVar()
         val signBit  = sbfTacB.mkConst(minusZeroBits)      // 2^63
         val expShift = sbfTacB.mkConst(minPositiveBits)    // 2^52
@@ -248,7 +341,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      * ```
      */
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeMuldf3(
+    internal open fun summarizeMuldf3(
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol
@@ -297,7 +390,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeDivdf3(
+    internal open fun summarizeDivdf3(
         res: TACSymbol.Var,
         @Suppress("UNUSED_PARAMETER")
         arg1: TACSymbol,
@@ -307,7 +400,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
 
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeNegdf3(
+    internal open fun summarizeNegdf3(
         res: TACSymbol.Var,
         @Suppress("UNUSED_PARAMETER")
         arg: TACSymbol
@@ -327,7 +420,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      * ```
      */
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeFixunsdfdi(
+    internal open fun summarizeFixunsdfdi(
         res: TACSymbol.Var,
         arg: TACSymbol
     ): List<TACCmd.Simple> {
@@ -361,7 +454,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      * ```
      */
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeFloatundidf(
+    internal open fun summarizeFloatundidf(
         res: TACSymbol.Var,
         arg: TACSymbol
     ): List<TACCmd.Simple> {
@@ -401,26 +494,22 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
 
     /** Return zero if neither argument is NaN, and [arg1] and [arg2] are equal. **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeEqdf2(
+    internal open fun summarizeEqdf2(
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
-        // `trueS` represents a u64 number
-        val trueS = sbfTacB.ZERO
-        // `falseV` represents a u64 number
-        val falseV = nondetU64(cmds)
+        val (trueS, falseV) = eqReturnValues(cmds)
         return cmds +
-            nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() neq trueS })) +
             assign(res,
                 sbfTacB {
                     switch(
-                        isf64NaN(arg1) or isf64NaN(arg2) to falseV.asSym(),
+                        isf64NaN(arg1) or isf64NaN(arg2) to falseV,
                         // +0 and -0 are equal
                         (isf64PlusZero(arg1) and isf64MinusZero(arg2)) or (isf64MinusZero(arg1) and isf64PlusZero(arg2)) to trueS,
-                        arg1 eq arg2  to trueS,
-                        default = falseV.asSym()
+                        arg1 eq arg2 to trueS,
+                        default = falseV
                     )
                 }
             )
@@ -428,24 +517,20 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
 
     /** Return a nonzero value if either argument is NaN, or if [arg1] and [arg2] are unequal **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeNedf2(
+    internal open fun summarizeNedf2(
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
-        // `trueV` represents a u64 number
-        val trueV = nondetU64(cmds)
-        // `falseS` represents a u64 number
-        val falseS = sbfTacB.ZERO
-        return  cmds +
-            nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() neq falseS })) +
+        val (trueV, falseS) = neReturnValues(cmds)
+        return cmds +
             assign(res,
                 sbfTacB {
                     switch(
                         // +0 and -0 are equal
                         (isf64PlusZero(arg1) and isf64MinusZero(arg2)) or (isf64MinusZero(arg1) and isf64PlusZero(arg2)) to falseS,
-                        isf64NaN(arg1) or isf64NaN(arg2) or (arg1 neq arg2) to trueV.asSym(),
+                        isf64NaN(arg1) or isf64NaN(arg2) or (arg1 neq arg2) to trueV,
                         default = falseS
                     )
                 }
@@ -454,45 +539,37 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
 
     /** Return a value less than zero if neither argument is NaN, and [arg1] is strictly less than [arg2]. **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeLtdf2(
+    internal open fun summarizeLtdf2(
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
-        // `trueV` and `falseV` represent u64 numbers
-        val trueV = nondetU64(cmds)
-        val falseV = nondetU64(cmds)
-        return  cmds +
-            nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sLt ZERO})) +
-            nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sGe ZERO})) +
+        val (trueV, falseV) = ltReturnValues(cmds)
+        return cmds +
             summarizeBinRel(res, arg1, arg2,
-                eitherNaN = falseV.asSym(),
-                bothZero = falseV.asSym(),
-                firstZero = trueV.asSym(),
-                secondZero = falseV.asSym()
+                eitherNaN = falseV,
+                bothZero = falseV,
+                firstZero = trueV,
+                secondZero = falseV
             )
     }
 
     /** Return a value less than or equal to zero if neither argument is NaN, and [arg1] is less than or equal to [arg2] **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeLedf2(
+    internal open fun summarizeLedf2(
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
-        // `trueV` and `falseV` represent u64 numbers
-        val trueV = nondetU64(cmds)
-        val falseV = nondetU64(cmds)
-        return  cmds +
-            nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sLe ZERO})) +
-            nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sGt ZERO})) +
+        val (trueV, falseV) = leReturnValues(cmds)
+        return cmds +
             summarizeBinRel(res, arg1, arg2,
-                eitherNaN = falseV.asSym(),
-                bothZero = trueV.asSym(),
-                firstZero = trueV.asSym(),
-                secondZero = falseV.asSym()
+                eitherNaN = falseV,
+                bothZero = trueV,
+                firstZero = trueV,
+                secondZero = falseV
             )
     }
 
@@ -500,23 +577,19 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      * return a value greater than or equal to zero if neither argument is NaN, and [arg1] is greater than or equal to [arg2].
      **/
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeGedf2(
+    internal open fun summarizeGedf2(
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
-        // `trueV` and `falseV` represent u64 numbers
-        val trueV = nondetU64(cmds)
-        val falseV = nondetU64(cmds)
-        return  cmds +
-            nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sGe ZERO})) +
-            nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sLt ZERO})) +
+        val (trueV, falseV) = geReturnValues(cmds)
+        return cmds +
             summarizeBinRel(res, arg1, arg2,
-                eitherNaN = falseV.asSym(),
-                bothZero = trueV.asSym(),
-                firstZero = falseV.asSym(),
-                secondZero = trueV.asSym()
+                eitherNaN = falseV,
+                bothZero = trueV,
+                firstZero = falseV,
+                secondZero = trueV
             )
     }
 
@@ -539,37 +612,33 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
      * ```
      */
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-    internal fun summarizeGtdf2(
+    internal open fun summarizeGtdf2(
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
-        // `trueV` and `falseV` represent u64 numbers
-        val trueV = nondetU64(cmds)
-        val falseV = nondetU64(cmds)
+        val (trueV, falseV) = gtReturnValues(cmds)
         val nondetV = nondetU64(cmds)
         val maxU64Fp = sbfTacB.mkConst(0x43EF_FFFF_FFFF_FFFFUL.toBigInteger())
-        return  cmds +
-                nondetWithAssumptions(trueV, listOf(sbfTacB { trueV.asSym() sGt  ZERO})) +
-                nondetWithAssumptions(falseV, listOf(sbfTacB { falseV.asSym() sLe ZERO})) +
-                assign(res,
-                    sbfTacB {
-                        switch(
-                            isf64NaN(arg1) or isf64NaN(arg2) to falseV.asSym(),
-                            isf64Zero(arg1) and isf64Zero(arg2) to falseV.asSym(),
-                            isf64Zero(arg1) to falseV.asSym(),
-                            isf64Zero(arg2) to trueV.asSym(),
-                            // arg2 == 0x43EFFFFFFFFFFFFF and arg1 negative and arg1 < 0 < arg2 →  false
-                            (mask64(arg2.asSym()) eq maxU64Fp) and isf64Negative(arg1) to falseV.asSym(),
-                            // arg2 == 0x43EFFFFFFFFFFFFF and arg1 positive and arg1 > arg2 → true
-                            (mask64(arg2.asSym()) eq maxU64Fp) and isf64Positive(arg1) and (mask64(arg1.asSym()) gt maxU64Fp) to trueV.asSym(),
-                            // arg2 == 0x43EFFFFFFFFFFFFF and arg1 positive and arg1 ≤ arg2 → false
-                            mask64(arg2.asSym()) eq maxU64Fp to falseV.asSym(),
-                            default = nondetV.asSym()
-                        )
-                    }
-                )
+        return cmds +
+            assign(res,
+                sbfTacB {
+                    switch(
+                        isf64NaN(arg1) or isf64NaN(arg2) to falseV,
+                        isf64Zero(arg1) and isf64Zero(arg2) to falseV,
+                        isf64Zero(arg1) to falseV,
+                        isf64Zero(arg2) to trueV,
+                        // arg2 == 0x43EFFFFFFFFFFFFF and arg1 negative and arg1 < 0 < arg2 →  false
+                        (mask64(arg2.asSym()) eq maxU64Fp) and isf64Negative(arg1) to falseV,
+                        // arg2 == 0x43EFFFFFFFFFFFFF and arg1 positive and arg1 > arg2 → true
+                        (mask64(arg2.asSym()) eq maxU64Fp) and isf64Positive(arg1) and (mask64(arg1.asSym()) gt maxU64Fp) to trueV,
+                        // arg2 == 0x43EFFFFFFFFFFFFF and arg1 positive and arg1 ≤ arg2 → false
+                        mask64(arg2.asSym()) eq maxU64Fp to falseV,
+                        default = nondetV.asSym()
+                    )
+                }
+            )
     }
 
     /**
@@ -599,10 +668,10 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         res: TACSymbol.Var,
         arg1: TACSymbol,
         arg2: TACSymbol,
-        eitherNaN: TACExpr.Sym.Var,
-        bothZero: TACExpr.Sym.Var,
-        firstZero: TACExpr.Sym.Var,
-        secondZero: TACExpr.Sym.Var
+        eitherNaN: TACExpr.Sym,
+        bothZero: TACExpr.Sym,
+        firstZero: TACExpr.Sym,
+        secondZero: TACExpr.Sym
     ): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
         // `nondetV` represents a u64 number

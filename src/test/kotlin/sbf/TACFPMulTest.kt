@@ -17,6 +17,7 @@
 
 package sbf
 
+import config.*
 import sbf.cfg.*
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
@@ -40,220 +41,299 @@ class TACFPMulTest {
     /** NaN × normal → NaN (case 1: isf64NaN(arg1)) **/
     @Test
     fun nanTimesNormal() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64NaN
-                r2 = f64One
-                "__muldf3"()
-                r6 = r0
-                r1 = r6
-                r2 = r6
-                "__unorddf2"()
-                assert(CondOp.EQ(r0, 1UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64NaN
+                    r2 = f64One
+                    "__muldf3"()
+                    r6 = r0
+                    r1 = r6
+                    r2 = r6
+                    "__unorddf2"()
+                    assert(CondOp.EQ(r0, 1UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** normal × NaN → NaN (case 1: isf64NaN(arg2)) **/
     @Test
     fun normalTimesNan() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64One
-                r2 = f64NaN
-                "__muldf3"()
-                r6 = r0
-                r1 = r6
-                r2 = r6
-                "__unorddf2"()
-                assert(CondOp.EQ(r0, 1UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64One
+                    r2 = f64NaN
+                    "__muldf3"()
+                    r6 = r0
+                    r1 = r6
+                    r2 = r6
+                    "__unorddf2"()
+                    assert(CondOp.EQ(r0, 1UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** +∞ × +0 → NaN (case 2: isf64Inf(arg1) and isf64Zero(arg2)) **/
     @Test
     fun infTimesZero() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64PlusInf
-                r2 = f64PlusZero
-                "__muldf3"()
-                r6 = r0
-                r1 = r6
-                r2 = r6
-                "__unorddf2"()
-                assert(CondOp.EQ(r0, 1UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64PlusInf
+                    r2 = f64PlusZero
+                    "__muldf3"()
+                    r6 = r0
+                    r1 = r6
+                    r2 = r6
+                    "__unorddf2"()
+                    assert(CondOp.EQ(r0, 1UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** +0 × +∞ → NaN (case 2: isf64Zero(arg1) and isf64Inf(arg2)) **/
     @Test
     fun zeroTimesInf() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64PlusZero
-                r2 = f64PlusInf
-                "__muldf3"()
-                r6 = r0
-                r1 = r6
-                r2 = r6
-                "__unorddf2"()
-                assert(CondOp.EQ(r0, 1UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64PlusZero
+                    r2 = f64PlusInf
+                    "__muldf3"()
+                    r6 = r0
+                    r1 = r6
+                    r2 = r6
+                    "__unorddf2"()
+                    assert(CondOp.EQ(r0, 1UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** +0 × +0 → +0 (case 4: isf64Zero(arg1) returns arg1) **/
     @Test
     fun zeroTimesZero() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64PlusZero
-                r2 = f64PlusZero
-                "__muldf3"()
-                assert(CondOp.EQ(r0, 0UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64PlusZero
+                    r2 = f64PlusZero
+                    "__muldf3"()
+                    assert(CondOp.EQ(r0, 0UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** +0 × normal → +0 (case 4: isf64Zero(arg1) returns arg1) **/
     @Test
     fun zeroTimesNormal() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64PlusZero
-                r2 = f64Three
-                "__muldf3"()
-                assert(CondOp.EQ(r0, 0UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64PlusZero
+                    r2 = f64Three
+                    "__muldf3"()
+                    assert(CondOp.EQ(r0, 0UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** normal × +0 → +0 (case 5: isf64Zero(arg2) returns arg2) **/
     @Test
     fun normalTimesZero() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64Three
-                r2 = f64PlusZero
-                "__muldf3"()
-                assert(CondOp.EQ(r0, 0UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64Three
+                    r2 = f64PlusZero
+                    "__muldf3"()
+                    assert(CondOp.EQ(r0, 0UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** 2.0 × 3.0 → 6.0 (case 6: isTwo(arg1) → multipleByTwo(arg2)) **/
     @Test
     fun twoTimesNormal() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64Two
-                r2 = f64Three
-                "__muldf3"()
-                assert(CondOp.EQ(r0, f64Six))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64Two
+                    r2 = f64Three
+                    "__muldf3"()
+                    assert(CondOp.EQ(r0, f64Six))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** 3.0 × 2.0 → 6.0 (case 7: isTwo(arg2) → multipleByTwo(arg1)) **/
     @Test
     fun normalTimesTwo() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64Three
-                r2 = f64Two
-                "__muldf3"()
-                assert(CondOp.EQ(r0, f64Six))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64Three
+                    r2 = f64Two
+                    "__muldf3"()
+                    assert(CondOp.EQ(r0, f64Six))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** 2.0 × subnormal → non-NaN (default case: subnormal is excluded from the isTwo(arg1) path) **/
     @Test
     fun twoTimesSubnormal() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64Two
-                r2 = f64MinSubnormal
-                "__muldf3"()
-                r6 = r0
-                r1 = r6
-                r2 = r6
-                "__unorddf2"()
-                assert(CondOp.EQ(r0, 0UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64Two
+                    r2 = f64MinSubnormal
+                    "__muldf3"()
+                    r6 = r0
+                    r1 = r6
+                    r2 = r6
+                    "__unorddf2"()
+                    assert(CondOp.EQ(r0, 0UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** subnormal × 2.0 → non-NaN (default case: subnormal is excluded from the isTwo(arg2) path) **/
     @Test
     fun subnormalTimesTwo() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64MinSubnormal
-                r2 = f64Two
-                "__muldf3"()
-                r6 = r0
-                r1 = r6
-                r2 = r6
-                "__unorddf2"()
-                assert(CondOp.EQ(r0, 0UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64MinSubnormal
+                    r2 = f64Two
+                    "__muldf3"()
+                    r6 = r0
+                    r1 = r6
+                    r2 = r6
+                    "__unorddf2"()
+                    assert(CondOp.EQ(r0, 0UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
     }
 
     /** normal × normal → non-NaN (default case: nonNaNV) **/
     @Test
     fun normalTimesNormal() {
-        val cfg = SbfTestDSL.makeCFG("test") {
-            bb(0) {
-                r1 = f64One
-                r2 = f64Three
-                "__muldf3"()
-                r6 = r0
-                r1 = r6
-                r2 = r6
-                "__unorddf2"()
-                assert(CondOp.EQ(r0, 0UL))
-                exit()
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, false).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = f64One
+                    r2 = f64Three
+                    "__muldf3"()
+                    r6 = r0
+                    r1 = r6
+                    r2 = r6
+                    "__unorddf2"()
+                    assert(CondOp.EQ(r0, 0UL))
+                    exit()
+                }
             }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
         }
-        val tacProg = toTAC(cfg)
-        Assertions.assertEquals(true, verify(tacProg))
+    }
+
+    @Test
+    fun `7f64 x 9f64 = 63f64`() {
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, true).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    r1 = 7UL
+                    "__floatundidf"()
+                    r6 = r0              // r6 = f64(7)
+                    r1 = 9UL
+                    "__floatundidf"()
+                    r7 = r0              // r7 = f64(9)
+                    r1 = r6
+                    r2 = r7
+                    "__muldf3"()
+                    r8 = r0              // r8 = f64(63)
+                    r1 = r8
+                    "__fixunsdfdi"()
+                    assert(CondOp.EQ(r0, 63UL))
+                    exit()
+                }
+            }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
+        }
+    }
+
+    @Test
+    fun `7f64 x n where n is between 0 and 100`() {
+        ConfigScope(SolanaConfig.UseTACFPDualEncoding, true).use {
+            val cfg = SbfTestDSL.makeCFG("test") {
+                bb(0) {
+                    "CVT_nondet_u64"()
+                    r6 = r0              // r6 = nondet u64
+                    assume(CondOp.LE(r6, 100UL))
+                    r1 = r6
+                    "__floatundidf"()
+                    r7 = r0              // r7 = f64(nondet)
+                    r1 = 7UL
+                    "__floatundidf"()
+                    r8 = r0              // r8 = f64(7)
+                    r1 = r7
+                    r2 = r8
+                    "__muldf3"()
+                    r9 = r0              // r9 = f64(7 * nondet)
+                    r1 = r9
+                    "__fixunsdfdi"()
+                    assert(CondOp.LE(r0, 700UL))
+                    exit()
+                }
+            }
+            val tacProg = toTAC(cfg)
+            Assertions.assertEquals(true, verify(tacProg))
+        }
     }
 }
