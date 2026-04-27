@@ -47,6 +47,7 @@ import verifier.RuleEncodingException
 import java.io.File
 import kotlin.Result.Companion.failure
 import kotlin.Result.Companion.success
+import kotlin.text.removeSuffix
 
 /**
  * For logging solana
@@ -56,6 +57,14 @@ val sbfLogger = Logger(LoggerTypes.SBF)
 // Any rule name with these suffixes will be considered a vacuity rule
 const val devVacuitySuffix = "\$sanity"
 const val vacuitySuffix = "rule_not_vacuous_cvlr"
+
+/**
+ * Returns the name of the ELF function associated with this rule.
+ * For vacuity rules, the function name is that of the parent rule.
+ * For regular rules, it is the rule's own display name, stripping [devVacuitySuffix] if present.
+ */
+private fun RuleIdentifier.toElfFunctionName(): String =
+    parentIdentifier?.displayName ?: displayName.removeSuffix(devVacuitySuffix)
 
 /** SBF type factory used by `WholeProgramMemoryAnalysis` **/
 private val sbfTypesFac = ConstantSetSbfTypeFactory(SolanaConfig.ScalarMaxVals.get().toULong())
@@ -102,7 +111,7 @@ fun solanaSbfToTAC(elfFile: String): List<SolanaEncodeResult> {
     // 1. Process the ELF file that contains the SBF bytecode
     sbfLogger.info { "Disassembling ELF program $elfFile" }
     val disassembler = ElfDisassembler(elfFile)
-    val bytecode = disassembler.read(targets.mapToSet { it.ruleIdentifier.displayName.removeSuffix(devVacuitySuffix) })
+    val (bytecode, missingFunctions) = disassembler.read(targets.mapToSet { it.ruleIdentifier.displayName.removeSuffix(devVacuitySuffix) })
 
     // 2. Read environment files
     val (memSummaries, inliningConfig) = readEnvironmentFiles()
@@ -122,10 +131,17 @@ fun solanaSbfToTAC(elfFile: String): List<SolanaEncodeResult> {
     }
 
     val rules = (targets + sanityRules).mapNotNull { target ->
-        try {
-            solanaRuleToTAC(target, cfgs, inliningConfig, memSummaries)?.let { success(it) }
-        } catch (e: SolanaError) {
-            failure(RuleEncodingException(target, e))
+        val ruleIdentifier = target.ruleIdentifier
+        val elfFunction = ruleIdentifier.toElfFunctionName()
+        if (elfFunction in missingFunctions) {
+            failure(RuleEncodingException(target, SolanaError("Cannot find $elfFunction. " +
+                "Please make sure that there is function $elfFunction and it has the attribute \"#[rule]\"")))
+        } else {
+            try {
+                solanaRuleToTAC(target, cfgs, inliningConfig, memSummaries)?.let { success(it) }
+            } catch (e: SolanaError) {
+                failure(RuleEncodingException(target, e))
+            }
         }
     }
 
@@ -147,11 +163,7 @@ private fun solanaRuleToTAC(
     val target = rule.ruleIdentifier.toString()
     // 1. Inline all internal calls starting from `target` as root
     val inlinedProg = timeIt(target, "inlining") {
-        // `root` must be the name of an existing function. There are cases (e.g., vacuity rules) where `target` is not name of a function.
-        //
-        // If the rule is not a vacuity rule, the ruleIdentifier doesn't have a parent and `root` is the name of the rule (i.e., `target`)
-        // after removing `devVacuitySuffix` in case it has it. Otherwise, `root` is the name of the parent rule associated with the vacuity rule.
-        val root = rule.ruleIdentifier.parentIdentifier?.displayName ?: target.removeSuffix(devVacuitySuffix)
+        val root = rule.ruleIdentifier.toElfFunctionName()
         inline(root, target, prog, memSummaries, inliningConfig)
     }
 
@@ -235,6 +247,14 @@ private fun solanaRuleToTAC(
         inlineAttachedLocations(analyzedProg, memSummaries)
     }
 
+    if (SolanaConfig.PrintSbfToJson.get()) {
+        // Dump the CFG to a json file
+        progWithLocations.getCallGraphRootSingleOrFail().let {
+            val outFilename = "${ArtifactManagerFactory().mainReportsDir}${File.separator}${it.getName()}.sbf.json"
+            printToFile(outFilename, it.toJson())
+        }
+    }
+
     // 4. Perform memory analysis to map each memory operation to a memory partitioning
     val analysisResults =
         getMemoryAnalysis(
@@ -306,14 +326,6 @@ private fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
         analysis
     }
 
-    if (SolanaConfig.PrintResultsToStdOut.get()) {
-        sbfLogger.info { "[$target] Whole-program memory analysis results:\n${analysis}" }
-    }
-    if (SolanaConfig.PrintResultsToDot.get()) {
-        sbfLogger.info { "[$target] Writing CFGs annotated with PTA graphs to .dot files" }
-        // Print CFG + invariants (only PTA graphs)
-        analysis.toDot(printInvariants = true)
-    }
     val blocksToDump = SolanaConfig.DumpPTAGraphsToDot.getOrNull()
     if (!blocksToDump.isNullOrEmpty()) {
         analysis.dumpPTAGraphsSelectively(ArtifactManagerFactory().outputDir, target) { b ->

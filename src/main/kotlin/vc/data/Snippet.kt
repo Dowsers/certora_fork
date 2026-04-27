@@ -319,7 +319,7 @@ sealed class SnippetCmd: AmbiSerializable {
                     storageType,
                     contractInstance,
                     range,
-                    LinkableStorageReadId(storageLoadCmd, displayPath)
+                    LinkableStorageReadId(storageLoadCmd)
                 )
 
                 /**
@@ -335,18 +335,14 @@ sealed class SnippetCmd: AmbiSerializable {
                          * (expected to be either a [TACCmd.Simple.AssigningCmd.WordLoad], or a [TACCmd.Simple.AssigningCmd.AssignExpCmd]
                          * whose rhs is a [TACSymbol.Var] representing a (split) storage slot read),
                          * was determined by the [CallGraphBuilder] to load an unresolved target address of an external call
-                         * ([CallGraphBuilder.ContractStorageRead]), and [displayPath] suggests what this address
-                         * could be resolved by the user using --link.
+                         * ([CallGraphBuilder.ContractStorageRead]).
                          * Otherwise, returns [LinkableStorageReadId.None]
                          */
                         operator fun invoke(
                             storageLoadCmd: TACCmd.Simple.AssigningCmd,
-                            displayPath: DisplayPath
                         ): LinkableStorageReadId =
                             storageLoadCmd.meta.find(CallGraphBuilder.ContractStorageRead.META_KEY)?.let {
-                                // Currently, CVT only enables linking of either root storage slots or struct fields.
-                                it.id.takeIf { (displayPath is DisplayPath.Root) || displayPath is DisplayPath.FieldAccess }
-                                    ?.let(LoadSnippet::Id) ?: None
+                                LoadSnippet.Id(it.id)
                             } ?: None
                     }
 

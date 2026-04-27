@@ -7,14 +7,14 @@
 export ARCH := env_var_or_default("ARCH", "")
 
 export EXECUTABLE_PATH := if ARCH == "v1" {
-    "./target/sbpfv1-solana-solana/release/u128_gt.so"
+    "./target/sbpfv1-solana-solana/release/u128_binrel.so"
 } else {
-    "./target/sbf-solana-solana/release/u128_gt.so"
+    "./target/sbf-solana-solana/release/u128_binrel.so"
 }
 
 _arch_flag := if ARCH == "v1" { "--arch v1" } else { "" }
 _tools_version := if ARCH == "v1" { "v1.46" } else { "v1.43" }
-_output_name := if ARCH == "v1" { "u128_gt.sbpfv1.so" } else { "u128_gt.so" }
+_output_name := if ARCH == "v1" { "u128_binrel.sbpfv1.so" } else { "u128_binrel.so" }
 
 build-sbf:
     cargo certora-sbf --tools-version {{ _tools_version }} {{ _arch_flag }}
@@ -30,7 +30,7 @@ export SANITY_CHECKS := env_var_or_default("SANITY_CHECKS", "none")
 
 inliner_cfg := "../cvlr_inlining.txt"
 summaries_cfg := "../cvlr_summaries.txt"
-sbf_file := if ARCH == "v1" { "../u128_gt.sbpfv1.so" } else { "../u128_gt.so" }
+sbf_file := if ARCH == "v1" { "../u128_binrel.sbpfv1.so" } else { "../u128_binrel.so" }
 
 # location of prover jar
 emv_jar := "$CERTORA/emv.jar"

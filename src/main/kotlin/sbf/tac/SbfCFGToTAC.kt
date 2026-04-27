@@ -1023,10 +1023,11 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                     if (inst.isLoad) {
                         val lhs = value as Value.Reg
                         newCmds += stackLoad(
+                            inst,
                             baseE,
                             offsetE,
                             loadOrStore.variables,
-                            loadOrStore.preservedValues,
+                            loadOrStore.reconstructedValues,
                             sbfTacB.mkVar(lhs.r)
                         )
                     } else {

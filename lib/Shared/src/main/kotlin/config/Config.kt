@@ -1945,6 +1945,15 @@ object Config {
         )
     ) {}
 
+    val UseUnresolvedHarness = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "useUnresolvedHarness",
+            true,
+            "Redirect calls that would otherwise be havoc'd to the fallback of a contract named CertoraUnresolvedHarness, if present in the scene [default: false]"
+        )
+    ) {}
+
     val AutoNondetMinimalDifficulty = object : ConfigType.IntCmdLine(
         50,
         Option(

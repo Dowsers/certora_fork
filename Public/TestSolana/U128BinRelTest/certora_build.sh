@@ -21,7 +21,7 @@ output_json() {
       "Cargo.toml",
       "src/**/*.rs"
     ],
-    "executables": "u128_gt.so",
+    "executables": "u128_binrel.so",
     "success": true,
     "return_code": 0,
     "log": null

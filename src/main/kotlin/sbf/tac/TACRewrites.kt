@@ -247,5 +247,106 @@ fun PatternRewriter.solanaPatternsList() = listOf(
         ),
 
 
+        /**
+         * Recognizes a fixed-point multiply split into high/low 64-bit parts and collapses it:
+         *
+         * ```
+         * I_hi     = (X >> K) *int Y                          // K in 1..63
+         * R_lo_raw = safeMathNarrow(2^(64-K) *int X) & (2^64-1)
+         * I_prod   = Y *int R_lo_raw
+         * result   = (safeMathNarrow(I_prod) >> 0x40) +int safeMathNarrow(I_hi)
+         * ```
+         * ~~~> `(X *int Y) /int 2^K`
+         *
+         * Sound because: `(X >> K) * Y + (X * 2^(64-K) mod 2^64) * Y / 2^64 = X * Y / 2^K`
+         * in unbounded integer arithmetic (the split avoids 64-bit overflow).
+         */
+        PatternHandler(
+            name = "fixed-point-multiply",
+            pattern = {
+                val mask = c(lowOnes(64))
+                val hi = safeMathNarrow((lSym(A) shr c(I1)) intMul lSym(B))
+                val lo = lSym(D) intMul (safeMathNarrow(c(C1) intMul lSym(C)) bwAnd mask)
+                (safeMathNarrow(lo) shr c(0x40)) intAdd hi
+            },
+            handle = {
+                val shift = I1.n
+                runIf(
+                    shift in 1..63 &&
+                        src(A) == src(C) &&
+                        src(B) == src(D) &&
+                        C1.n == twoToThe(64 - shift)
+                ) {
+                    IntDiv(IntMul(sym(A), sym(B)), twoToThe(shift).asTACExpr)
+                }
+            },
+            TACExpr.Vec.IntAdd.Binary::class.java
+        ),
+
+        /**
+         * Recognizes a constant multiply split into high/low 64-bit parts and collapses it:
+         *
+         * ```
+         * low    = safeMathNarrow(C *int X) & (2^64-1)        // C = 2^(64-K), K in 1..63
+         * high   = 2^64 *int (X >> K)
+         * result = safeMathNarrow(high) +int low
+         * ```
+         * ~~~> `X *int C`
+         *
+         * Sound because: `(X >> K) * 2^64 + (X * C) mod 2^64 = X * C`
+         * when `C = 2^(64-K)`, i.e., `C * 2^K = 2^64`.
+         */
+        PatternHandler(
+            name = "const-mul-split",
+            pattern = {
+                val mask = c(lowOnes(64))
+                val low = safeMathNarrow(c(C1) intMul lSym(A)) bwAnd mask
+                val high = c(twoToThe(64)) intMul (lSym(B) shr c(I1))
+                safeMathNarrow(high) intAdd low
+            },
+            handle = {
+                val shift = I1.n
+                runIf(
+                    shift in 1..63 &&
+                        src(A) == src(B) &&
+                        C1.n == twoToThe(64 - shift)
+                ) {
+                    IntMul(sym(A), C1.n.asTACExpr)
+                }
+            },
+            TACExpr.Vec.IntAdd.Binary::class.java
+        ),
+
+        /**
+         * Recognizes a fixed-point multiply via intermediate constant scaling:
+         *
+         * ```
+         * safeMathNarrow(X *int safeMathNarrow(C *int Y)) >> K  // K in 1..64
+         * ```
+         * ~~~> `safeMathNarrow((X *int Y) /int (2^K / C))`
+         *
+         * where `C` is a power of 2 and `2^K` is divisible by `C`.
+         * For example: C = 2^50, K = 64 → result = (X *int Y) /int 2^14.
+         */
+        PatternHandler(
+            name = "fixed-point-multiply-2",
+            pattern = {
+                safeMathNarrow(lSym(A) intMul safeMathNarrow(c(C1) intMul lSym(B))) shr c(I1)
+            },
+            handle = {
+                val shift = I1.n
+                val twoPowK = twoToThe(shift)
+                runIf(
+                    shift in 1..64 &&
+                        C1.n > BigInteger.ZERO &&
+                        twoPowK % C1.n == BigInteger.ZERO
+                ) {
+                    val divisor = twoPowK / C1.n
+                    safeMathNarrow(IntDiv(IntMul(sym(A), sym(B)), divisor.asTACExpr), Tag.Bit256)
+                }
+            },
+            TACExpr.BinOp.ShiftRightLogical::class.java
+        ),
+
     )
 }.orEmpty()

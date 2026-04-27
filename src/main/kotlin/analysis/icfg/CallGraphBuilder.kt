@@ -127,6 +127,16 @@ object CallGraphBuilder {
         }
 
         /**
+         * The callee address was read from an immutable variable that is not linked.
+         * [immutableName] is the name of the immutable field in [hostContractId].
+         */
+        @KSerializable
+        data class UnresolvedImmutable(val immutableName: String, val hostContractId: BigInteger) : CalledContract() {
+            override fun mapId(f: (Any, Int, () -> Int) -> Int): CalledContract = this
+            override fun referencesAllocatedIds(ids: Set<Pair<Allocator.Id, Int>>) = false
+        }
+
+        /**
          * In the case the [InterContractCallResolver] fails to find a method with the resolved sighash
          * in the scene, yet the target address was resolved (to [contractId]), the call site will be marked
          * as Invalidated. This is required for the call resolution to display that the contract target address was
@@ -366,6 +376,7 @@ object CallGraphBuilder {
         data class InternalSummaryOutput(val which: Int, val offset: Int) : SymbolicAddress()
 
         data class ImmutableReference(val address: BigInteger) : SymbolicAddress()
+        data class UnresolvedImmutable(val immutableName: String) : SymbolicAddress()
         data class LibraryAddress(val contractId: BigInteger) : SymbolicAddress()
         fun lift() = StorageSet.Set(setOf(this))
 
@@ -2375,7 +2386,7 @@ object CallGraphBuilder {
                                     is SymbolicAddress.ConstantSlot -> {
                                         val rightShiftFactor = o2Const.lowestSetBit.toBigInteger()
                                         st.storageSlots + (cmd.lhs to SymbolicAddress.ConstantSlot(
-                                            ltacCmd.ptr,
+                                            o1StorageSlot.readLocation,
                                             o1StorageSlot.number,
                                             rightShiftFactor
                                         ).lift())
@@ -2402,7 +2413,12 @@ object CallGraphBuilder {
                         if (!specTargets.isNullOrEmpty()) {
                             st.storageSlots + (cmd.lhs to StorageSet.Set(specTargets.mapToSet { SymbolicAddress.ImmutableReference(it) }))
                         } else {
-                            st.storageSlots - cmd.lhs
+                            val name = rhsOpaqueIdentityRemoved.s.meta.find(TACBasicMeta.IMMUTABLE_NAME)
+                            if (name != null) {
+                                st.storageSlots + (cmd.lhs to SymbolicAddress.UnresolvedImmutable(name).lift())
+                            } else {
+                                st.storageSlots - cmd.lhs
+                            }
                         }
                     } else if(rhsOpaqueIdentityRemoved is TACExpr.SimpleHash &&
                         rhsOpaqueIdentityRemoved.hashFamily.isContractCreation) {
@@ -3324,6 +3340,7 @@ object CallGraphBuilder {
                         setOf(CalledContract.CreatedReference.Unresolved(creation))
                     }
                     is SymbolicAddress.ImmutableReference -> setOf(CalledContract.FullyResolved.ImmutableReference(symbolic.address))
+                    is SymbolicAddress.UnresolvedImmutable -> setOf(CalledContract.UnresolvedImmutable(symbolic.immutableName, hostAddress))
                     is SymbolicAddress.LibraryAddress -> setOf(CalledContract.FullyResolved.ConstantAddress(symbolic.contractId))
                     is SymbolicAddress.InternalSummaryOutput -> setOf(CalledContract.InternalFunctionSummaryOutput(which = symbolic.which, ordinal = symbolic.offset))
                 }

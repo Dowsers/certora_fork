@@ -766,13 +766,13 @@ unnamed_vm_param ::=
 ;
 
 
-unnamed_vm_param_no_loc   ::= type:t                 {: RESULT = new UnnamedVMParam(t, /* location */ null,    range(txleft, txright)); :};
+unnamed_vm_param_no_loc   ::= type:t                            {: RESULT = new UnnamedVMParam(t, /* location */ null,    range(txleft, txright)); :};
 
-named_vm_param_no_loc     ::= type:t ID:i            {: RESULT = new   NamedVMParam(t, /* location */ null, i, range(txleft, ixright)); :};
+named_vm_param_no_loc     ::= type:t id_or_keyword:i            {: RESULT = new   NamedVMParam(t, /* location */ null, i, range(txleft, ixright)); :};
 
-unnamed_vm_param_with_loc ::= type:t LOCATION:l      {: RESULT = new UnnamedVMParam(t, l,                      range(txleft, lxright)); :};
+unnamed_vm_param_with_loc ::= type:t LOCATION:l                 {: RESULT = new UnnamedVMParam(t, l,                      range(txleft, lxright)); :};
 
-named_vm_param_with_loc   ::= type:t LOCATION:l ID:i {: RESULT = new   NamedVMParam(t, l, i,                   range(txleft, ixright)); :};
+named_vm_param_with_loc   ::= type:t LOCATION:l id_or_keyword:i {: RESULT = new   NamedVMParam(t, l, i,                   range(txleft, ixright)); :};
 
 cvl_param ::= type:t ID:i                            {: RESULT = new   CVLParam(t, i, range(txleft, ixright)); :};
 

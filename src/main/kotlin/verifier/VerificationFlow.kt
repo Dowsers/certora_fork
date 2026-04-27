@@ -47,6 +47,7 @@ import log.LoggerTypes
 import parallel.coroutines.parallelMapOrdered
 import report.ConsoleReporter
 import scene.SceneFactory
+import spec.cvlast.SpecType
 import spec.rules.EcosystemAgnosticRule
 import spec.rules.IRule
 import utils.coRunCatching
@@ -254,7 +255,19 @@ abstract class VerificationFlow<R : SingleRule> : Closeable {
         return buildContinuationRules(encodedRule, ruleCheckResult).flatMap { subrule ->
             subrule.fold(
                 onSuccess = { successRule ->
-                    treeViewReporter.registerSubruleOf(successRule.rule, encodedRule.rule)
+                    // continuation rules are generated subrules.
+                    // this is where we register them as the generating rule's child.
+                    //
+                    // some rules are special in that they were built before the run,
+                    // and their parent has already been determined.
+                    // (currently, that's just vacuity rules).
+                    // these rules are not actually being "continued",
+                    // just placed in the tree as a side effect of continuation.
+                    val ruleType = successRule.rule.ruleType as? SpecType.Single.GeneratedFromBasicRule
+                        ?: error("got subrule $successRule that should have been generated")
+                    val parentRule = ruleType.getOriginatingRule()
+
+                    treeViewReporter.registerSubruleOf(successRule.rule, parentRule)
                     solveAndReportRule(successRule)
                 },
                 onFailure = {

@@ -19,6 +19,8 @@ package sbf.tac
 
 import datastructures.stdcollections.*
 import sbf.cfg.CondOp
+import sbf.cfg.SbfInstruction
+import sbf.cfg.SbfMeta
 import sbf.disassembler.SbfRegister
 import sbf.domains.*
 import vc.data.*
@@ -28,47 +30,62 @@ import java.math.BigInteger
  * Emit TAC to model the load `*([base] + [o])`
  *
  * **Important**: the TAC generation depends on whether the pointer analysis decided to split or merge cells during the transfer
- * function of the load. The information is encoded in [preservedValues]
+ * function of the load. The information is encoded in [reconstructedValues]
  *
  * @param variables maps offsets to TAC stack variables. There are potentially multiple offsets in case the pointer analysis kept track of sets.
- * @param preservedValues maps offsets to [Constant] values corresponding to the left-hand side of the load instruction.
+ * @param reconstructedValues non-empty only when the load width does not match the last store width, causing the pointer analysis
+ * to reconstruct the cell via split or merge. Maps each affected offset to the reconstructed value (possibly top) and the layout kind.
  */
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> stackLoad(
+    inst: SbfInstruction.Mem,
     base: TACExpr.Sym.Var,
     o: TACExpr.Sym.Const,
     variables : Map<PTAOffset, TACByteStackVariable>,
-    preservedValues: Map<PTAOffset, Constant>,
+    reconstructedValues: Map<PTAOffset, PTAMemSplitter.ReconstructedIntegerValue>,
     lhs: TACSymbol.Var
 ): List<TACCmd.Simple> {
+    check(inst.isLoad)
 
-    var exactReconstruction = true
-    val stackLocs = variables.mapValues { (offset, tacVar) ->
-        val value = preservedValues[offset]
-        value?.toLongOrNull()
-            // `offset` is mapped to a non-top constant in `stackValues`
-            ?.let { sbfTacB.mkConst(it).asSym() }
-            // `offset` is mapped to a top constant in `stackValues`
-            ?: value?.let {
-                exactReconstruction = false
-                vFac.mkFreshIntVar().asSym()
-            }
-            // `offset` is not in `stackValues`
-            ?: tacVar.tacVar.asSym()
+    val isNarrowedLoad = inst.metaData.getVal(SbfMeta.NARROWED_LOAD) != null
+
+    data class Resolution(val expr: TACExpr.Sym, val exact: Boolean)
+
+    fun resolveOffset(offset: PTAOffset, tacVar: TACByteStackVariable): Resolution {
+        val reconstructedValue = reconstructedValues[offset]
+            ?: return Resolution(tacVar.tacVar.asSym(), exact = true)
+
+        val knownConst = reconstructedValue.v.toLongOrNull()
+        return when {
+            knownConst != null ->
+                // Last store wrote a concrete constant: reconstruct exactly
+                Resolution(sbfTacB.mkConst(knownConst).asSym(), exact = true)
+            reconstructedValue.layout == PTAGraph.CellLayout.SPLIT && isNarrowedLoad ->
+                // Split cell with a narrowed load: use existing TAC variable and apply a mask
+                Resolution(tacVar.tacVar.asSym(), exact = true)
+            else ->
+                // Last store value is top: over-approximate with a fresh unconstrained variable
+                Resolution(vFac.mkFreshIntVar().asSym(), exact = false)
+        }
     }
-    val debugCmd = if (preservedValues.isNotEmpty()) {
+
+    val resolutions = variables.mapValues { (offset, tacVar) -> resolveOffset(offset, tacVar) }
+    val stackLocs = resolutions.mapValues { (_, r) -> r.expr }
+    val exactReconstruction = resolutions.values.all { it.exact }
+
+    val debugCmd = if (!exactReconstruction) {
         val msg = "Warning: this read on the stack does not match the last written bytes, " +
-            if (exactReconstruction) {
-                "but the pointer analysis is able to reconstruct exactly the bytes from the last writes."
-            } else {
-                "but the pointer analysis is able to over-approximate the bytes from the last writes. " +
-                    "Because of this over-approximation spurious counterexamples are possible."
-            }
+                  "but the pointer analysis is able to over-approximate the bytes from the last writes. " +
+                  "Because of this over-approximation spurious counterexamples are possible."
         listOf(Debug.ptaSplitOrMerge(msg, listOf(lhs)))
     } else {
         listOf()
     }
-    return debugCmd + listOf(assign(lhs, resolveStackAccess(base, o, stackLocs)))
+
+    val rhs = resolveStackAccess(base, o, stackLocs)
+    return debugCmd + listOf(
+        assign(lhs, if (isNarrowedLoad) { sbfTacB.mask(rhs, inst.access.width.toLong() * 8) }  else { rhs })
+    )
 }
 
 /**

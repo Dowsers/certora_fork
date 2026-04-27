@@ -125,11 +125,11 @@ fun <D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> promoteMemcpyIntraBloc
             applyRewrites(cfg, rewrites)
         }
 
-        // Transforms some load instructions (by narrowing them) that were not involved
-        // in any of the memcpy promotions from before.
-        narrowMaskedLoads(b,  scalarAnalysis) { loadInst ->
-            loadInst.isLoad && loadInst.metaData.getVal(SbfMeta.MEMCPY_PROMOTION) != null
-        }
+        /**
+         * We try to narrow any wide load, not only those promoted as part of a memcpy. We could move this transformation
+         * outside [promoteMemcpy]. However, we keep it here so that we don't need to run a new scalar analysis from scratch.
+         **/
+        narrowMaskedLoads(b,  scalarAnalysis) { true }
     }
 }
 

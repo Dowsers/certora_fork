@@ -318,4 +318,51 @@ class NarrowMaskedLoadsTest {
         Assertions.assertEquals(false, hasMaskInst(cfg))
         Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 2))
     }
+
+    /**
+     * ```
+     *   *(u32 *) (r10 - 56) = 5   // 4-byte store at offset -56, covers bytes 0-3
+     *   *(u32 *) (r10 - 52) = 3   // 4-byte store at offset -52, covers bytes 4-7
+     *   r1 = *(u64 *) (r10 - 56)  // 8-byte load spanning both stores
+     *   r1 = r1 and 0xFFFF_FFFF
+     *   if (r1 == 0) ...
+     * ```
+     *
+     * Should be transformed into:
+     *
+     * ```
+     *   *(u32 *) (r10 - 56) = 5
+     *   *(u32 *) (r10 - 52) = 3
+     *   r1 = *(u32 *) (r10 - 56)
+     *   if (r1 == 0) ...
+     * ```
+     **/
+    @Test
+    fun `two adjacent 4-byte stores + load of 8 bytes masked by 0xFFFF_FFFF`() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                BinOp.ADD(r10, 4096)
+                r10[-56, 4] = 5
+                r10[-52, 4] = 3
+                r1 = r10[-56]
+                BinOp.AND(r1, 4294967295)
+                br(CondOp.NE(r1, 0), 1, 2)
+            }
+            bb(1) {
+                goto(3)
+            }
+            bb(2) {
+                goto(3)
+            }
+            bb(3) {
+                exit()
+            }
+        }
+
+        println("Before\n$cfg")
+        narrowMaskedLoads(cfg, globals, memSummaries)
+        println("After\n$cfg")
+        Assertions.assertEquals(false, hasMaskInst(cfg))
+        Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 4))
+    }
 }

@@ -183,9 +183,14 @@ private fun isMaskWith0xFFFF(inst: SbfInstruction, reg: Value.Reg) =
 private fun isMaskWith0xFFFFFFFF(inst: SbfInstruction, reg: Value.Reg) =
     isMaskWithImmediate(inst, reg, mask = 0xFFFFFFFFUL)
 
-
 /**
  * Return load instructions that might not match its corresponding last store.
+ *
+ * Candidates are 8-byte loads from the stack where the actual last store was narrower (1, 2, or 4 bytes).
+ * Selection is heuristic-based: false negatives (missed candidates) are acceptable, but false positives
+ * (wrongly narrowed loads) will not affect soundness. Soundness is preserved in two ways:
+ *   1. A narrowed load must still agree with a mask operation of the matching width.
+ *   2. If the narrowed load does not match the last store, the PTA will report an error.
  **/
 private fun<D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> findMismatchedLoads(
     b: SbfBasicBlock,
@@ -208,13 +213,34 @@ where D: AbstractDomain<D>,
 
         val baseTy = types.typeAtInstruction(locInst, inst.access.base) as? SbfType.PointerType.Stack
             ?: continue
-
         val resolvedOffset = baseTy.offset.add(inst.access.offset.toLong()).toLongOrNull()
             ?: continue
-
-
         val scalarAbsVal = types.getAbstractState(locInst) ?: continue
-        if (scalarAbsVal.mayStackBeInitialized(resolvedOffset, 8UL)) {
+
+        var mismatchedLoad = false
+        /**
+         * Heuristic #1 to determine that a load should be narrowed:
+         *   If the 8-byte scalar value at `resolvedOffset` is top but the scalar value
+         *   at the same offset with a narrower width n in {1, 2, 4} is non-top, then the last
+         *   store was of width n. Iterate largest-first to pick the widest matching store width.
+         */
+        if (scalarAbsVal.getStackContent(resolvedOffset, 8).isTop()) {
+            for (n in listOf(4, 2,1)) {
+                if (!scalarAbsVal.getStackContent(resolvedOffset, n.toByte()).isTop()) {
+                    newInsts.add(locInst.copy(inst = inst.copy(metaData = inst.metaData + (SbfMeta.MISMATCHED_LOAD to n))))
+                    mismatchedLoad = true
+                    break
+                }
+            }
+        }
+
+        /**
+         * Heuristic #2 to determine that a load should be narrowed:
+         *   Given an 8-byte load from the stack where the full 8 bytes may be initialized,
+         *   find the smallest n in {1, 2, 4} such that bytes [offset+n, offset+8) are NOT
+         *   initialized, inferring that any previous store could only write up to n bytes.
+         */
+        if (!mismatchedLoad && scalarAbsVal.mayStackBeInitialized(resolvedOffset, 8UL)) {
             for (n in listOf(1, 2, 4)) {
                 if (!scalarAbsVal.mayStackBeInitialized(resolvedOffset + n, 8UL - n.toULong())) {
                     // The last store was likely at offset=`resolvedOffset` and with=`n`

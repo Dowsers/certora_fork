@@ -33,7 +33,7 @@ class SbfCFGTest  {
     @Suppress("ForbiddenComment")
     /** We only test that a ELF file can be disassembled without a runtime error **/
     private fun translateElfToCFG(baseName: String, ext: String) {
-        val bytecode = ElfDisassembler("$inputDir/$baseName$ext").read(setOf("entrypoint"))
+        val (bytecode, _) = ElfDisassembler("$inputDir/$baseName$ext").read(setOf("entrypoint"))
         bytecodeToSbfProgram(bytecode)
 
         // TODO: we don't actually generate the CFG because it requires rustfilt to demangle names

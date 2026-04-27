@@ -297,7 +297,7 @@ suspend fun twoStageDestructiveOptimizationsCheck(
             result.result.examplesInfo?.head?.model
                 ?: throw ViolationWithoutModelException()
 
-        val visitableBlocks = result.result.simpleSimpleSSATAC.code.flatMap { (_, cmds) ->
+        val visitableBlocks = result.result.simpleSimpleSSATAC.code.filter { it.key in model.reachableNBIds }.flatMap { (_, cmds) ->
             cmds.mapNotNull { it.maybeAnnotation(TWOSTAGE_META_BLOCKORIGIN) }
         }.toSet()
 

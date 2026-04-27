@@ -860,7 +860,12 @@ class ScalarDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> private con
             }
             else -> {
                 // memcpy from heap/input/global to stack
-                // We don't mark the destination as may-initialized
+
+                // We need to mark conservatively destination as may-initialized.
+                // Apart from being unsound, scalar and pointer analysis can disagree.
+                dstOffsets.forEach { offset ->
+                    markAsMayInit(locInst, offset, len)
+                }
 
                 // We are conservative and remove any overlapping entry at the destination
                 removeDstSlices(dstOffsets, len, onlyPartial = false)

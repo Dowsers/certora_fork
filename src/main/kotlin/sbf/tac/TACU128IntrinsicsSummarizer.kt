@@ -28,6 +28,8 @@ import sbf.domains.INumValue
 import sbf.domains.IOffset
 import sbf.domains.IPTANodeFlags
 import sbf.sbfLogger
+import vc.data.TACExprFactUntyped.le
+import vc.data.TACExprFactUntyped.lt
 
 /**
  * Dispatches TAC summarization for an u128 intrinsic call.
@@ -49,48 +51,14 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     val function = CVTU128Intrinsics.from(inst.name)
     check(function != null) {"summarizeU128 does not support ${inst.name}"}
     return when (function) {
-        CVTU128Intrinsics.U128_LEQ -> summarizeU128Leq(locInst)
         CVTU128Intrinsics.U128_GT0 -> summarizeU128Gt0(locInst)
-        CVTU128Intrinsics.U128_GT -> summarizeU128Gt(locInst)
+        CVTU128Intrinsics.U128_LEQ -> summarizeU128BinRel(locInst){ x, y -> x le y }
+        CVTU128Intrinsics.U128_LT -> summarizeU128BinRel(locInst){ x, y -> x lt y }
         CVTU128Intrinsics.U128_CEIL_DIV -> summarizeU128CeilDiv(locInst)
         CVTU128Intrinsics.U128_NONDET -> summarizeU128Nondet(locInst)
         CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION -> summarizeU128WrappingSubtraction(locInst)
         CVTU128Intrinsics.U128_WRAPPING_ADDITION -> summarizeU128WrappingAddition(locInst)
     }
-}
-
-/**
- * Given `r1: low(x)`, `r2: high(x)`, `r3: low(y)`, `r4: high(y)` and `result` in `r0`
- *
- * We do case by case using nested ite terms
- * 1. if `high(x) == 0` and `high(y) == 0` then `low(x) <= low(y)`
- * 2. if `high(x) == 0` and `high(y) != 0` then `true`
- * 3. if `high(x) != 0` and `high(y) == 0` then `false`
- * 4. if `high(x) != 0` and `high(y) != 0` then `(high(x) << 64 + low(x)) <= (high(y) << 64 + low(y))`
- **/
-context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128Leq(
-    locInst: LocatedSbfInstruction
-): List<TACCmd.Simple> {
-    val inst = locInst.inst
-    check(inst is SbfInstruction.Call)
-    {"summarizeU128Leq expects a call instruction instead of ${locInst.inst}"}
-    check(CVTU128Intrinsics.from(inst.name) == CVTU128Intrinsics.U128_LEQ)
-    {"summarizeU128Leq expects ${CVTU128Intrinsics.U128_LEQ.function.name}"}
-
-    val res    = sbfTacB.mkVar(SbfRegister.R0)
-    val xLowE  = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R1))
-    val xHighE = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R2))
-    val yLowE  = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R3))
-    val yHighE = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R4))
-
-    val cmds = mutableListOf<TACCmd.Simple>()
-    cmds += Debug.startFunction(inst.name)
-    applyU128RelationalOperation(res, xLowE, xHighE, yLowE, yHighE, cmds) { x, y ->
-        sbfTacB { ite(x le y, ONE, ZERO) }
-    }
-    cmds += Debug.endFunction(inst.name)
-    return cmds
 }
 
 /**
@@ -122,22 +90,18 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
 }
 
 /**
- * Given `r1: low(x)`, `r2: high(x)`, `r3: low(y)`, `r4: high(y)` and `result` in `r0`
- *
- * We do case by case using nested ite terms
- * 1. if `high(x) > high(y)` then `true`
- * 2. if `high(x) < high(y)` then `false`
- * 3. if `high(x) == high(y)` then `low(x) > low(y)`
+ * Given `r1: low(x)`, `r2: high(x)`, `r3: low(y)`, `r4: high(y)`, representing
+ * the low and high values of a u128, combines the low and high to
+ * two TAC variables holding the u128 and then applies the binary relation [operand] on it and
+ * stores `result` of the binary relation comparison in `r0`.
  **/
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
-internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128Gt(
-    locInst: LocatedSbfInstruction
+internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeU128BinRel(
+    locInst: LocatedSbfInstruction,
+    operand: (ToTACExpr, ToTACExpr) -> TACExpr
 ): List<TACCmd.Simple> {
     val inst = locInst.inst
     check(inst is SbfInstruction.Call)
-    {"summarizeU128Gt expects a call instruction instead of ${locInst.inst}"}
-    check(CVTU128Intrinsics.from(inst.name) == CVTU128Intrinsics.U128_GT)
-    {"summarizeU128Gt expects ${CVTU128Intrinsics.U128_GT.function.name}"}
 
     val res    = sbfTacB.mkVar(SbfRegister.R0)
     val xLowE  = sbfTacB.mkExprSym(Value.Reg(SbfRegister.R1))
@@ -148,7 +112,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     val cmds = mutableListOf<TACCmd.Simple>()
     cmds += Debug.startFunction(inst.name)
     applyU128RelationalOperation(res, xLowE, xHighE, yLowE, yHighE, cmds) { x, y ->
-        sbfTacB { ite(x gt y, ONE, ZERO) }
+        sbfTacB { ite(operand(x, y), ONE, ZERO) }
     }
     cmds += Debug.endFunction(inst.name)
     return cmds

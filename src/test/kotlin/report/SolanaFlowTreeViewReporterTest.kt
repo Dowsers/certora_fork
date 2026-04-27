@@ -85,7 +85,14 @@ class SolanaFlowTreeViewReporterTest {
                 nodes.size,
                 "Found $nodes"
             )
-            assertEquals(rulesToAsserts.keys.size, pathsToLeaves.size, "Found $pathsToLeaves")
+
+            // verified asserts get a sanity rule node,
+            // and this node is a child of their parent.
+            assertEquals(
+                rulesToAsserts.keys.size + totalVerifiedAssert,
+                pathsToLeaves.size,
+                "Found $pathsToLeaves"
+            )
         }
     }
 
