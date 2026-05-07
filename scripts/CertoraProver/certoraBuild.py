@@ -2509,7 +2509,24 @@ class CertoraBuildGenerator:
 
     @staticmethod
     def get_primary_contract_from_sdc(contracts: List[ContractInSDC], primary: str, primary_file: str) -> List[ContractInSDC]:
-        return [x for x in contracts if x.name == primary and Util.abs_norm_path(x.original_file) == Util.abs_norm_path(primary_file)]
+        name_matched = [x for x in contracts if x.name == primary]
+        if not name_matched:
+            return []
+        primary_parts = Path(Util.abs_norm_path(primary_file)).parts
+        best = None
+        best_suffix_len = -1
+        for x in name_matched:
+            x_parts = Path(Util.abs_norm_path(x.original_file)).parts
+            suffix_len = 0
+            for a, b in zip(reversed(primary_parts), reversed(x_parts)):
+                if a == b:
+                    suffix_len += 1
+                else:
+                    break
+            if suffix_len > best_suffix_len:
+                best_suffix_len = suffix_len
+                best = x
+        return [best] if best is not None else []
 
     @staticmethod
     def generate_library_import(file_absolute_path: str, library_name: str) -> str:
