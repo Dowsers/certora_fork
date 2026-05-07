@@ -361,8 +361,12 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
                         high == EVM_BITWIDTH256 ->
                             modIfConstant(term, twoToThe(low))?.let { term - it }
 
-                        intervals != null && intervals.getS(ptr, nonMaskOp) isLt twoToThe(high) ->
-                            modIfConstant(term, twoToThe(low))?.let { term - it }
+                        intervals != null -> {
+                            val i = intervals.getS(ptr, nonMaskOp)
+                            runIf(i.isNotEmpty() && i isLt twoToThe(high)) {
+                                modIfConstant(term, twoToThe(low))?.let { term - it }
+                            }
+                        }
 
                         else -> null
                     }
@@ -411,6 +415,5 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
         }
         return isInside(query.ptr, query.t, defPtr, Term(0), rhsTerm(defPtr, upperBound)!!)
     }
-
 
 }
