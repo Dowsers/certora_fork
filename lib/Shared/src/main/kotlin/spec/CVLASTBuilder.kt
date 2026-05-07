@@ -191,7 +191,7 @@ class CVLAstBuilder(
     }
 
     private interface SummaryGenerator {
-        fun external(sighashABI: SighashInt?, sighashLib: SighashInt, methodParameterSignature: MethodParameterSignature) : VoidResult<CVLError>
+        fun external(sighashABI: SighashInt?, methodParameterSignature: MethodParameterSignature) : VoidResult<CVLError>
         fun internal(methodParameterSignature: MethodParameterSignature): VoidResult<CVLError>
     }
 
@@ -274,28 +274,21 @@ class CVLAstBuilder(
                 object : SummaryGenerator {
                     override fun external(
                         sighashABI: SighashInt?,
-                        sighashLib: SighashInt,
                         methodParameterSignature: MethodParameterSignature
                     ): VoidResult<CVLError> {
                         return if (externalSummaries.any { (k, _) ->
-                                k is CVL.ExternalWildcard && (k.sighashInt == sighashABI || k.sighashInt == sighashLib)
+                                k is CVL.ExternalWildcard && k.signature.matchesNameAndParams(methodParameterSignature)
                             }) {
                             CVLError.General(
                                 annot.range,
                                 "Multiple summaries for all external functions with the signature ${annot.methodParameterSignature.printQualifiedMethodParameterSignature()}",
                             ).asError()
                         } else {
-                            if (sighashABI != null) {
-                                externalSummaries[CVL.ExternalWildcard(
-                                    sighashInt = sighashABI,
-                                    signature = annot.methodParameterSignature
-                                )] = annot.summary
-                            }
-
                             externalSummaries[CVL.ExternalWildcard(
-                                sighashInt = sighashLib,
+                                sighashInt = sighashABI ?: ExternalSignature.computeSigHash(false, annot.methodParameterSignature),
                                 signature = annot.methodParameterSignature
                             )] = annot.summary
+
                             ok
                         }
                     }
@@ -336,17 +329,11 @@ class CVLAstBuilder(
 
                     override fun external(
                         sighashABI: SighashInt?,
-                        sighashLib: SighashInt,
                         methodParameterSignature: MethodParameterSignature
                     ): VoidResult<CVLError> {
                         val matchingFunction =
                             getMatchingContractFunctionsIn(externalContractFunction)?.singleOrNull {
-                                val sighash = if (it.annotation.library) {
-                                    sighashLib
-                                } else {
-                                    sighashABI
-                                }
-                                (it.methodSignature as? ExternalSignature)?.sighashInt == sighash
+                                it.methodSignature.matchesNameAndParams(methodParameterSignature)
                             }
                                 ?: return if (annot.qualifiers.virtual) {
                                     ok
@@ -358,7 +345,7 @@ class CVLAstBuilder(
                                 }
 
                         if (externalSummaries.any { (k, _) ->
-                                k is CVL.ExternalExact && k.signature.qualifiedMethodName == methodId && (k.sighashInt == sighashABI || k.sighashInt == sighashLib)
+                                k is CVL.ExternalExact && k.signature.qualifiedMethodName == methodId && k.signature.matchesNameAndParams(methodParameterSignature)
                             }) {
                             return CVLError.General(
                                 annot.range,
@@ -374,7 +361,8 @@ class CVLAstBuilder(
 
                         externalSummaries[CVL.ExternalExact(
                             sighashInt = if (matchingFunction.annotation.library) {
-                                sighashLib
+                                // cast should be safe since fallbacks/constructors are not summarized/matched
+                                (matchingFunction.methodSignature as ExternalSignature).sighashInt!!
                             } else {
                                 check(sighashABI != null) {
                                     "For $methodParameterSignature, found a matching non-library function, yet it has no valid non-lib sighash"
@@ -423,8 +411,7 @@ class CVLAstBuilder(
                 } else {
                     null
                 }
-                val summaryLibKey = ExternalSignature.computeSigHash(isLibrary = true, annot.methodParameterSignature)
-                gen.external(summaryABIKey, summaryLibKey, annot.methodParameterSignature)
+                gen.external(summaryABIKey, annot.methodParameterSignature)
             }
 
 
@@ -572,34 +559,23 @@ class CVLAstBuilder(
                             methodId = annot.name
                         )
 
-                        val externalABISignature =
+                        // calling this with `isLibrary=true` is actually UNSAFE - i.e.,
+                        // we could have something like `foo(IERC20)` in a library which in CVL the user must write as
+                        // `foo(address)`.
+                        val sighashIntABI = {
                             ExternalQualifiedMethodParameterSignature.fromNamedParameterSignatureContractId(
                                 QualifiedMethodParameterSignature(
                                     functionReference,
                                     annot.methodParameterSignature.params
                                 ),
-                                PrintingContext(false)
-                            )
-                        val externalLibSignature =
-                            ExternalQualifiedMethodParameterSignature.fromNamedParameterSignatureContractId(
-                                QualifiedMethodParameterSignature(
-                                    functionReference,
-                                    annot.methodParameterSignature.params
-                                ),
-                                PrintingContext(true)
-                            )
-
+                                PrintingContext(isLibrary = false)
+                            ).sighashInt
+                        }
 
                         // find the method in the base contract
                         val contractList = toReturn[_baseContract]!!
                         val idxOfMatch = contractList.indexOfFirst {
-                            // The unique methods (constructor, fallback) don't have an ExternalSignature, but we don't
-                            // expect to have annotations for them in any case. This is the reason for the safe-cast.
-                            (it.methodSignature as? ExternalSignature)?.sighashInt == if (it.annotation.library) {
-                                externalLibSignature.sighashInt
-                            } else {
-                                externalABISignature.sighashInt
-                            }
+                            it.methodSignature.matchesNameAndParams(annot.methodParameterSignature)
                         }
 
                         // by checkSignatures & above branch condition on target type
@@ -631,7 +607,7 @@ class CVLAstBuilder(
                                     contractId = functionReference,
                                     params = annot.methodParameterSignature.params,
                                     res = annot.methodParameterSignature.res,
-                                    sighashInt = externalABISignature.sighashInt
+                                    sighashInt = sighashIntABI()
                                 )
                             )
                             virtualFlag.bind {
@@ -676,9 +652,9 @@ class CVLAstBuilder(
                                 params = annot.methodParameterSignature.params,
                                 res = annot.methodParameterSignature.res,
                                 sighashInt = if (currFun.annotation.library) {
-                                    externalLibSignature.sighashInt
+                                    (currFun.methodSignature as ExternalSignature).sighashInt
                                 } else {
-                                    externalABISignature.sighashInt
+                                    sighashIntABI()
                                 }
                             )
 
