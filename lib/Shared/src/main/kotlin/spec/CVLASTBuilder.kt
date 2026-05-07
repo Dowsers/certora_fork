@@ -191,7 +191,7 @@ class CVLAstBuilder(
     }
 
     private interface SummaryGenerator {
-        fun external(sighashABI: SighashInt?, methodParameterSignature: MethodParameterSignature) : VoidResult<CVLError>
+        fun external(sighashABI: SighashInt?, sighashLib: SighashInt, methodParameterSignature: MethodParameterSignature) : VoidResult<CVLError>
         fun internal(methodParameterSignature: MethodParameterSignature): VoidResult<CVLError>
     }
 
@@ -274,21 +274,29 @@ class CVLAstBuilder(
                 object : SummaryGenerator {
                     override fun external(
                         sighashABI: SighashInt?,
+                        sighashLib: SighashInt,
                         methodParameterSignature: MethodParameterSignature
                     ): VoidResult<CVLError> {
+                        val sighashes = setOfNotNull(sighashABI, sighashLib)
                         return if (externalSummaries.any { (k, _) ->
-                                k is CVL.ExternalWildcard && k.signature.matchesNameAndParams(methodParameterSignature)
+                                k is CVL.ExternalWildcard && k.sighashInt in sighashes
                             }) {
                             CVLError.General(
                                 annot.range,
                                 "Multiple summaries for all external functions with the signature ${annot.methodParameterSignature.printQualifiedMethodParameterSignature()}",
                             ).asError()
                         } else {
+                            if (sighashABI != null) {
+                                externalSummaries[CVL.ExternalWildcard(
+                                    sighashInt = sighashABI,
+                                    signature = annot.methodParameterSignature
+                                )] = annot.summary
+                            }
+
                             externalSummaries[CVL.ExternalWildcard(
-                                sighashInt = sighashABI ?: ExternalSignature.computeSigHash(false, annot.methodParameterSignature),
+                                sighashInt = sighashLib,
                                 signature = annot.methodParameterSignature
                             )] = annot.summary
-
                             ok
                         }
                     }
@@ -329,6 +337,7 @@ class CVLAstBuilder(
 
                     override fun external(
                         sighashABI: SighashInt?,
+                        sighashLib: SighashInt,
                         methodParameterSignature: MethodParameterSignature
                     ): VoidResult<CVLError> {
                         val matchingFunction =
@@ -411,7 +420,8 @@ class CVLAstBuilder(
                 } else {
                     null
                 }
-                gen.external(summaryABIKey, annot.methodParameterSignature)
+                val summaryLibKey = ExternalSignature.computeSigHash(isLibrary = true, annot.methodParameterSignature)
+                gen.external(summaryABIKey, summaryLibKey, annot.methodParameterSignature)
             }
 
 
