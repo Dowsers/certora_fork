@@ -124,7 +124,7 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
             val relevant2 = defs2 containsAll defs
 
             /** If we can't figure out anything about `v` from [ptr1] and [ptr2] */
-            fun default() = if(intervals == null ) {
+            fun default() = if (intervals == null) {
                 intervalOfTag(v.tag)
             } else {
                 defs.monadicMap(intervals::getLhs)
@@ -149,7 +149,7 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
                 }
             } else {
                 when {
-                    relevant1 && relevant2-> at1 intersect at2
+                    relevant1 && relevant2 -> at1 intersect at2
                     relevant1 -> at1
                     relevant2 -> at2
                     else -> default()
@@ -185,7 +185,7 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
     /** `true` for surely equal, `false` for surely no, and `null` otherwise */
     fun areEqual(ptr1: CmdPointer, t1: Term, ptr2: CmdPointer, t2: Term): Boolean? {
         if (intervals == null) {
-            return when((t1 - t2).asConstOrNull) {
+            return when ((t1 - t2).asConstOrNull) {
                 null -> null
                 BigInteger.ZERO -> true
                 else -> false
@@ -243,7 +243,7 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
     }
 
     /** is [query] in `[[low], [low] + [length])`. Yes, No, or don't know.. */
-    fun isInside(query : Term, low: Term, length: Term) : Boolean? {
+    fun isInside(query: Term, low: Term, length: Term): Boolean? {
         if (intervals == null) {
             return null
         }
@@ -320,7 +320,7 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
                 .let { subTerms ->
                     val (consts, nonConsts) = subTerms.partition { it.isConst }
                     val coef = consts.map { it.asConst }.reduceOrNull(BigInteger::multiply) ?: BigInteger.ONE
-                    when(nonConsts.size) {
+                    when (nonConsts.size) {
                         0 -> Term(coef)
                         1 -> nonConsts.single() * coef
                         else -> null
@@ -344,10 +344,10 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
             }
 
             is TACExpr.BinOp.BWAnd -> rec.let { (t1, t2) ->
-                val (term, mask) = when (t1.isConst to t2.isConst) {
+                val (term, mask, nonMaskOp) = when (t1.isConst to t2.isConst) {
                     true to true -> return@let Term(t1.asConst and t2.asConst)
-                    true to false -> t2 to t1.asConst
-                    false to true -> t1 to t2.asConst
+                    true to false -> Triple(t2, t1.asConst, o2)
+                    false to true -> Triple(t1, t2.asConst, o1)
                     else -> return@let null
                 }
                 // for `t & 0xff`, if `t % 256` is a constant, we can calculate it. Otherwise no?
@@ -357,10 +357,17 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
                 // turns out we commonly have `0xf...ffffe0` masks (equivalent to `mod 32`). Many of these can
                 // be evaluated because the masked term is know to be a multiple of 32.
                 onesZerosMask(mask)?.let { (low, high) ->
-                    runIf(high == EVM_BITWIDTH256) {
-                        modIfConstant(term, twoToThe(low))?.let { term - it }
+                    when {
+                        high == EVM_BITWIDTH256 ->
+                            modIfConstant(term, twoToThe(low))?.let { term - it }
+
+                        intervals != null && intervals.getS(ptr, nonMaskOp) isLt twoToThe(high) ->
+                            modIfConstant(term, twoToThe(low))?.let { term - it }
+
+                        else -> null
                     }
                 }
+
             }
 
             is TACExpr.AnnotationExp<*> -> expr(ptr, o)
@@ -384,7 +391,12 @@ class TermFactory(val code: CoreTACProgram, val intervals: IntervalsCalculator?)
      * Then it tries to evaluate it on `i := [query]`, and return the evaluation of the condition `i < boundVar`, or
      * null if there is no clear answer.
      */
-    fun isQueryInsideMapDefBound(defPtr: CmdPointer, param: TACSymbol.Var, definition: TACExpr, query: Query): Boolean? {
+    fun isQueryInsideMapDefBound(
+        defPtr: CmdPointer,
+        param: TACSymbol.Var,
+        definition: TACExpr,
+        query: Query
+    ): Boolean? {
         val upperBound = if (
             definition is TACExpr.TernaryExp.Ite &&
             definition.i is TACExpr.BinRel.Lt &&
