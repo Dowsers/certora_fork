@@ -32,6 +32,7 @@ private const val CVT_restore_scratch_registers = "CVT_restore_scratch_registers
 private const val CVT_nondet_account_info = "CVT_nondet_account_info"
 private const val CVT_nondet_solana_account_space = "CVT_nondet_solana_account_space"
 private const val CVT_mask_64 = "CVT_mask_64"
+private const val CVT_is_account_written = "CVT_is_account_written"
 
 sealed class CVTFunction(val function: ExternalFunction) {
     data class Core(val value: CVTCore): CVTFunction(value.function)
@@ -95,6 +96,10 @@ enum class CVTCore(val function: ExternalFunction) {
         setOf(Value.Reg(SbfRegister.R0)),
         listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3).map{ Value.Reg(it)}.toSet())
     ),
+    IS_ACCOUNT_WRITTEN(ExternalFunction(CVT_is_account_written,
+        setOf(Value.Reg(SbfRegister.R0)),
+        listOf(SbfRegister.R1).map{ Value.Reg(it)}.toSet())
+    ),
     // For tests
     MASK_64(ExternalFunction(CVT_mask_64,
         setOf(Value.Reg(SbfRegister.R0)),
@@ -122,6 +127,10 @@ enum class CVTCore(val function: ExternalFunction) {
                         // This summary is sound, but it will case PTA errors (because of the type `ANY`). Thus, it should NOT be used by the pointer domain.
                         // The reason why the argument type is `ANY` is that the memory region is not fixed.
                         val summaryArgs = listOf(MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.ANY))
+                        memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
+                    }
+                    IS_ACCOUNT_WRITTEN -> {
+                        val summaryArgs = listOf(MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.NUM))
                         memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
                     }
                     MASK_64 -> {

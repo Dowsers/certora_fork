@@ -27,6 +27,7 @@ import sbf.domains.*
 import vc.data.TACCmd
 import vc.data.TACExpr
 
+
 context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>> summarizeCVTCore(
     coreFn: CVTCore, locInst: LocatedSbfInstruction
@@ -47,6 +48,11 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
             translateRestoreScratchRegisters(inst)
         CVTCore.MASK_64 ->
             translateMask64()
+        CVTCore.IS_ACCOUNT_WRITTEN -> {
+            val res = sbfTacB.mkVar(SbfRegister.R0)
+            val loc = sbfTacB.mkVar(SbfRegister.R1)
+            accounts.isWritten(res, loc)
+        }
         CVTCore.NONDET_ACCOUNT_INFO -> {
             if (!SolanaConfig.CvtNondetAccountInfo.get()) {
                 /**

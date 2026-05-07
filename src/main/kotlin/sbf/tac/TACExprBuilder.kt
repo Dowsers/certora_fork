@@ -361,6 +361,7 @@ abstract class SbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : TACExprBase(re
 
     infix fun ToTACExpr.or(other: ToTACExpr) = this@SbfTACBuilder.LOr(listOf(this.toTACExpr(), other.toTACExpr()))
     fun or(vararg args: TACExpr) = LOr(args.toList())
+    fun or(args: List<TACExpr>) = LOr(args)
 
     fun not(exp: ToTACExpr) = this@SbfTACBuilder.LNot(exp.toTACExpr())
 

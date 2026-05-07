@@ -469,6 +469,16 @@ object SolanaConfig {
         )
     ) {}
 
+    val TACAccountWrites = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaTACAccountWrites",
+            true,
+            "Enable TAC instrumentation that tracks which Solana accounts have been written. " +
+                "Required for CVT_is_account_written to return meaningful results. [default: true]"
+        )
+    ) {}
+
     val TACMaxGlobalInit = object : ConfigType.IntCmdLine(
         64,
         Option(

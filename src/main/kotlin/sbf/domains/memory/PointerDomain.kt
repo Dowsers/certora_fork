@@ -4806,7 +4806,9 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
                                 throw PointerDomainError("unsupported call to $name. " +
                                     "SimplifyBuiltinCalls::renameCVTCall was probably not called.")
                             CVTCore.SATISFY, CVTCore.SANITY -> {}
-                            CVTCore.NONDET_ACCOUNT_INFO, CVTCore.MASK_64 ->
+                            CVTCore.NONDET_ACCOUNT_INFO,
+                            CVTCore.IS_ACCOUNT_WRITTEN,
+                            CVTCore.MASK_64 ->
                                 summarizeCall(locInst, scalars)
                             CVTCore.NONDET_SOLANA_ACCOUNT_SPACE ->
                                 summarizeSolanaAccountSpace(locInst)

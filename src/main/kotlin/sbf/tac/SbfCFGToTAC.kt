@@ -146,6 +146,8 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
     val clock: Clock = Clock { prefix -> vFac.mkFreshIntVar(prefix = prefix) }
     // To model rent syscalls
     val rent: Rent = Rent { prefix -> vFac.mkFreshIntVar(prefix = prefix) }
+    // To instrument Solana account accesses.
+    val accounts: TACSolanaAccountAccess
 
     init {
         val scalarAnalysis = GenericScalarAnalysis(
@@ -175,6 +177,10 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
             PTAMemSplitter(cfg, vFac, memoryAnalysis)
         } else {
             DummyMemSplitter(vFac, types)
+        }
+
+        accounts = TACSolanaAccountAccess(cfg) { prefix ->
+            vFac.mkFreshBoolVar(prefix = prefix)
         }
     }
 
@@ -1085,6 +1091,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                             is Value.Reg -> { sbfTacB.mkVar(value) }
                         }
                         newCmds += store(memVar.tacVar, loc, valueE)
+                        newCmds += accounts.updateWrite(loc)
                     }
                     val baseRegType = types.typeAtInstruction(locInst, baseReg.r)
                     newCmds += addMemoryLayoutAssumptions(loc, baseRegType)
@@ -1211,10 +1218,14 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
             val tacBB = getBlockIdentifier(block)
             if (entry.getLabel() == block.getLabel()) {
                 val cmds = ArrayList<TACCmd.Simple>()
+                /** Begin TAC initializers **/
+                cmds += accounts.init()
                 cmds += addGlobalInitializers()
                 cmds += rent.init()
                 cmds += clock.init()
                 cmds += addInitialPreconditions()
+                /** End TAC initializers **/
+
                 cmds += translate(block)
                 code[tacBB] = cmds
             } else {
