@@ -122,7 +122,7 @@ private fun narrowMaskedLoad(block: MutableSbfBasicBlock, loadLocInst: LocatedSb
     val loadInst = loadLocInst.inst
     check(loadInst is SbfInstruction.Mem && loadInst.isLoad)
 
-    val lhs = loadInst.value as Value.Reg
+    var lhs = loadInst.value as Value.Reg
 
     // It requires first to call `annotateMismatchedLoads`
     val numBytesLastStore = loadInst.metaData.getVal(SbfMeta.MISMATCHED_LOAD) ?: return false
@@ -133,12 +133,23 @@ private fun narrowMaskedLoad(block: MutableSbfBasicBlock, loadLocInst: LocatedSb
     }
 
     // Find the single use of the destination register after the load
-    val use = getNextUseInterBlock(block, loadLocInst.pos+1, lhs)
+    var use = getNextUseInterBlock(block, loadLocInst.pos+1, lhs)
         ?: return false
 
     // The transformation must be intra-block
     if (use.label != block.getLabel()) {
         return false
+    }
+
+    // Skip optionally an assignment
+    val useInst = use.inst
+    if (useInst is SbfInstruction.Bin && useInst.op == BinOp.MOV) {
+        use = getNextUseInterBlock(block, use.pos + 1, useInst.dst)
+            ?: return false
+        if (use.label != block.getLabel()) {
+            return false
+        }
+        lhs = useInst.dst
     }
 
     // Check if the use is a mask with `0x1`, `0xFF`, `0xFFFF`, or `0xFFFF_FFFF`
