@@ -26,7 +26,7 @@ import sbf.domains.MemorySummaries
 private val globals = GlobalVariables(DefaultElfFileView)
 private val memSummaries = MemorySummaries()
 
-class TACNarrowLoadsTest {
+class TACResizeMaskedLoadsTest {
 
     /**
      * ```
@@ -64,9 +64,9 @@ class TACNarrowLoadsTest {
             }
         }
 
-        println("Before narrowMaskedLoads\n$cfg")
-        narrowMaskedLoads(cfg, globals, memSummaries)
-        println("After narrowMaskedLoads\n$cfg")
+        println("Before resizeMaskedLoads\n$cfg")
+        resizeMaskedLoads(cfg, globals, memSummaries)
+        println("After resizeMaskedLoads\n$cfg")
 
         cfg.lowerBranchesIntoAssume()
         cfg.normalize()

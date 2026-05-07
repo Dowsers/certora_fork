@@ -129,7 +129,7 @@ fun <D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> promoteMemcpyIntraBloc
          * We try to narrow any wide load, not only those promoted as part of a memcpy. We could move this transformation
          * outside [promoteMemcpy]. However, we keep it here so that we don't need to run a new scalar analysis from scratch.
          **/
-        narrowMaskedLoads(b,  scalarAnalysis) { true }
+        resizeMaskedLoads(b,  scalarAnalysis) { true }
     }
 }
 
