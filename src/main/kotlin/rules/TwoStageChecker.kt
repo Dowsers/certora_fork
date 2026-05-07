@@ -24,6 +24,8 @@ import config.Config
 import config.DestructiveOptimizationsModeEnum
 import config.ReportTypes
 import datastructures.stdcollections.*
+import instrumentation.transformers.DefaultValueInitializer
+import instrumentation.transformers.InsertMapDefinitions
 import log.*
 import report.*
 import rules.RuleChecker.CmdPointerList
@@ -38,6 +40,11 @@ import tac.Tag
 import utils.*
 import vc.data.*
 import vc.data.state.TACValue
+import vc.data.tacexprutil.ExprUnfolder.Companion.unfoldAll
+import vc.data.tacexprutil.TACExprUtils.contains
+import verifier.CoreToCoreTransformer
+import verifier.SimpleMemoryOptimizer
+import verifier.SimpleMemoryOptimizer.rewriteCopyLoops
 import verifier.Verifier
 
 private val logger = Logger(LoggerTypes.TWOSTAGE)
@@ -236,6 +243,46 @@ fun TACCmd.Simple.fixedVariable(): TACSymbol.Var? =
         else -> null
     }
 
+/**
+ * This method prepares the program for two stage interpreted mode.
+ * It does
+ * 1. Removes all [TACCmd.Simple.SummaryCmd] from the program (via [verifier.CTPOptimizationPass.Companion.simpleSummaries])
+ * This also requires [rewriteCopyLoops]. These two calls are a workaround for now, we should rather move
+ * rewriteCopyLoops and simpleSummaries earlier in the pipeline (at the end of [rules.RuleChecker.computeAndMergeAssertResults])
+ * 2. Unfolds all expressions
+ * 3. Initializes all uninitialized variables with havoc commands (using [DefaultValueInitializer])
+ * 4. Calls [annotateWithTwoStageMeta] to add the respective meta.
+ *
+ * Explanation of step 3:
+ * In the CVL pipeline, we compile some commands without explicitly havoc'ing the underlying
+ * TAC variable. For instance in this simple case:
+ *
+ * rule foo(){
+ *    uint x;
+ *    assert x;
+ * }
+ *
+ * there will be no explicit havoc command for x. This causes issues in two stage mode,
+ * as we won't receive the variable assignment for x, due to the fact that
+ * [TWOSTAGE_META_VARORIGIN] is attached to the [TACCmd.Simple.AssigningCmd.AssignHavocCmd]
+ * command. This is why we call [InsertMapDefinitions.transform] and [DefaultValueInitializer.initVarsAtRoot] here.
+ */
+fun CoreTACProgram.prepareForTwoStageInterpreted() =
+    CoreTACProgram.Linear(this)
+        .map(CoreToCoreTransformer(ReportTypes.REWRITE_COPY_LOOP, SimpleMemoryOptimizer::rewriteCopyLoops))
+        .map(CoreToCoreTransformer(ReportTypes.SIMPLE_SUMMARIES1){ it.simpleSummaries() })
+        .map(
+            CoreToCoreTransformer(
+                ReportTypes.EXPR_UNFOLDING,
+                { code ->
+                    unfoldAll(code) { cmd ->
+                        !cmd.rhs.contains { it is TACExpr.AnnotationExp<*> }
+                    }
+                })
+        ).map(CoreToCoreTransformer(ReportTypes.INIT_MAPS, InsertMapDefinitions::transform)
+        ).map(CoreToCoreTransformer(ReportTypes.INITIALIZATION, DefaultValueInitializer::initVarsAtRoot))
+        .ref.annotateWithTwoStageMeta()
+
 
 /**
  * Returns a modified CoreTACProgram where each command that should be fixed according to [fixedVariable]
@@ -323,7 +370,8 @@ suspend fun <T : SingleRule> twoStageDestructiveOptimizationsCheck(
     scene: IScene,
     rule: CompiledRule<T>,
 ): CompiledRule.CompileRuleCheckResult {
-    return twoStageDestructiveOptimizationsCheck(rule.rule, rule.rule.declarationId, rule.tac) { tac, _ ->
+    val tacWithInitializedVars = rule.tac.prepareForTwoStageInterpreted()
+    return twoStageDestructiveOptimizationsCheck(rule.rule, rule.rule.declarationId, tacWithInitializedVars) { tac, _ ->
         CompiledRule.create(rule.rule, tac, rule.liveStatsReporter).check(scene.toIdentifiers())
     }
 }

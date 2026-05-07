@@ -96,7 +96,7 @@ object DebugSymbolLoader {
         if (parsingErrors.isNotEmpty()) {
             debugSymbolsLogger.debug { "Encountered the ${parsingErrors.size} parsing errors while parsing DWARF file.\n" + parsingErrors.joinToString("\n") }
         }
-        RustType.intializeRegistry(debugSymbols.type_nodes)
+        RustType.initializeRegistry(debugSymbols.type_nodes)
         sbfLogger.info { "Loading debug symbols took ${(end - start) / 1000}s" }
         return DebugSymbols(debugSymbols)
     }

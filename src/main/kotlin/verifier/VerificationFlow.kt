@@ -46,6 +46,7 @@ import log.Logger
 import log.LoggerTypes
 import parallel.coroutines.parallelMapOrdered
 import report.ConsoleReporter
+import rules.prepareForTwoStageInterpreted
 import scene.SceneFactory
 import spec.cvlast.SpecType
 import spec.rules.EcosystemAgnosticRule
@@ -206,6 +207,18 @@ abstract class VerificationFlow<R : SingleRule> : Closeable {
             DestructiveOptimizationsModeEnum.TWOSTAGE,
             DestructiveOptimizationsModeEnum.TWOSTAGE_CHECKED -> solveTwoStage(encodedRule)
 
+            DestructiveOptimizationsModeEnum.TWOSTAGE_INTERPRETED -> {
+                val annotatedTac = encodedRule.code.prepareForTwoStageInterpreted()
+                return solve(
+                    rule = encodedRule.rule,
+                    code = prepareForDestructiveMode(annotatedTac),
+                    twoStageRound = TwoStageRound.FIRST_ROUND
+                ).toCheckResult(
+                    scene,
+                    encodedRule.rule,
+                    unoptimizedTac = annotatedTac // explicitly passing unoptimizedTAC here.
+                )
+            }
             DestructiveOptimizationsModeEnum.DISABLE -> solveSingleStage(encodedRule.rule, encodedRule.code)
             DestructiveOptimizationsModeEnum.ENABLE -> solveSingleStage(
                 rule = encodedRule.rule,

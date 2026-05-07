@@ -417,7 +417,7 @@ fun removeSanityCalls(prog: SbfCallGraph, isVacuityRule: Boolean): SbfCallGraph 
  */
 private fun attachRangeToRule(
     rule: EcosystemAgnosticRule,
-    optCoreTAC: CoreTACProgram,
+    unoptimizedCodeTac: CoreTACProgram,
     isSatisfyRule: Boolean
 ): SolanaEncodedRule {
     return if (rule.ruleType is SpecType.Single.GeneratedFromBasicRule) {
@@ -430,20 +430,20 @@ private fun attachRangeToRule(
         // Since this rule has been generated, we need to first get the name of the parent rule, and resolve the range
         // based on that.
         val ruleRange = DebugInfoReader.findFunctionRangeInSourcesDir(parentRule.ruleIdentifier.displayName)
-            ?: getRuleRange(optCoreTAC) // If debug information is not available, reads the range from CVT_rule_location
+            ?: getRuleRange(unoptimizedCodeTac) // If debug information is not available, reads the range from CVT_rule_location
         val newBaseRule = parentRule.copy(range = ruleRange)
         val ruleType = (rule.ruleType as SpecType.Single.GeneratedFromBasicRule).copyWithOriginalRule(newBaseRule)
         SolanaEncodedRule(
             rule = rule.copy(ruleType = ruleType, isSatisfyRule = isSatisfyRule, range = ruleRange),
-            code = optCoreTAC,
+            code = unoptimizedCodeTac,
         )
     } else {
         val ruleRange: Range =
             DebugInfoReader.findFunctionRangeInSourcesDir(rule.ruleIdentifier.displayName)
-                ?: getRuleRange(optCoreTAC) // If debug information is not available, reads the range from CVT_rule_location
+                ?: getRuleRange(unoptimizedCodeTac) // If debug information is not available, reads the range from CVT_rule_location
         SolanaEncodedRule(
             rule = rule.copy(isSatisfyRule = isSatisfyRule, range = ruleRange),
-            code = optCoreTAC,
+            code = unoptimizedCodeTac,
         )
     }
 }

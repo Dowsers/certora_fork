@@ -43,6 +43,7 @@ import sbf.tac.*
 import scene.NamedCode
 import smtlibutils.data.ProcessDifficultiesResult
 import solver.CounterexampleModel
+import solver.InterpretedCounterexampleModel
 import solver.SMTCounterexampleModel
 import spec.CVLExpToTACExprMeta
 import statistics.data.CallIdWithName
@@ -2126,6 +2127,7 @@ fun addCounterexampleData(cexModel: SMTCounterexampleModel, codeMap: CodeMap): C
 fun addCounterexampleData(cexModel: CounterexampleModel, codeMap: CodeMap): CodeMap =
     when(cexModel) {
         is SMTCounterexampleModel -> addCounterexampleData(cexModel, codeMap)
+        is InterpretedCounterexampleModel -> codeMap
         is CounterexampleModel.Empty -> codeMap
     }
 
