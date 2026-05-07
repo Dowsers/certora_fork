@@ -220,7 +220,9 @@ object ProverInputPreprocessor {
             val internalSummaries: List<Pair<CVL.SummarySignature.Internal, SpecCallSummary.ExpressibleInCVL>>,
             val externalSummaries: List<Pair<CVL.SummarySignature.External, SpecCallSummary.ExpressibleInCVL>>,
             val unresolvedSummaries: List<Pair<CVL.SummarySignature.External, SpecCallSummary.ExpressibleInCVL>>,
-            val instances: List<Pair<String, String>> // map addresses to names
+            val instances: List<Pair<String, String>>, // map addresses to names
+            val importedContracts: List<CVLImportedContract>,
+            val linkEntries: List<CVLLinkEntry>
         )
 
         PrintedAST(
@@ -233,7 +235,9 @@ object ProverInputPreprocessor {
             ast.internalSummaries.toList(),
             ast.externalSummaries.toList(),
             ast.unresolvedSummaries.toList(),
-            contractSource.instances().map { it.address.toString(16) to it.name }
+            contractSource.instances().map { it.address.toString(16) to it.name },
+            ast.importedContracts,
+            ast.linkEntries
         ).let { dumpIt ->
             val serialized = lspJsonConfig.encodeToString(dumpIt)
 
