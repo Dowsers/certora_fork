@@ -101,8 +101,6 @@ sealed class CounterexampleModel: AmbiSerializable {
         override val reachableNBIds: Set<NBId> = emptySet()
         override val unreachableNBIds: Set<NBId> = emptySet()
         override val havocedVariables: Set<TACSymbol.Var> = emptySet()
-        override fun cvlAssignments(fullyProcessedTAC: CoreTACProgram): Map<String, TACValue> = emptyMap()
-
         private fun readResolve(): Any = Empty
     }
 
@@ -340,8 +338,6 @@ sealed class CounterexampleModel: AmbiSerializable {
                 ?.let(TACValue.PrimitiveValue::Integer)
         }
     }
-
-    abstract fun cvlAssignments(fullyProcessedTAC: CoreTACProgram): Map<String, TACValue>
 
     companion object {
 

@@ -26,7 +26,7 @@ import sbf.domains.MemorySummaries
 private val globals = GlobalVariables(DefaultElfFileView)
 private val memSummaries = MemorySummaries()
 
-class NarrowMaskedLoadsTest {
+class ResizeMaskedLoadsTest {
 
     private fun hasOnlyLoadsOfWidth(cfg: SbfCFG, width: Short): Boolean {
         for (b in cfg.getBlocks().values) {
@@ -87,7 +87,7 @@ class NarrowMaskedLoadsTest {
 
 
         println("Before\n$cfg")
-        narrowMaskedLoads(cfg, globals, memSummaries)
+        resizeMaskedLoads(cfg, globals, memSummaries)
         println("After\n$cfg")
         Assertions.assertEquals(false, hasMaskInst(cfg))
         Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 1))
@@ -131,7 +131,7 @@ class NarrowMaskedLoadsTest {
 
 
         println("Before\n$cfg")
-        narrowMaskedLoads(cfg, globals, memSummaries)
+        resizeMaskedLoads(cfg, globals, memSummaries)
         println("After\n$cfg")
         Assertions.assertEquals(false, hasMaskInst(cfg))
         Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 1))
@@ -170,7 +170,7 @@ class NarrowMaskedLoadsTest {
 
 
         println("Before\n$cfg")
-        narrowMaskedLoads(cfg, globals, memSummaries)
+        resizeMaskedLoads(cfg, globals, memSummaries)
         println("After\n$cfg")
         Assertions.assertEquals(true, hasMaskInst(cfg))
     }
@@ -216,7 +216,7 @@ class NarrowMaskedLoadsTest {
 
 
         println("Before\n$cfg")
-        narrowMaskedLoads(cfg, globals, memSummaries)
+        resizeMaskedLoads(cfg, globals, memSummaries)
         println("After\n$cfg")
         Assertions.assertEquals(false, hasMaskInst(cfg))
         Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 4))
@@ -256,7 +256,7 @@ class NarrowMaskedLoadsTest {
 
 
         println("Before\n$cfg")
-        narrowMaskedLoads(cfg, globals, memSummaries)
+        resizeMaskedLoads(cfg, globals, memSummaries)
         println("After\n$cfg")
         Assertions.assertEquals(true, hasMaskInst(cfg))
         Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 8))
@@ -313,7 +313,7 @@ class NarrowMaskedLoadsTest {
 
 
         println("Before\n$cfg")
-        narrowMaskedLoads(cfg, globals, memSummaries)
+        resizeMaskedLoads(cfg, globals, memSummaries)
         println("After\n$cfg")
         Assertions.assertEquals(false, hasMaskInst(cfg))
         Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 2))
@@ -337,6 +337,52 @@ class NarrowMaskedLoadsTest {
      *   if (r1 == 0) ...
      * ```
      **/
+    /**
+     * ```
+     *   *(u64 *) (r10 - 56) = 5    // wide store
+     *   r1 = *(u8 *) (r10 - 56)    // narrow load
+     *   r1 = r1 and 0xFF           // mask matching the narrow width
+     *   if (r1 == 0) ...
+     * ```
+     *
+     * Should be transformed into (the load is widened to match the store; the mask survives):
+     *
+     * ```
+     *   *(u64 *) (r10 - 56) = 5
+     *   r1 = *(u64 *) (r10 - 56)
+     *   r1 = r1 and 0xFF
+     *   if (r1 == 0) ...
+     * ```
+     **/
+    @Test
+    fun `store of 8 bytes + load of 1 byte masked by 0xFF`() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                BinOp.ADD(r10, 4096)
+                r2 = r10
+                r2[-56, 8] = 5
+                r1 = r10[-56, 1]
+                BinOp.AND(r1, 255)
+                br(CondOp.NE(r1, 0), 1, 2)
+            }
+            bb(1) {
+                goto(3)
+            }
+            bb(2) {
+                goto(3)
+            }
+            bb(3) {
+                exit()
+            }
+        }
+
+        println("Before\n$cfg")
+        resizeMaskedLoads(cfg, globals, memSummaries)
+        println("After\n$cfg")
+        Assertions.assertEquals(true, hasMaskInst(cfg))
+        Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 8))
+    }
+
     @Test
     fun `two adjacent 4-byte stores + load of 8 bytes masked by 0xFFFF_FFFF`() {
         val cfg = SbfTestDSL.makeCFG("entrypoint") {
@@ -360,7 +406,7 @@ class NarrowMaskedLoadsTest {
         }
 
         println("Before\n$cfg")
-        narrowMaskedLoads(cfg, globals, memSummaries)
+        resizeMaskedLoads(cfg, globals, memSummaries)
         println("After\n$cfg")
         Assertions.assertEquals(false, hasMaskInst(cfg))
         Assertions.assertEquals(true, hasOnlyLoadsOfWidth(cfg, 4))

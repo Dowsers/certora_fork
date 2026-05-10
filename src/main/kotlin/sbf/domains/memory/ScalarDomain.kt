@@ -1034,7 +1034,9 @@ class ScalarDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> private con
                                 CVTCore.SATISFY, CVTCore.SANITY -> {}
                                 CVTCore.SAVE_SCRATCH_REGISTERS -> saveScratchRegisters()
                                 CVTCore.RESTORE_SCRATCH_REGISTERS -> restoreScratchRegisters()
-                                CVTCore.MASK_64, CVTCore.NONDET_ACCOUNT_INFO -> {
+                                CVTCore.MASK_64,
+                                CVTCore.IS_ACCOUNT_WRITTEN,
+                                CVTCore.NONDET_ACCOUNT_INFO -> {
                                     summarizeCall(locInst)
                                 }
                                 CVTCore.NONDET_SOLANA_ACCOUNT_SPACE -> {

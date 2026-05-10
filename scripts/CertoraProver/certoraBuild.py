@@ -1448,7 +1448,7 @@ class CertoraBuildGenerator:
             if not self.context.strict_solc_optimizer and self.get_solc_via_ir_value(contract_file_path):
                 # The default optimizer steps (taken from libsolidity/interface/OptimiserSettings.h) but with the
                 # full inliner step removed
-                solc0_8_34_to_0_8_34 = ("dfDvulfnTUtnIfxa[r]EscLMVcul[j]Trpeulxa[r]cLvifMCTUca[r]LSsTFOtfDnca[r]"
+                solc0_8_34_to_0_8_35 = ("dfDvulfnTUtnIfxa[r]EscLMVcul[j]Trpeulxa[r]cLvifMCTUca[r]LSsTFOtfDnca[r]"
                                         "IulcscCTUtvifMx[scCTUt]TOntnfDIulvifMjmul[jul]VcTOculjmul")
                 solc0_8_26_to_0_8_33 = ("dhfoDgvulfnTUtnIfxa[r]EscLMVcul[j]Trpeulxa[r]cLCTUca[r]LSsTFOtfDnca[r]" +
                                         "IulcscCTUtx[scCTUt]TOntnfDIuljmul[jul]VcTOculjmul")
@@ -1501,8 +1501,8 @@ class CertoraBuildGenerator:
                     yul_optimizer_steps = solc0_8_13_to_0_8_25
                 elif minor == 8 and 26 <= patch <= 33:
                     yul_optimizer_steps = solc0_8_26_to_0_8_33
-                elif minor == 8 and 34 <= patch <= 34:
-                    yul_optimizer_steps = solc0_8_34_to_0_8_34
+                elif minor == 8 and 34 <= patch <= 35:
+                    yul_optimizer_steps = solc0_8_34_to_0_8_35
                 assert yul_optimizer_steps is not None, \
                     'Yul Optimizer steps missing for requested Solidity version. Please contact Certora team.'
 
@@ -2509,7 +2509,24 @@ class CertoraBuildGenerator:
 
     @staticmethod
     def get_primary_contract_from_sdc(contracts: List[ContractInSDC], primary: str, primary_file: str) -> List[ContractInSDC]:
-        return [x for x in contracts if x.name == primary and Util.abs_norm_path(x.original_file) == Util.abs_norm_path(primary_file)]
+        name_matched = [x for x in contracts if x.name == primary]
+        if not name_matched:
+            return []
+        primary_parts = Path(Util.abs_norm_path(primary_file)).parts
+        best = None
+        best_suffix_len = -1
+        for x in name_matched:
+            x_parts = Path(Util.abs_norm_path(x.original_file)).parts
+            suffix_len = 0
+            for a, b in zip(reversed(primary_parts), reversed(x_parts)):
+                if a == b:
+                    suffix_len += 1
+                else:
+                    break
+            if suffix_len > best_suffix_len:
+                best_suffix_len = suffix_len
+                best = x
+        return [best] if best is not None else []
 
     @staticmethod
     def generate_library_import(file_absolute_path: str, library_name: str) -> str:

@@ -79,6 +79,9 @@ object SbfMeta {
     // the load of 8 bytes does match the bytes written by last store
     // which was at the same offset but with width N
     val MISMATCHED_LOAD = MetaKey<Int>("mismatched_load")
+    // a narrow load (width 1/2/4) whose previous store at the same offset was likely
+    // wider (value N is the inferred store width); used to widen the load.
+    val WIDER_STORED_LOAD = MetaKey<Int>("wider_stored_load")
     // These keys have empty strings as values. The values are irrelevant
     val HINT_OPTIMIZED_WIDE_STORE =  MetaKey<Unit>("hint_optimized_wide_store")
     val MEMCPY_PROMOTION = MetaKey<Unit>("promoted_memcpy")
@@ -126,7 +129,8 @@ fun toString(metaData: MetaData): String {
             }
             SbfMeta.CALL_ID,
             SbfMeta.INLINED_FUNCTION_NAME, SbfMeta.INLINED_FUNCTION_SIZE,
-            SbfMeta.MISMATCHED_LOAD -> {
+            SbfMeta.MISMATCHED_LOAD,
+            SbfMeta.WIDER_STORED_LOAD -> {
                 strB.append(" /*${k.name}=${v}*/")
             }
             SbfMeta.SBF_ADDRESS -> {

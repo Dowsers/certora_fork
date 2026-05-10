@@ -460,6 +460,7 @@ class DataDependencyAnalysis(private val target: LocatedSbfInstruction,
                             CVTCore.SANITY ->
                                 inState
                             CVTCore.NONDET_ACCOUNT_INFO, CVTCore.MASK_64,
+                            CVTCore.IS_ACCOUNT_WRITTEN,
                             CVTCore.NONDET_SOLANA_ACCOUNT_SPACE, CVTCore.ALLOC_SLICE ->
                                 applyDDASummaries(inState, cmd)
                             CVTCore.SAVE_SCRATCH_REGISTERS ->

@@ -296,7 +296,9 @@ enum class ReportTypes(val loggerCategory: LoggerTypes) : DumpType, CategoryName
     INLINE_STATIC_MEMORY(LoggerTypes.WASM),
     RETURN_COPY_COLLAPSE(LoggerTypes.EQUIVALENCE),
     RETURN_COPY_LABELLING(LoggerTypes.EQUIVALENCE),
-    REMOVE_SIMPLE_CONSTANT_VARIABLES(LoggerTypes.OPTIMIZE)
+    TAC_PROGRAM_INTERPRETER(LoggerTypes.TAC_PROGRAM_INTERPRETER),
+    REMOVE_SIMPLE_CONSTANT_VARIABLES(LoggerTypes.OPTIMIZE),
+    EXPR_UNFOLDING(LoggerTypes.NORMALIZER)
     ;
 
     override fun isEnabled(): Boolean = this == NONE || Config.isEnabledLogger(this.loggerCategory) || Config.isEnabledReport(this)

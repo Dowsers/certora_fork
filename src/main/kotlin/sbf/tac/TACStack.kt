@@ -24,6 +24,7 @@ import sbf.cfg.SbfMeta
 import sbf.disassembler.SbfRegister
 import sbf.domains.*
 import vc.data.*
+import vc.data.tacexprutil.asSym
 import java.math.BigInteger
 
 /**
@@ -77,7 +78,7 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
         val msg = "Warning: this read on the stack does not match the last written bytes, " +
                   "but the pointer analysis is able to over-approximate the bytes from the last writes. " +
                   "Because of this over-approximation spurious counterexamples are possible."
-        listOf(Debug.ptaSplitOrMerge(msg, listOf(lhs)))
+        listOf(Debug.ptaSplitOrMerge(msg, resolutions.values.filter { !it.exact }.mapNotNull { it.expr.asSym as? TACSymbol.Var } ))
     } else {
         listOf()
     }

@@ -19,6 +19,8 @@
 package vc.data
 
 import com.certora.collect.*
+import config.Config
+import config.DestructiveOptimizationsModeEnum
 import datastructures.stdcollections.*
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
@@ -1309,15 +1311,21 @@ sealed class TACCmd : Serializable, ITACCmd {
             override fun toString(): String = super.toString() // opt out of generated toString
             override fun withMeta(metaMap: MetaMap) = this.copy(meta = metaMap)
 
+            @OptIn(Config.DestructiveOptimizationsOption::class)
             fun isViolated(model: CounterexampleModel): Boolean {
                 return when (val tv = model.valueAsTACValue(this.o)) {
                     TACValue.False -> true
                     TACValue.True -> false
                     else -> {
-                        throw CertoraException(
-                            type = CertoraErrorType.COUNTEREXAMPLE,
-                            msg = "Assert command with unexpected model assignment (`$tv`): `$this`"
-                        )
+                        if(Config.DestructiveOptimizationsMode.get() == DestructiveOptimizationsModeEnum.TWOSTAGE_INTERPRETED){
+                            //We allow that an assert may not have a value, which means it wasn't violated.
+                            false
+                        } else{
+                            throw CertoraException(
+                                type = CertoraErrorType.COUNTEREXAMPLE,
+                                msg = "Assert command with unexpected model assignment (`$tv`): `$this`"
+                            )
+                        }
                     }
                 }
             }

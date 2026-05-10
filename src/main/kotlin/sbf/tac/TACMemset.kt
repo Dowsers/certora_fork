@@ -70,8 +70,10 @@ internal fun<TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANod
         vFac.mkFreshIntVar()
     }
     val cmds = mutableListOf<TACCmd.Simple>()
+    val r1 = sbfTacB.mkVar(SbfRegister.R1)
     for (i in 0 until len) {
-        cmds += mapStores(mapV, sbfTacB.mkVar(SbfRegister.R1), PTAOffset(i), valueS)
+        cmds += mapStores(mapV, r1, PTAOffset(i), valueS)
     }
+    cmds += accounts.updateWrite(r1)
     return cmds
 }

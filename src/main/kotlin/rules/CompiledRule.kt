@@ -28,6 +28,7 @@ import cache.CacheManager
 import cache.VerifyingCacheManager
 import cli.SanityValues
 import config.Config
+import config.DestructiveOptimizationsModeEnum
 import config.OUTPUT_NAME_DELIMITER
 import config.ReportTypes
 import datastructures.NonEmptyList
@@ -147,6 +148,7 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
             scene: ISceneIdentifiers,
             compiledRule: CompiledRule<*>,
             generateReport: Boolean = true,
+            unoptimizedTac: CoreTACProgram? = null
         ): Result<RuleCheckResult.Single> {
             return toCheckResult(
                 scene,
@@ -165,7 +167,8 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
                     val requireWithoutReasonAlerts = collectRequireWithoutReasonNotifications(compiledRule)
                     isAlwaysRevertingAlert + requireWithoutReasonAlerts + sanityAlerts
                 }.orEmpty(),
-                generateReport = generateReport
+                generateReport = generateReport,
+                unoptimizedTac = unoptimizedTac
             )
         }
 
@@ -174,6 +177,7 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
             rule: IRule,
             extraAlerts: List<RuleAlertReport> = emptyList(),
             generateReport: Boolean = true,
+            unoptimizedTac: CoreTACProgram? = null
         ): Result<RuleCheckResult.Single> = result.mapCatching { (res, time) ->
             if (generateReport) {
                 // output HTML files
@@ -199,7 +203,15 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
             }?.flatten().orEmpty()
             val alerts = listOfNotNull(isSolverResultFromCacheAlert, isEmptyCodeAlert) + imprecisions + extraAlerts
             if (generateReport && !Config.CoinbaseFeaturesMode.get()) {
-                generateSingleResult(scene, rule, res, time, isOptimizedRuleFromCache, isSolverResultFromCache, alerts)
+                generateSingleResult(
+                    scene = scene,
+                    rule = rule,
+                    vResult = res,
+                    unoptimizedTac = unoptimizedTac,
+                    verifyTime = time,
+                    isOptimizedRuleFromCache = isOptimizedRuleFromCache,
+                    isSolverResultFromCache = isSolverResultFromCache,
+                    ruleAlerts = alerts)
             } else {
                 val details = (res as? Verifier.JoinedResult.Success)?.details().orEmpty()
                 val dumpGraphLink = RuleCheckInfo.basicDumpGraphLinkOf(rule, res.finalResult)
@@ -299,9 +311,19 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
      *
      * See [CompiledRule.optimizeNonLocal] for the list of non-local optimizations.
      */
+    @OptIn(Config.DestructiveOptimizationsOption::class)
     @Suppress("SuspendFunSwallowedCancellation") // mapCheckResult deals with CancellationException
     open suspend fun check(scene: SceneIdentifiers, nonLocalOptimizationsOnly: Boolean = false): CompileRuleCheckResult = runCatching {
         logger.info { "Checking compiled rule ${rule.declarationId}" }
+
+        /**
+         * In interpreted mode, we need to add the twostage meta _after_ the cache key was computed over the TAC.
+         * See also comment in [rules.RuleChecker.computeAndMergeAssertResults] for mode
+         * [DestructiveOptimizationsModeEnum.TWOSTAGE_INTERPRETED]
+         */
+        val tac = tac.letIf(Config.DestructiveOptimizationsMode.get() == DestructiveOptimizationsModeEnum.TWOSTAGE_INTERPRETED) {
+            tac.prepareForTwoStageInterpreted()
+        }
         /**
          * NOTE: At this point, we assume that summaries and ghost hooks have already been handled.
          * */
@@ -676,23 +698,23 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
                 emptyList()
             }
         }
-
-
         /**
          * Generates a single-result for the rule [rule] with the result [SolverResult], based on [vResult]
          * which took to verify in [verifyTime].
          */
+        @OptIn(Config.DestructiveOptimizationsOption::class)
         suspend fun generateSingleResult(
             scene: ISceneIdentifiers,
             rule: IRule,
             vResult: Verifier.JoinedResult,
+            unoptimizedTac: CoreTACProgram?,
             verifyTime: VerifyTime,
             isOptimizedRuleFromCache: IsFromCache,
             isSolverResultFromCache: IsFromCache,
             ruleAlerts: List<RuleAlertReport>,
         ): RuleCheckResult.Single {
             val origProgWithAssertIdMeta = addAssertIDMetaToAsserts(vResult.simpleSimpleSSATAC, rule)
-            val callResolutionTableFactory = CallResolutionTable.Factory(origProgWithAssertIdMeta, scene, rule)
+            val callResolutionTableFactory = CallResolutionTable.Factory(unoptimizedTac ?: origProgWithAssertIdMeta, scene, rule)
             val unsatCoreDumpLinkAndStats = if (vResult.unsatCoreSplitsData?.isNotEmpty() == true) {
                 RuleCheckInfo.BasicInfo.computeAndDumpUnsatCoreCodeMap(rule, vResult.unsatCoreSplitsData!!, vResult.simpleSimpleSSATAC)
             } else {
@@ -703,11 +725,12 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
                 is Verifier.JoinedResult.Failure -> {
                     try {
                         val ruleCheckInfo = WithExamplesData(
-                            scene,
-                            rule,
-                            vResult,
-                            origProgWithAssertIdMeta,
-                            callResolutionTableFactory,
+                            scene = scene,
+                            rule = rule,
+                            res = vResult,
+                            optimizedProgram = origProgWithAssertIdMeta,
+                            unoptimizedProgram = unoptimizedTac,
+                            callResolutionTableFactory = callResolutionTableFactory,
                             isOptimizedRuleFromCache = isOptimizedRuleFromCache,
                             isSolverResultFromCache = isSolverResultFromCache
                         )
@@ -724,7 +747,7 @@ open class CompiledRule<R: SingleRule> protected constructor(val rule: R, val ta
                             ruleCheckInfo = ruleCheckInfo,
                             verifyTime = verifyTime,
                             result = vResult.finalResult,
-                            ruleAlerts = ruleAlerts + listOfNotNull(ruleCheckInfo.examples.head.callTrace?.alertReport)
+                            ruleAlerts = ruleAlerts + ruleCheckInfo.examples.head.alerts
                         )
                     } catch (e: CancellationException) {
                         // do not interfere with the coroutine cancellation mechanism

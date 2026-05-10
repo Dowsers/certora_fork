@@ -37,10 +37,11 @@ import sbf.domains.MemorySummaries
 import kotlin.toULong
 
 /**
- * Narrow loads in [cfg] that satisfy [pred].
+ * Narrow or widen loads in [cfg] that satisfy [pred].
+ *
  **/
 @TestOnly
-fun narrowMaskedLoads(
+fun resizeMaskedLoads(
     cfg: MutableSbfCFG,
     globals: GlobalVariables,
     memSummaries: MemorySummaries,
@@ -57,14 +58,14 @@ fun narrowMaskedLoads(
     )
 
     for (b in cfg.getMutableBlocks().values) {
-        narrowMaskedLoads(b, scalarAnalysis, pred)
+        resizeMaskedLoads(b, scalarAnalysis, pred)
     }
 }
 
 /**
- * Narrow loads in [b] that satisfy [pred].
+ * Narrow or widen loads in [b] that satisfy [pred].
  **/
-fun<D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> narrowMaskedLoads(
+fun<D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> resizeMaskedLoads(
     b: MutableSbfBasicBlock,
     scalarAnalysis: IAnalysis<D>,
     pred: (SbfInstruction.Mem) -> Boolean
@@ -80,9 +81,12 @@ fun<D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> narrowMaskedLoads(
         }
     )
 
-    // Add some annotations required by `narrowMaskedLoad`
+    // Add some annotations required by `narrowMaskedLoad` and `widenMaskedLoad`
     findMismatchedLoads(b, types).forEach { locInst ->
         // don't invalidate other locInst's pos since we replace one instruction with another
+        b.replaceInstruction(locInst.pos, locInst.inst)
+    }
+    findWiderStoredLoads(b, types).forEach { locInst ->
         b.replaceInstruction(locInst.pos, locInst.inst)
     }
 
@@ -95,8 +99,17 @@ fun<D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> narrowMaskedLoads(
         }
     }
 
-    // Remove annotations added by `annotateMismatchedLoads`
-    b.removeAnnotations(listOf(SbfMeta.MISMATCHED_LOAD))
+    // Narrowing only fires on 8-byte loads; widening only on 1/2/4-byte loads, so the
+    // two passes operate on disjoint instructions.
+    for (locInst in b.getLocatedInstructions().reversed()) {
+        val inst = locInst.inst
+        if (inst is SbfInstruction.Mem && inst.isLoad && pred(inst)) {
+            widenMaskedLoad(b, locInst)
+        }
+    }
+
+    // Remove annotations added above
+    b.removeAnnotations(listOf(SbfMeta.MISMATCHED_LOAD, SbfMeta.WIDER_STORED_LOAD))
 }
 
 /**
@@ -122,7 +135,7 @@ private fun narrowMaskedLoad(block: MutableSbfBasicBlock, loadLocInst: LocatedSb
     val loadInst = loadLocInst.inst
     check(loadInst is SbfInstruction.Mem && loadInst.isLoad)
 
-    val lhs = loadInst.value as Value.Reg
+    var lhs = loadInst.value as Value.Reg
 
     // It requires first to call `annotateMismatchedLoads`
     val numBytesLastStore = loadInst.metaData.getVal(SbfMeta.MISMATCHED_LOAD) ?: return false
@@ -133,12 +146,23 @@ private fun narrowMaskedLoad(block: MutableSbfBasicBlock, loadLocInst: LocatedSb
     }
 
     // Find the single use of the destination register after the load
-    val use = getNextUseInterBlock(block, loadLocInst.pos+1, lhs)
+    var use = getNextUseInterBlock(block, loadLocInst.pos+1, lhs)
         ?: return false
 
     // The transformation must be intra-block
     if (use.label != block.getLabel()) {
         return false
+    }
+
+    // Skip optionally an assignment
+    val useInst = use.inst
+    if (useInst is SbfInstruction.Bin && useInst.op == BinOp.MOV) {
+        use = getNextUseInterBlock(block, use.pos + 1, useInst.dst)
+            ?: return false
+        if (use.label != block.getLabel()) {
+            return false
+        }
+        lhs = useInst.dst
     }
 
     // Check if the use is a mask with `0x1`, `0xFF`, `0xFFFF`, or `0xFFFF_FFFF`
@@ -159,6 +183,59 @@ private fun narrowMaskedLoad(block: MutableSbfBasicBlock, loadLocInst: LocatedSb
     // Remove the now-redundant mask instruction
     block.removeAt(use.pos)
 
+    return true
+}
+
+/**
+ * Inverse of [narrowMaskedLoad]. Widens a narrow load (width 1/2/4) when a previous store at the
+ * same stack address was wider, and the load is *immediately* followed by a mask matching the
+ * narrow width.
+ *
+ * For instance, replace this pattern
+ * ```
+ * *(u64*) (r10-600) = r2     // wide store
+ * ...
+ * r2 = *(u8*)  (r10-600)     // narrow load
+ * r2 = r2 & 0xFF             // mask matching the narrow width
+ * ```
+ * with
+ * ```
+ * *(u64*) (r10-600) = r2
+ * ...
+ * r2 = *(u64*) (r10-600)     // widened to match the store
+ * r2 = r2 & 0xFF             // mask preserved
+ * ```
+ */
+private fun widenMaskedLoad(block: MutableSbfBasicBlock, loadLocInst: LocatedSbfInstruction): Boolean {
+    check(block.getLabel() == loadLocInst.label)
+    val loadInst = loadLocInst.inst
+    check(loadInst is SbfInstruction.Mem && loadInst.isLoad)
+
+    val targetWidth = loadInst.metaData.getVal(SbfMeta.WIDER_STORED_LOAD) ?: return false
+    val narrowWidth = loadInst.access.width.toInt()
+    if (narrowWidth >= targetWidth) {
+        return false
+    }
+    val lhs = loadInst.value as Value.Reg
+
+    // Mask must be the instruction immediately following the load.
+    val instructions = block.getLocatedInstructions()
+    if (loadLocInst.pos + 1 >= instructions.size) {
+        return false
+    }
+    val nextInst = instructions[loadLocInst.pos + 1].inst
+    val expectedMask = when (narrowWidth) {
+        1 -> 0xFFUL
+        2 -> 0xFFFFUL
+        4 -> 0xFFFFFFFFUL
+        else -> return false
+    }
+    if (!isMaskWithImmediate(nextInst, lhs, expectedMask)) {
+        return false
+    }
+
+    val widenedLoad = loadInst.copy(access = loadInst.access.copy(width = targetWidth.toShort()))
+    block.replaceInstruction(loadLocInst.pos, widenedLoad)
     return true
 }
 
@@ -247,6 +324,53 @@ where D: AbstractDomain<D>,
                     newInsts.add(locInst.copy(inst = inst.copy(metaData = inst.metaData + (SbfMeta.MISMATCHED_LOAD to n))))
                     break
                 }
+            }
+        }
+    }
+    return newInsts
+}
+
+/**
+ * Return narrow loads (width 1/2/4 from the stack) whose previous store at the same offset was
+ * likely wider. Selection is heuristic-based: false positives only cause an extra-wide load whose
+ * upper bytes are masked away by the surviving `and`, so soundness is preserved.
+ */
+private fun<D, TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> findWiderStoredLoads(
+    b: SbfBasicBlock,
+    types: AnalysisRegisterTypes<D, TNum, TOffset>,
+): List<LocatedSbfInstruction>
+where D: AbstractDomain<D>,
+      D: ScalarValueProvider<TNum, TOffset> {
+
+    val newInsts = mutableListOf<LocatedSbfInstruction>()
+    for (locInst in b.getLocatedInstructions()) {
+        val inst = locInst.inst
+        if (inst !is SbfInstruction.Mem || !inst.isLoad) {
+            continue
+        }
+        val width = inst.access.width.toInt()
+        if (width != 1 && width != 2 && width != 4) {
+            continue
+        }
+
+        val baseTy = types.typeAtInstruction(locInst, inst.access.base) as? SbfType.PointerType.Stack
+            ?: continue
+        val resolvedOffset = baseTy.offset.add(inst.access.offset.toLong()).toLongOrNull()
+            ?: continue
+        val scalarAbsVal = types.getAbstractState(locInst) ?: continue
+
+        // Pick the largest target width in {8, 4, 2} (greater than `width`) such that bytes
+        // immediately after the load's window may be initialized -- evidence the store was wider.
+        for (target in listOf(8, 4, 2)) {
+            if (target <= width) {
+                break
+            }
+            val tailSize = (target - width).toULong()
+            if (scalarAbsVal.mayStackBeInitialized(resolvedOffset + width, tailSize)) {
+                newInsts.add(
+                    locInst.copy(inst = inst.copy(metaData = inst.metaData + (SbfMeta.WIDER_STORED_LOAD to target)))
+                )
+                break
             }
         }
     }

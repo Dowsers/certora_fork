@@ -907,6 +907,7 @@ data class NPDomain<D, TNum, TOffset>(
                         CVTCore.NONDET_SOLANA_ACCOUNT_SPACE,
                         CVTCore.ALLOC_SLICE,
                         CVTCore.NONDET_ACCOUNT_INFO,
+                        CVTCore.IS_ACCOUNT_WRITTEN,
                         CVTCore.MASK_64 -> {
                             summarizeCall(
                                 locatedInst,

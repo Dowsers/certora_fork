@@ -114,19 +114,40 @@ class RuleChecker(
                         DestructiveOptimizationsModeEnum.TWOSTAGE_CHECKED -> twoStageDestructiveOptimizationsCheck(
                             scene,
                             compiledCVLRule
-                        )
+                        ) to null
+                        DestructiveOptimizationsModeEnum.TWOSTAGE_INTERPRETED -> {
+                            /**
+                             * Ideally, we would want to call
+                             * val annotated = compiledCVLRule.tac.prepareForTwoStageCVL()
+                             * to only call [prepareForTwoStageInterpreted] once. Currently,
+                             * we call it below and again in [rules.CompiledRule.check].
+                             *
+                             * Calling it once here leads to cache misses [prepareForTwoStageInterpreted] changes
+                             * the cache key.
+                             */
+                            val annotated = compiledCVLRule.tac
+                            CompiledRule.create(
+                                compiledCVLRule.rule,
+                                annotated.withDestructiveOptimizations(true),
+                                compiledCVLRule.liveStatsReporter
+                            ).check(scene.toIdentifiers()) to annotated
+                                .withDestructiveOptimizations(false)
+                                .prepareForTwoStageInterpreted()
+                        }
 
                         DestructiveOptimizationsModeEnum.ENABLE ->
                             CompiledRule.create(
                                 compiledCVLRule.rule,
                                 compiledCVLRule.tac.withDestructiveOptimizations(true),
                                 compiledCVLRule.liveStatsReporter
-                            ).check(scene.toIdentifiers())
+                            ).check(scene.toIdentifiers()) to null
 
-                        DestructiveOptimizationsModeEnum.DISABLE -> compiledCVLRule.check(scene.toIdentifiers())
+                        DestructiveOptimizationsModeEnum.DISABLE -> compiledCVLRule.check(scene.toIdentifiers()) to null
+                    }.let {
+                        it.first.toCheckResult(scene, compiledCVLRule, unoptimizedTac = it.second)
+                            .getOrElse { RuleCheckResult.Error(compiledCVLRule.rule, it) }
                     }
-                        .toCheckResult(scene, compiledCVLRule)
-                        .getOrElse { RuleCheckResult.Error(compiledCVLRule.rule, it) }
+
                 }
 
                 SDCollectorFactory.collector().recordAny("${TimeSinceStart()}", "finishTime", compiledCVLRule.tac.name)
