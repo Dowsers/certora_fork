@@ -18,6 +18,8 @@ import json
 import os
 import re
 import uuid
+from collections import UserDict
+from collections.abc import MutableMapping
 
 import requests
 import sys
@@ -937,10 +939,10 @@ class CloudVerification:
         response = None
         print("\nConnecting to server...")
         cloud_logger.debug(f"requesting verification from {verify_url}")
-        headers = {
+        headers: MutableMapping[str, str | bytes] = UserDict({
             'Authorization': f'Bearer {self.context.key}',
             "Content-Type": "application/json"
-        }
+        })
 
         # retry on request timeout or 502 (must take no more than 3 minutes)
         # print error message on the 3rd exception and return
