@@ -268,7 +268,7 @@ fun levelZeroOptimizations(coreTAC: CoreTACProgram, isSatisfyRule: Boolean): Cor
             ArtifactManagerFactory().dumpCodeArtifacts(
                 it.ref,
                 ReportTypes.SBF_TO_TAC,
-                StaticArtifactLocation.Reports,
+                StaticArtifactLocation.Outputs,
                 DumpTime.AGNOSTIC
             )
         }

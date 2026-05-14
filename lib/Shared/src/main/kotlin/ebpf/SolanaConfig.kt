@@ -530,12 +530,12 @@ object SolanaConfig {
     ) {}
 
     val PrintSbfToJson = object : ConfigType.BooleanCmdLine(
-        false,
+        true,
         Option(
             "solanaPrintSbfToJson",
             true,
             "Generate a json file with the final SBF CFG after inlining and slicing and " +
-                "stores it in the \"Reports\" directory. [default: false]"
+                "stores it in the \"outputs\" directory. [default: true]"
         )
     ) {}
 

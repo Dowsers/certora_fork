@@ -51,25 +51,34 @@ private val prettyJson = Json { prettyPrint = true }
  * ```
  *
  * Each instruction is a JSON object with an `"inst"` field holding [SbfInstruction.toString]
- * and, when [MetaData] is non-empty, a numeric `"meta"` field whose value is the key into
- * the top-level `"metas"` object.
+ * and, when there is associated [MetaData] or register-type information, a numeric `"meta"`
+ * field whose value is the key into the top-level `"metas"` object.
  *
  * Metadata values are encoded as:
  * - Flag (Unit) keys  -> `true`
  * - Boolean keys      -> `true` / `false`
  * - Numeric keys      -> JSON number (unquoted)
  * - Everything else   -> JSON string via [toString]
+ *
+ * The metadata also includes register-type info for each typed slot in the instruction.
+ * Keys are register names (`"r0"`, `"r1"`, ...). When the register has only a pre-execution
+ * type the value is the type string itself (e.g. `"r1": "num(top)"`). When the register has
+ * a post-execution type (the destination of [SbfInstruction.Bin], [SbfInstruction.Un], or a
+ * load [SbfInstruction.Mem]), the value is a nested object with `"pre"` and `"post"` keys
+ * (e.g. `"r0": {"pre": "num(top)", "post": "num(0)"}`); the `"pre"` key is omitted when its
+ * type is unknown. Slots whose type is unknown emit no entry.
  */
 fun SbfCFG.toJson(): String {
     var nextMetaId = 0
     val metaJsonToId = mutableMapOf<JsonObject, Int>()  // dedup key: JSON repr of metadata
     val metas = mutableMapOf<Int, JsonObject>()
 
-    fun metaIdFor(metaData: MetaData): Int? {
-        if (metaData.entries.none()) {
+    fun metaIdFor(inst: SbfInstruction): Int? {
+        val regTypes = registerTypeEntries(inst)
+        if (inst.metaData.entries.none() && regTypes.isEmpty()) {
             return null
         }
-        val jsonObj = metaDataToJsonObject(metaData)
+        val jsonObj = metaDataToJsonObject(inst.metaData, regTypes)
         return metaJsonToId.getOrPut(jsonObj) {
             val id = nextMetaId++
             metas[id] = jsonObj
@@ -89,7 +98,7 @@ fun SbfCFG.toJson(): String {
                 })
                 put("instructions", buildJsonArray {
                     for (inst in block.getInstructions()) {
-                        val metaId = metaIdFor(inst.metaData)
+                        val metaId = metaIdFor(inst)
                         add(buildJsonObject {
                             put("inst", inst.toString())
                             if (metaId != null) {
@@ -117,7 +126,7 @@ fun SbfCFG.toJson(): String {
     return prettyJson.encodeToString(JsonElement.serializer(), root)
 }
 
-private fun metaDataToJsonObject(metaData: MetaData): JsonObject {
+private fun metaDataToJsonObject(metaData: MetaData, regTypes: Map<String, RegTypeInfo>): JsonObject {
     return buildJsonObject {
         for ((key, value) in metaData.entries) {
             val jsonValue: JsonElement = when (value) {
@@ -131,5 +140,86 @@ private fun metaDataToJsonObject(metaData: MetaData): JsonObject {
             }
             put(key.name, jsonValue)
         }
+        for ((reg, info) in regTypes) {
+            val v: JsonElement = if (info.post == null) {
+                JsonPrimitive(info.pre!!)
+            } else {
+                buildJsonObject {
+                    info.pre?.let { put("pre", JsonPrimitive(it)) }
+                    put("post", JsonPrimitive(info.post))
+                }
+            }
+            put(reg, v)
+        }
     }
+}
+
+private data class RegTypeInfo(val pre: String?, val post: String?)
+
+/**
+ * Per-instruction register-type entries to embed alongside [MetaData] in JSON output.
+ *
+ * Returns a map keyed by register name. Each entry carries a pre- and/or post-execution type
+ * (whichever are known). Imm operands and slots without a type contribute no entry.
+ */
+private fun registerTypeEntries(inst: SbfInstruction): Map<String, RegTypeInfo> {
+    val pre = mutableMapOf<String, String>()
+    val post = mutableMapOf<String, String>()
+
+    fun addPre(reg: Value.Reg, type: SbfRegisterType?) {
+        if (type != null) {
+            pre["$reg"] = type.toString()
+        }
+    }
+    fun addPost(reg: Value.Reg, type: SbfRegisterType?) {
+        if (type != null) {
+            post["$reg"] = type.toString()
+        }
+    }
+    fun addTypedValue(tv: TypedValue) {
+        (tv.v as? Value.Reg)?.let { addPre(it, tv.type) }
+    }
+    fun addTypedReg(tr: TypedReg) {
+        addPre(tr.reg, tr.type)
+    }
+    fun addCond(cond: Condition) {
+        addTypedReg(cond.typedLeft)
+        addTypedValue(cond.typedRight)
+    }
+
+    when (inst) {
+        is SbfInstruction.Bin -> {
+            addTypedValue(inst.typedRhs)
+            addPre(inst.dst, inst.preDstType)
+            addPost(inst.dst, inst.postDstType)
+        }
+        is SbfInstruction.Un -> {
+            addPre(inst.dst, inst.preDstType)
+            addPost(inst.dst, inst.postDstType)
+        }
+        is SbfInstruction.Havoc -> addTypedReg(inst.typedDst)
+        is SbfInstruction.Mem -> {
+            if (inst.isLoad) {
+                // For a load, the value reg is the destination: typedValue.type is its post-type.
+                // When value reg == base reg (e.g. `r1 = *(r1 + 8)`), the same register also has
+                // a pre-type from access.typedBase.type, and the two are merged below.
+                (inst.typedValue.v as? Value.Reg)?.let { addPost(it, inst.typedValue.type) }
+                addTypedReg(inst.access.typedBase)
+            } else {
+                addTypedValue(inst.typedValue)
+                addTypedReg(inst.access.typedBase)
+            }
+        }
+        is SbfInstruction.Select -> addCond(inst.cond)
+        is SbfInstruction.Assume -> addCond(inst.cond)
+        is SbfInstruction.Assert -> addCond(inst.cond)
+        is SbfInstruction.Jump.ConditionalJump -> addCond(inst.cond)
+        is SbfInstruction.Jump.UnconditionalJump,
+        is SbfInstruction.Call,
+        is SbfInstruction.CallReg,
+        is SbfInstruction.Exit,
+        is SbfInstruction.Debug -> {}
+    }
+
+    return (pre.keys + post.keys).associateWith { RegTypeInfo(pre[it], post[it]) }
 }
