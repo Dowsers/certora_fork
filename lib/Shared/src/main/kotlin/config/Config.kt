@@ -2754,6 +2754,24 @@ object Config {
         pythonName = "--contract_extensions_override"
     ) {}
 
+    val PurifyDivisions = object : ConfigType.BooleanCmdLine(
+        default = true,
+        option = Option(
+            "purifyDivisions",
+            true,
+            "Rewrites divisions into constrained multiplications [default: true]"
+        )
+    ) {}
+
+    val PurifyConstDivisions = object : ConfigType.BooleanCmdLine(
+        default = true,
+        option = Option(
+            "purifyConstDivisions",
+            true,
+            "Rewrites divisions with a constant denominator into constrained multiplications [default: true]"
+        )
+    ) {}
+
     val HashingScheme = Smt.HashingScheme
 
     val LiaBeforeBv = Smt.LiaBeforeBv

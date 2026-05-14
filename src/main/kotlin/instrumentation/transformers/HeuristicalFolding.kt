@@ -51,10 +51,13 @@ object HeuristicalFolding {
     private fun TACExpr.isEligibleForFolding(allowAxiomatized: Boolean) =
         subs.all { e ->
             when (e) {
+                is TACExpr.BinOp.IntDiv,
+                is TACExpr.BinOp.Div ->
+                    false
+
                 is TACExpr.Vec.Add,
                 is TACExpr.BinOp.Sub,
                 is TACExpr.Vec.Mul,
-                is TACExpr.BinOp.Div,
                 is TACExpr.Vec.IntMul,
                 is TACExpr.BinOp.BWAnd ->
                     allowAxiomatized

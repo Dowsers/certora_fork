@@ -22,7 +22,7 @@ import analysis.opt.PatternRewriter.Key.*
 import analysis.opt.intervals.IntervalsRewriter.Companion.NON_ZERO_META
 import analysis.patterns.Info
 import analysis.patterns.get
-import datastructures.stdcollections.*
+import config.Config
 import utils.*
 import vc.data.TACExpr
 import vc.data.TACSymbol
@@ -40,14 +40,18 @@ private fun Info.isNonZero(key: PatternRewriter.Key<LTACSymbol>): Boolean =
 /**
  * Patterns that should run after [analysis.opt.intervals.IntervalsRewriter] so that they can rely on the
  * non-zero-ness information it propagates via [NON_ZERO_META].
+ *
+ * Note that the 5 div rewrite patterns rely on [Config.Smt.UseBV] being false, because if we use a 256 bit
+ * bitvector representation, the multiplication may overflow, making these patterns wrong.
  */
-fun PatternRewriter.postIntervalsRewriterPatternList() = listOf(
+fun PatternRewriter.postIntervalsRewriterPatternList() = listOfNotNull(
 
     /**
      * `A / B < C`  ~~>  `A < B·C`     (when B != 0)
      * Multiplication is in the integer domain so it can't overflow.
      */
-    PatternHandler(
+    patternOnlyIf(
+        cond = !Config.Smt.UseBV.get(),
         name = "divLt",
         pattern = {
             (lSym256(A) / lSym256(B)) lt lSym256(C)
@@ -63,7 +67,8 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOf(
     /**
      * `A / B <= C`  ~~>  `A < B·(C+1)`     (when B != 0)
      */
-    PatternHandler(
+    patternOnlyIf(
+        cond = !Config.Smt.UseBV.get(),
         name = "divLe",
         pattern = {
             (lSym256(A) / lSym256(B)) le lSym256(C)
@@ -79,7 +84,8 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOf(
     /**
      * `A / B > C`  ~~>  `A >= B·(C+1)`     (when B != 0)
      */
-    PatternHandler(
+    patternOnlyIf(
+        cond = !Config.Smt.UseBV.get(),
         name = "divGt",
         pattern = {
             (lSym256(A) / lSym256(B)) gt lSym256(C)
@@ -95,7 +101,8 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOf(
     /**
      * `A / B >= C`  ~~>  `A >= B·C`     (when B != 0)
      */
-    PatternHandler(
+    patternOnlyIf(
+        cond = !Config.Smt.UseBV.get(),
         name = "divGe",
         pattern = {
             (lSym256(A) / lSym256(B)) ge lSym256(C)
@@ -111,7 +118,8 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOf(
     /**
      * `A / B == C`  ~~>  `B·C <= A < B·(C+1)`     (when B != 0)
      */
-    PatternHandler(
+    patternOnlyIf(
+        cond = !Config.Smt.UseBV.get(),
         name = "divEq",
         pattern = {
             (lSym256(A) / lSym256(B)) eq lSym256(C)

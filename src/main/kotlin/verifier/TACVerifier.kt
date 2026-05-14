@@ -338,6 +338,8 @@ class TACVerifier private constructor(
                 repeat = Config.LastIntervalsRewriter.get(),
                 handleLeinoVars = true
             )
+        }.letIf(Config.PurifyDivisions.get() || Config.PurifyConstDivisions.get()) {
+            purifyDivisions(it)
         }
 
         when (Config.printFinalTac.get()) {
