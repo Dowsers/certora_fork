@@ -2755,20 +2755,20 @@ object Config {
     ) {}
 
     val PurifyDivisions = object : ConfigType.BooleanCmdLine(
-        default = true,
+        default = false,
         option = Option(
             "purifyDivisions",
             true,
-            "Rewrites divisions into constrained multiplications [default: true]"
+            "Rewrites divisions into constrained multiplications [default: false]"
         )
     ) {}
 
     val PurifyConstDivisions = object : ConfigType.BooleanCmdLine(
-        default = true,
+        default = false,
         option = Option(
             "purifyConstDivisions",
             true,
-            "Rewrites divisions with a constant denominator into constrained multiplications [default: true]"
+            "Rewrites divisions with a constant denominator into constrained multiplications [default: false]"
         )
     ) {}
 
