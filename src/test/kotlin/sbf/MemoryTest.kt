@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test
 import sbf.SolanaConfig.OptimisticPTAJoin
 import sbf.SolanaConfig.OptimisticPTAOverlaps
 import sbf.SolanaConfig.DefactoSemantics
+import sbf.SolanaConfig.ForgetOnUntrackedStackLoad
 import sbf.analysis.MemoryAnalysis
 import sbf.callgraph.SolanaFunction
 import sbf.testing.SbfTestDSL
@@ -1295,15 +1296,17 @@ class MemoryTest {
         expectException<sbf.support.UnknownStackContentError> {
             ConfigScope(DefactoSemantics, false). use {
                 ConfigScope(OptimisticPTAOverlaps, true).use {
-                    MemoryAnalysis(
-                        cfg,
-                        globals,
-                        MemorySummaries(),
-                        ConstantSbfTypeFactory(),
-                        nodeAllocator.flagsFactory,
-                        memDomainOpts,
-                        processor = null
-                    ).getPost(Label.Address(0))
+                    ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                        MemoryAnalysis(
+                            cfg,
+                            globals,
+                            MemorySummaries(),
+                            ConstantSbfTypeFactory(),
+                            nodeAllocator.flagsFactory,
+                            memDomainOpts,
+                            processor = null
+                        ).getPost(Label.Address(0))
+                    }
                 }
             }
         }
@@ -1391,6 +1394,7 @@ class MemoryTest {
             val sc = results.getPTAGraph().getRegCell(Value.Reg(SbfRegister.R4))
             Assertions.assertEquals(true, sc != null && sc.getNode().flags.isMayInteger())
         }
+
     }
 
     @Test
@@ -1422,16 +1426,18 @@ class MemoryTest {
         println("$cfg")
 
         ConfigScope(DefactoSemantics, false). use {
-            expectException<sbf.support.UnknownStackContentError> {
-                MemoryAnalysis(
-                    cfg,
-                    globals,
-                    MemorySummaries(),
-                    ConstantSbfTypeFactory(),
-                    nodeAllocator.flagsFactory,
-                    memDomainOpts,
-                    processor = null
-                )
+            ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                expectException<sbf.support.UnknownStackContentError> {
+                    MemoryAnalysis(
+                        cfg,
+                        globals,
+                        MemorySummaries(),
+                        ConstantSbfTypeFactory(),
+                        nodeAllocator.flagsFactory,
+                        memDomainOpts,
+                        processor = null
+                    )
+                }
             }
         }
     }
@@ -1518,23 +1524,25 @@ class MemoryTest {
         ConfigScope(DefactoSemantics, false). use {
             ConfigScope(OptimisticPTAOverlaps, false).use {
                 ConfigScope(OptimisticPTAJoin, false).use {
-                    val results = MemoryAnalysis(
-                        cfg,
-                        globals,
-                        MemorySummaries(),
-                        ConstantSbfTypeFactory(),
-                        nodeAllocator.flagsFactory,
-                        memDomainOpts,
-                        processor = null
-                    ).getPost((Label.Address(3)))
-                    println("$results")
-                    check(results != null)
-                    results.getPTAGraph().getRegCell(Value.Reg(SbfRegister.R4)).let { sc ->
-                        Assertions.assertEquals(true, sc != null && sc.getNode().flags.isMayInteger())
-                    }
+                    ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                        val results = MemoryAnalysis(
+                            cfg,
+                            globals,
+                            MemorySummaries(),
+                            ConstantSbfTypeFactory(),
+                            nodeAllocator.flagsFactory,
+                            memDomainOpts,
+                            processor = null
+                        ).getPost((Label.Address(3)))
+                        println("$results")
+                        check(results != null)
+                        results.getPTAGraph().getRegCell(Value.Reg(SbfRegister.R4)).let { sc ->
+                            Assertions.assertEquals(true, sc != null && sc.getNode().flags.isMayInteger())
+                        }
 
-                    results.getPTAGraph().getRegCell(Value.Reg(SbfRegister.R5)).let { sc ->
-                        Assertions.assertEquals(true, sc != null && sc.getNode().flags.isMayInteger())
+                        results.getPTAGraph().getRegCell(Value.Reg(SbfRegister.R5)).let { sc ->
+                            Assertions.assertEquals(true, sc != null && sc.getNode().flags.isMayInteger())
+                        }
                     }
                 }
             }
@@ -1575,15 +1583,17 @@ class MemoryTest {
             ConfigScope(DefactoSemantics, false).use {
                 ConfigScope(OptimisticPTAOverlaps, false).use {
                     ConfigScope(OptimisticPTAJoin, true).use {
-                        MemoryAnalysis(
-                            cfg,
-                            globals,
-                            MemorySummaries(),
-                            ConstantSbfTypeFactory(),
-                            nodeAllocator.flagsFactory,
-                            memDomainOpts,
-                            processor = null
-                        )
+                        ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                            MemoryAnalysis(
+                                cfg,
+                                globals,
+                                MemorySummaries(),
+                                ConstantSbfTypeFactory(),
+                                nodeAllocator.flagsFactory,
+                                memDomainOpts,
+                                processor = null
+                            )
+                        }
                     }
                 }
             }
@@ -1674,15 +1684,17 @@ class MemoryTest {
                 // Even with optimistic flags shouldn't be allowed
                 ConfigScope(OptimisticPTAOverlaps, true).use {
                     ConfigScope(OptimisticPTAJoin, true).use {
-                        MemoryAnalysis(
-                            cfg,
-                            globals,
-                            MemorySummaries(),
-                            ConstantSbfTypeFactory(),
-                            nodeAllocator.flagsFactory,
-                            memDomainOpts,
-                            processor = null
-                        )
+                        ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                            MemoryAnalysis(
+                                cfg,
+                                globals,
+                                MemorySummaries(),
+                                ConstantSbfTypeFactory(),
+                                nodeAllocator.flagsFactory,
+                                memDomainOpts,
+                                processor = null
+                            )
+                        }
                     }
                 }
             }

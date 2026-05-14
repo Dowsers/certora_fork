@@ -25,6 +25,7 @@ import sbf.disassembler.Label
 import sbf.support.UnknownStackContentError
 import sbf.tac.TACTranslationError
 import org.junit.jupiter.api.*
+import sbf.SolanaConfig.ForgetOnUntrackedStackLoad
 import sbf.tac.levelZeroOptimizations
 import sbf.testing.SbfTestDSL
 
@@ -63,7 +64,9 @@ class TACStoresTest {
         cfg.verify(true)
 
         expectException<UnknownStackContentError> {
-            toTAC(cfg)
+            ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                toTAC(cfg)
+            }
         }
     }
 

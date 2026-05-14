@@ -136,6 +136,17 @@ object SolanaConfig {
         )
     ) {}
 
+    val ForgetOnUntrackedStackLoad = object : ConfigType.BooleanCmdLine(
+        true,
+        Option(
+            "solanaForgetOnUntrackedStackLoad",
+            true,
+            "If the pointer analysis loads from a stack offset that is currently marked as " +
+                "inaccessible (untracked) forget the loaded register and continue, instead " +
+                "of throwing an error. [default: true]"
+        )
+    ) {}
+
     val SlicerBackPropagateThroughAsserts = object : ConfigType.BooleanCmdLine(
         false,
         Option(
