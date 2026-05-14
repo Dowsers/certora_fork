@@ -18,6 +18,7 @@
 package analysis.opt
 
 import analysis.*
+import analysis.opt.PatternRewriter.PatternHandler.Context
 import analysis.patterns.Info
 import analysis.patterns.InfoKey
 import analysis.patterns.PatternHelpers
@@ -177,6 +178,18 @@ class PatternRewriter private constructor(private val prog: CoreTACProgram) {
                 get() = info[this]!!
         }
     }
+
+    fun patternOnlyIf(
+        cond: Boolean,
+        name: String,
+        pattern: PatternHelpers.() -> PatternMatcher.Pattern<Info>,
+        handle: Context.() -> TACExpr?,
+        vararg baseTACExprs: Class<out TACExpr>,
+        regressionMessage: Boolean = false,
+    ) = runIf(cond) {
+        PatternHandler(name, pattern, handle, baseTACExprs = baseTACExprs,regressionMessage = regressionMessage)
+    }
+
 
 
     /**

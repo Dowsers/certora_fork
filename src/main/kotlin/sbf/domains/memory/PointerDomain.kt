@@ -3197,6 +3197,12 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
                     //   1) Imprecise join
                     //   2) A previous write at the same offset but with a different size
                     //
+
+                    if (SolanaConfig.ForgetOnUntrackedStackLoad.get()) {
+                        forget(lhs)
+                        return
+                    }
+
                     // For debugging, we need an initial pointer expression to guide the
                     // backward dependency analysis. If there is an overlap link, then we start from that; otherwise, we
                     // fall back to the de-referenced field itself.

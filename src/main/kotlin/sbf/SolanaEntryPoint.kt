@@ -250,7 +250,7 @@ private fun solanaRuleToTAC(
     if (SolanaConfig.PrintSbfToJson.get()) {
         // Dump the CFG to a json file
         progWithLocations.getCallGraphRootSingleOrFail().let {
-            val outFilename = "${ArtifactManagerFactory().mainReportsDir}${File.separator}${it.getName()}.sbf.json"
+            val outFilename = "${ArtifactManagerFactory().outputDir}${File.separator}${it.getName()}.sbf.json"
             printToFile(outFilename, it.toJson())
         }
     }

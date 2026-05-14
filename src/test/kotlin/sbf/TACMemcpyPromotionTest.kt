@@ -17,10 +17,12 @@
 
 package sbf
 
+import config.ConfigScope
 import sbf.cfg.*
 import sbf.disassembler.SbfRegister
 import sbf.disassembler.Label
 import org.junit.jupiter.api.*
+import sbf.SolanaConfig.ForgetOnUntrackedStackLoad
 import sbf.callgraph.SolanaFunction
 import sbf.disassembler.GlobalVariables
 import sbf.domains.MemorySummaries
@@ -64,7 +66,9 @@ class TACMemcpyPromotionTest {
         Assertions.assertEquals(false, cfg.hasMemcpyZExt())
         Assertions.assertEquals(false, cfg.hasMemcpyTrunc())
         expectException<UnknownStackContentError> {
-            toTAC(cfg)
+            ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                toTAC(cfg)
+            }
         }
     }
 

@@ -278,8 +278,8 @@ sealed class SbfInstruction: ReadRegister, WriteRegister  {
                    val dst: Value.Reg,
                    val typedRhs: TypedValue,
                    val is64: Boolean,
-                   private val preDstType: SbfRegisterType? = null,
-                   private val postDstType: SbfRegisterType? = null,
+                   val preDstType: SbfRegisterType? = null,
+                   val postDstType: SbfRegisterType? = null,
                    override val metaData: MetaData = MetaData()
     ) : SbfInstruction() {
 
@@ -400,8 +400,8 @@ sealed class SbfInstruction: ReadRegister, WriteRegister  {
 
     data class Un(val op: UnOp,
                   val dst: Value.Reg,
-                  private val preDstType: SbfRegisterType? = null,
-                  private val postDstType: SbfRegisterType? = null,
+                  val preDstType: SbfRegisterType? = null,
+                  val postDstType: SbfRegisterType? = null,
                   override val metaData: MetaData = MetaData())
         : SbfInstruction() {
 

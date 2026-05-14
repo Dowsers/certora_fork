@@ -136,6 +136,17 @@ object SolanaConfig {
         )
     ) {}
 
+    val ForgetOnUntrackedStackLoad = object : ConfigType.BooleanCmdLine(
+        true,
+        Option(
+            "solanaForgetOnUntrackedStackLoad",
+            true,
+            "If the pointer analysis loads from a stack offset that is currently marked as " +
+                "inaccessible (untracked) forget the loaded register and continue, instead " +
+                "of throwing an error. [default: true]"
+        )
+    ) {}
+
     val SlicerBackPropagateThroughAsserts = object : ConfigType.BooleanCmdLine(
         false,
         Option(
@@ -530,12 +541,12 @@ object SolanaConfig {
     ) {}
 
     val PrintSbfToJson = object : ConfigType.BooleanCmdLine(
-        false,
+        true,
         Option(
             "solanaPrintSbfToJson",
             true,
             "Generate a json file with the final SBF CFG after inlining and slicing and " +
-                "stores it in the \"Reports\" directory. [default: false]"
+                "stores it in the \"outputs\" directory. [default: true]"
         )
     ) {}
 

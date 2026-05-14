@@ -17,7 +17,7 @@
 
 package sbf
 
-import config.*
+import config.ConfigScope
 import sbf.callgraph.SolanaFunction
 import sbf.cfg.*
 import sbf.disassembler.SbfRegister
@@ -26,6 +26,7 @@ import sbf.support.UnknownStackContentError
 import org.junit.jupiter.api.*
 import org.junit.jupiter.params.*
 import org.junit.jupiter.params.provider.*
+import sbf.SolanaConfig.ForgetOnUntrackedStackLoad
 import sbf.testing.SbfTestDSL
 
 class TACMemcpyTest {
@@ -566,7 +567,9 @@ class TACMemcpyTest {
             cfg.verify(true)
             println("$cfg")
             expectException<UnknownStackContentError> {
-                toTAC(cfg)
+                ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                    toTAC(cfg)
+                }
             }
         }
     }
@@ -1249,8 +1252,10 @@ class TACMemcpyTest {
 
             ConfigScope(SolanaConfig.OptimisticPTAOverlaps, true).use {
                 ConfigScope(SolanaConfig.AddMemLayoutAssumptions, false).use {
-                    expectException<UnknownStackContentError> {
-                        toTAC(cfg)
+                    ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                        expectException<UnknownStackContentError> {
+                            toTAC(cfg)
+                        }
                     }
                 }
             }

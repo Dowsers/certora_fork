@@ -17,12 +17,14 @@
 
 package sbf
 
+import config.ConfigScope
 import sbf.cfg.*
 import sbf.disassembler.*
 import sbf.domains.*
 import sbf.support.UnknownStackContentError
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.*
+import sbf.SolanaConfig.ForgetOnUntrackedStackLoad
 import sbf.callgraph.SolanaFunction
 import sbf.support.UnknownMemcpyLenError
 
@@ -780,8 +782,10 @@ class MemoryMemcpyTest {
 
         // Check that we kill *all* overlapping cells at the destination
         expectException<UnknownStackContentError> {
-            // (3036,8) was marked as top so the pointer domain should complain
-            load(g, r1, (-4L).toShort(), 8, scalars)
+            ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                // (3036,8) was marked as top so the pointer domain should complain
+                load(g, r1, (-4L).toShort(), 8, scalars)
+            }
         }
 
         // Check that there is fresh memory at (3052,8)
@@ -1036,8 +1040,10 @@ class MemoryMemcpyTest {
         checkPointsToNode(g, r1, 4, 8, n1, scalars)
 
         expectException<UnknownStackContentError> {
-            // after the store we cannot read at r1+4 different from 8 bytes
-            load(g, r1, 4, 1, scalars)
+            ConfigScope(ForgetOnUntrackedStackLoad, false).use {
+                // after the store we cannot read at r1+4 different from 8 bytes
+                load(g, r1, 4, 1, scalars)
+            }
         }
     }
 
