@@ -124,7 +124,11 @@ class SorobanSDKSummarizer(
     context(WasmImpCfgContext) override fun summarizeCall(call: StraightLine.Call): CommandWithRequiredDecls<TACCmd.Simple> {
         return when (val f = asSDKFunc(call.id)) {
             SorobanSDKBuiltin.SDK_SYMBOL_TRY_FROM_VAL_STRREF,
-            SorobanSDKBuiltin.SYMBOL_TRY_FROM_VAL_STRREF,
+            SorobanSDKBuiltin.SYMBOL_TRY_FROM_VAL_STRREF -> {
+                check(call.maybeRet != null) { "expected Symbol::new to have an lhs" }
+                summarizeSymbolNew(call.maybeRet, call.args[0], call.args[1])
+            }
+
             SorobanSDKBuiltin.SYMBOL_NEW -> {
                 check(call.maybeRet != null) { "expected Symbol::new to have an lhs" }
                 summarizeSymbolNew(call.maybeRet, call.args[1], call.args[2])
