@@ -59,7 +59,8 @@ open class SummarizeCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffset
                 listOf(Debug.startFunction(inst.name)) + cmds + listOf(Debug.endFunction(inst.name))
             }
             is CompilerRtFunction.IntegerU128 -> {
-                val summarizer = if (SolanaConfig.UseTACMathInt.get()) {
+                // TODO CERT-10061 revisit the TACSoundSignedMath and UseTACMathInt logic
+                val summarizer = if (!SolanaConfig.TACSoundSignedMath.get() && SolanaConfig.UseTACMathInt.get()) {
                     SummarizeIntegerU128CompilerRtWithMathInt<TNum, TOffset, TFlags>()
                 } else {
                     SummarizeIntegerU128CompilerRt()

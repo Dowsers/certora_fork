@@ -165,7 +165,8 @@ enum class LoggerTypes : LoggerName {
     REQUIRE_REASON_CHECKER,
     MOVE,
     DEDUPLICATOR,
-    VERIFICATION_FLOW
+    VERIFICATION_FLOW,
+    MOD_MATH
     ;
 }
 

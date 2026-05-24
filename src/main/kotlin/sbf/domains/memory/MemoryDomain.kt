@@ -24,6 +24,7 @@ import sbf.support.SolanaInternalError
 import log.*
 import org.jetbrains.annotations.TestOnly
 import sbf.callgraph.SolanaFunction
+import utils.*
 
 /**
  * Memory abstract domain to statically partition memory of SBF programs into disjoint memory subregions.
@@ -666,6 +667,21 @@ class MemoryDomain<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTA
     fun getRegCell(reg: Value.Reg): PTASymCell<Flags>? {
         val scalarVal = getScalars().getAsScalarValue(reg)
         return getPTAGraph().getRegCell(reg, scalarVal.type(), locInst = null)
+    }
+
+    /** Returns true iff we are sure that [reg] holds a pointer value */
+    fun isSurelyPointer(inst: SbfInstruction, reg: Value.Reg): Boolean {
+        // Note that we're currently only using the scalar domain to check if a register is a pointer or not, as we
+        // have not yet found a way to get reliable "must be pointer" info from the pointer domain.
+        // `IsPointerAnalysis` could just use the scalar domain/analysis directly, which might improve performance a
+        // bit, but for now we are doing this check in the memory domain in case we think of a way to leverage the
+        // pointer analysis.
+        unused(inst)
+        return when (getScalars().getAsScalarValue(reg).type()) {
+            is SbfType.PointerType -> true
+            is SbfType.NumType -> false
+            else -> false
+        }
     }
 
     /**

@@ -402,4 +402,7 @@ object TACMeta {
     val SBF_ADDRESS  = MetaKey<Long>("sbf.bytecode.address")
     /** contains the range and source code contains for Solana */
     val SBF_SOURCE_SEGMENT  = MetaKey<SourceSegment>("sbf.source.segment")
+
+    /** Marks an assume/assert command that can be removed if it is trivially true */
+    val REMOVABLE_IF_TRIVIAL = MetaKey.Nothing("tac.removable.if.trivial")
 }

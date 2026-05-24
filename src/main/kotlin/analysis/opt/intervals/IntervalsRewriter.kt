@@ -37,6 +37,7 @@ import utils.*
 import utils.Color.Companion.blue
 import utils.Color.Companion.cyan
 import vc.data.*
+import vc.data.SimplePatchingProgram.Companion.patchForEach
 import vc.data.TACCmd.Simple.AssigningCmd.AssignExpCmd
 import vc.data.tacexprutil.asVarOrNull
 import vc.data.tacexprutil.postTransform
@@ -69,6 +70,7 @@ class IntervalsRewriter(
             code: CoreTACProgram,
             repeat : Int = Config.intervalsRewriter.get(),
             handleLeinoVars: Boolean,
+            removeRemovableAsserts: Boolean = false,
             preserve : (TACSymbol.Var) -> Boolean = { false }//  = { it.namePrefix == IntervalsCalculator.tacM40Prefix }
         ) =
             code.letIf(repeat > 0) {
@@ -81,7 +83,19 @@ class IntervalsRewriter(
                     ).rewrite()
                 }
                 removeUnusedAssignments(result, expensive = true)
+                    .letIf(removeRemovableAsserts, ::removeRemovableAsserts)
             }
+
+        /** Removes any asserts/assumes that are known to be trivially true, and are marked as removable. */
+        private fun removeRemovableAsserts(code: CoreTACProgram) =
+            code.parallelLtacStream().mapNotNull { (ptr, cmd) ->
+                ptr.takeIf {
+                    (
+                        cmd is TACCmd.Simple.AssertCmd && cmd.o == TACSymbol.True ||
+                        cmd is TACCmd.Simple.Assume && cmd.condExpr == true.asTACExpr
+                    ) && (TACMeta.REMOVABLE_IF_TRIVIAL in cmd.meta)
+                }
+            }.patchForEach(code) { delete(it) }
 
         /** We eventually add this meta to variables which are known to be non zero via intervals analysis */
         val NON_ZERO_META = MetaKey.Nothing("tac.non.zero.var")
