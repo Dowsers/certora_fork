@@ -49,7 +49,7 @@ context(SbfCFGToTAC<TNum, TOffset, TFlags>)
 internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANodeFlags<TFlags>>
     computeTACMapIndex(base: TACSymbol.Var, offset: PTAOffset, cmds: MutableList<TACCmd.Simple>): TACSymbol.Var {
     val index = vFac.mkFreshIntVar()
-    cmds += assign(index, sbfTacB { base.asSym() add sbfTacB.mkConst(offset.v).asSym() })
+    cmds += assign(index, sbfTacB { base.asSym().addNoOvf(sbfTacB.mkConst(offset.v).asSym(), "computing TAC map index") })
     return index
 }
 

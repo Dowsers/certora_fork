@@ -1358,9 +1358,15 @@ sealed class TACCmd : Serializable, ITACCmd {
             }
         }
 
-        interface DirectMemoryAccessCmd {
+        sealed interface DirectMemoryAccessCmd {
             val loc: TACSymbol
             val base: TACSymbol.Var
+
+            fun withLoc(loc: TACSymbol): TACCmd.Simple = when (this) {
+                is AssigningCmd.ByteLoad -> this.copy(loc = loc)
+                is AssigningCmd.ByteStore -> this.copy(loc = loc)
+                is AssigningCmd.ByteStoreSingle -> this.copy(loc = loc)
+            }
         }
 
         sealed interface StorageAccessCmd {

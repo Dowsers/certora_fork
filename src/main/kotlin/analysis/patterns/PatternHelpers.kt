@@ -31,12 +31,13 @@ import analysis.patterns.Info.Companion.setLastCmd
 import analysis.patterns.InfoKey.*
 import analysis.patterns.PatternHelpers.sha3
 import evm.MAX_EVM_UINT256
-import tac.Tag
+import tac.*
 import utils.*
 import vc.data.TACBuiltInFunction
 import vc.data.TACCmd
 import vc.data.TACExpr
 import vc.data.TACSymbol
+import java.io.Serializable
 import java.math.BigInteger
 
 private typealias PI = Pattern<Info>
@@ -103,6 +104,22 @@ object PatternHelpers {
     fun safeMathNarrow(p1: PI) = unaryApply(TACBuiltInFunction.SafeMathNarrow.Implicit(Tag.Bit256), p1)
 
     fun maybeNarrow(p1: PI) = p1 OR safeMathNarrow(p1)
+
+    fun <T : Serializable> PI.annotated(k: MetaKey<T>, pred: (T) -> Boolean = { true }) =
+        Pattern.FromAnnotationExp(
+            k = k,
+            extractor = { _, a -> (a.o as? TACExpr.Sym)?.s?.takeIf { pred(a.annot.v) } },
+            inner = this,
+            out = { _, i -> i }
+        )
+
+    fun PI.annotated(k: MetaKey<Nothing>) =
+        Pattern.FromAnnotationExp(
+            k = k,
+            extractor = { _, a -> (a.o as? TACExpr.Sym)?.s },
+            inner = this,
+            out = { _, i -> i }
+        )
 
     inline fun <reified T : Tag> lSymTag(key: InfoKey<LTACSymbol>? = null) =
         anyLSymbol.mapResult { s -> runIf(s.symbol.tag is T) { Info(key, s) } }
@@ -229,6 +246,7 @@ object PatternHelpers {
     infix fun PI.exp(p2: PI) = combiner(TACExpr.BinOp.Exponent::class.java, this, p2)
     infix fun PI.shl(p2: PI) = combiner(TACExpr.BinOp.ShiftLeft::class.java, this, p2)
     infix fun PI.shr(p2: PI) = combiner(TACExpr.BinOp.ShiftRightLogical::class.java, this, p2)
+    infix fun PI.shra(p2: PI) = combiner(TACExpr.BinOp.ShiftRightArithmetical::class.java, this, p2)
     infix operator fun PI.times(p2: PI) = commutativeCombiner(TACExpr.Vec.Mul::class.java, this, p2)
     infix operator fun PI.rem(p2: PI) = combiner(TACExpr.BinOp.Mod::class.java, this, p2)
     infix operator fun PI.div(p2: PI) = combiner(TACExpr.BinOp.Div::class.java, this, p2)

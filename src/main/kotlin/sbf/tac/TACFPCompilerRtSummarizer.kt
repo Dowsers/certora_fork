@@ -20,9 +20,7 @@ package sbf.tac
 import datastructures.stdcollections.*
 import sbf.domains.*
 import utils.*
-import vc.data.TACCmd
-import vc.data.TACExpr
-import vc.data.TACSymbol
+import vc.data.*
 
 /**
  * Summarize floating point operations assuming IEEE-754 double precision (f64).
@@ -281,8 +279,8 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         val exp = vFac.mkFreshIntVar()
         val mantissa = vFac.mkFreshIntVar()
 
-        cmds += assign(sign,sbfTacB {n shiftRArith mkConst(63) })
-        cmds += assign(exp, sbfTacB { (n shiftRArith mkConst(52)) bwAnd mkConst(0x7ff) })
+        cmds += assign(sign,sbfTacB { n shiftRArith mkConst(63) })
+        cmds += assign(exp, sbfTacB { (n shiftRLog mkConst(52)) bwAnd mkConst(0x7ff) })
         cmds += assign(mantissa, sbfTacB { n.asSym() bwAnd mkConst(0x000F_FFFF_FFFF_FFFFUL.toBigInteger()) })
 
         return FP64(sign.asSym(), exp.asSym(), mantissa.asSym())
@@ -294,7 +292,7 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         val signBit  = sbfTacB.mkConst(minusZeroBits)      // 2^63
         val expShift = sbfTacB.mkConst(minPositiveBits)    // 2^52
         cmds += assign(res, sbfTacB {
-            mask64((n.sign mul signBit) add (n.exp mul expShift) add n.mantissa)
+            mask64((n.sign mul signBit).addNoOvf(n.exp mul expShift, "packing FP64").addNoOvf(n.mantissa, "packing FP64"))
         })
         return res
     }
@@ -304,12 +302,12 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
     private fun multipleByTwo(n: TACSymbol, cmds: MutableList<TACCmd.Simple>): TACSymbol {
         val fp = unpackFP64(n, cmds)
 
-        val isOverflow  = sbfTacB { fp.exp eq mkConst(0x7FE) }
+        val isOverflow  = sbfTacB { fp.exp ge mkConst(0x7FE) }
         val newExp = vFac.mkFreshIntVar()
         cmds += assign(newExp, sbfTacB {
             switch(
                 isOverflow to mkConst(0x7FF).asSym(),
-                default = fp.exp add ONE
+                default = fp.exp.addNoOvf(ONE, "fp multiply by two")
             )
         })
 
@@ -425,17 +423,18 @@ open class SummarizeFPCompilerRt<TNum : INumValue<TNum>, TOffset : IOffset<TOffs
         arg: TACSymbol
     ): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
-        val nonZeroV  = nondetU64(cmds)
+        val nonZeroV = vFac.mkFreshIntVar()
         return cmds +
-               nondetWithAssumptions(nonZeroV, listOf(sbfTacB { nonZeroV neq sbfTacB.ZERO})) +
-               assign(res,
-                   sbfTacB {
-                       switch(
-                           isf64Zero(arg) or isf64NaN(arg) or isf64Negative(arg) or isf64Inf(arg) or isf64Subnormal(arg) to ZERO,
-                           default = nonZeroV.asSym()
-                       )
-                   }
-                )
+            nondetWithAssumptions(nonZeroV, listOf(sbfTacB { nonZeroV neq sbfTacB.ZERO})) +
+            sbfTacB.assumeUnsignedIntRange(nonZeroV, 64) +
+            assign(res,
+                sbfTacB {
+                    switch(
+                        isf64Zero(arg) or isf64NaN(arg) or isf64Negative(arg) or isf64Inf(arg) or isf64Subnormal(arg) to ZERO,
+                        default = nonZeroV.asSym()
+                    )
+                }
+            )
     }
 
     /**
