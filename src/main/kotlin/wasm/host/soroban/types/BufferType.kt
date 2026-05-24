@@ -29,7 +29,6 @@ import vc.data.*
 import wasm.WasmPipelinePhase
 import wasm.WasmPostUnrollSummary
 import wasm.analysis.memory.*
-import java.util.Collections
 
 const val BYTE_BITS = 8
 const val BIT256_BITS = 256
@@ -113,7 +112,7 @@ abstract class BufferType : ArrayType() {
                 val staticData = analysisCache[StaticMemoryAnalysis]
                 val bytes = len.getAsConst()?.toIntOrNull()?.let { len ->
                     pos.getAsConst()?.let { pos ->
-                         staticData.readBytes(pos, len)
+                        staticData.readBytes(pos, len)
                     }
                 }
                 if (bytes != null) {
