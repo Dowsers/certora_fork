@@ -56,7 +56,7 @@ class SorobanSDKSummarizer(
      */
     enum class SorobanSDKBuiltin(val demangledName: String, val params: List<WasmPrimitiveType>, val ret: WasmPrimitiveType?) {
         SYMBOL_NEW("\$soroban_sdk::symbol::Symbol::new",
-            listOf(WasmPrimitiveType.I32, WasmPrimitiveType.I32),
+            listOf(WasmPrimitiveType.I32, WasmPrimitiveType.I32, WasmPrimitiveType.I32),
             WasmPrimitiveType.I64
         ),
 
@@ -127,7 +127,7 @@ class SorobanSDKSummarizer(
             SorobanSDKBuiltin.SYMBOL_TRY_FROM_VAL_STRREF,
             SorobanSDKBuiltin.SYMBOL_NEW -> {
                 check(call.maybeRet != null) { "expected Symbol::new to have an lhs" }
-                summarizeSymbolNew(call.maybeRet, call.args[0], call.args[1])
+                summarizeSymbolNew(call.maybeRet, call.args[1], call.args[2])
             }
 
             SorobanSDKBuiltin.SDK_SYMBOL_TRY_FROM_BYTES_RUSTC_1_91_0 -> {
