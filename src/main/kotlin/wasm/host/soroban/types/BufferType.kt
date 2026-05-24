@@ -111,8 +111,12 @@ abstract class BufferType : ArrayType() {
             with(type) {
                 val staticData = analysisCache[StaticMemoryAnalysis]
                 val bytes = len.getAsConst()?.toIntOrNull()?.let { len ->
-                    pos.getAsConst()?.let { pos ->
-                        staticData.readBytes(pos, len)
+                    if (len == 0) {
+                        null;
+                    } else {
+                        pos.getAsConst()?.let { pos ->
+                            staticData.readBytes(pos, len)
+                        }
                     }
                 }
                 if (bytes != null) {
