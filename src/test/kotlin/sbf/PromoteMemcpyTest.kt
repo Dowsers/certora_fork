@@ -25,6 +25,7 @@ import sbf.domains.*
 import sbf.testing.SbfTestDSL
 import org.junit.jupiter.api.*
 import sbf.analysis.AnalysisRegisterTypes
+import sbf.callgraph.SolanaFunction
 
 private val sbfTypesFac = ConstantSbfTypeFactory()
 private val globals = GlobalVariables(DefaultElfFileView)
@@ -32,26 +33,28 @@ private val memSummaries = MemorySummaries()
 
 class PromoteMemcpyTest {
 
-    private fun checkMemcpy(cfg: SbfCFG): Boolean {
-        for (inst in cfg.getEntry().getInstructions()) {
-            if (inst is SbfInstruction.Call) {
-                if (inst.name == "sol_memcpy_") {
-                    return true
-                }
+    private fun countMemcpyCalls(cfg: SbfCFG): Int =
+        cfg.getBlocks().values.sumOf { bb ->
+            bb.getInstructions().count { inst ->
+                inst is SbfInstruction.Call && SolanaFunction.from(inst.name) == SolanaFunction.SOL_MEMCPY
             }
         }
-        return false
-    }
-    private fun getNumOfLoads(cfg: SbfCFG): Int {
-        var counter = 0
-        for (inst in cfg.getEntry().getInstructions()) {
-            if (inst is SbfInstruction.Mem && inst.isLoad) {
-                counter++
-            }
-        }
-        return counter
-    }
 
+    private fun countMemcpyTruncCalls(cfg: SbfCFG): Int =
+        cfg.getBlocks().values.sumOf { bb ->
+            bb.getInstructions().count { inst ->
+                inst is SbfInstruction.Call && SolanaFunction.from(inst.name) == SolanaFunction.SOL_MEMCPY_TRUNC
+            }
+        }
+
+    private fun checkMemcpy(cfg: SbfCFG) = countMemcpyCalls(cfg) >= 1
+
+    private fun getNumOfLoads(cfg: SbfCFG): Int =
+        cfg.getBlocks().values.sumOf { bb ->
+            bb.getInstructions().count { inst ->
+                inst is SbfInstruction.Mem && inst.isLoad
+            }
+        }
 
     @Test
     fun test01() {
@@ -88,7 +91,7 @@ class PromoteMemcpyTest {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -137,7 +140,7 @@ class PromoteMemcpyTest {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -167,7 +170,7 @@ class PromoteMemcpyTest {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -205,7 +208,7 @@ class PromoteMemcpyTest {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 2)
     }
 
     @Test
@@ -243,7 +246,7 @@ class PromoteMemcpyTest {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 3)
     }
 
     @Test
@@ -286,7 +289,7 @@ class PromoteMemcpyTest {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -329,7 +332,7 @@ class PromoteMemcpyTest {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
 
@@ -369,7 +372,7 @@ class PromoteMemcpyTest {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
 @Test
@@ -412,7 +415,7 @@ fun test09() {
     println("After transformation\n$cfg")
     removeUselessDefinitions(cfg)
     println("After remove useless loads transformation\n$cfg")
-    Assertions.assertEquals(true, checkMemcpy(cfg))
+    Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
 }
 
     @Test
@@ -449,7 +452,7 @@ fun test09() {
         println("Before transformation\n$cfg")
         promoteMemcpyIntraBlock(cfg, scalarAnalysis, aggressivePromotion = false)
         println("After transformation\n$cfg")
-        Assertions.assertEquals(false, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 0)
     }
 
     @Test
@@ -477,7 +480,7 @@ fun test09() {
         println("Before transformation\n$cfg")
         promoteMemcpyIntraBlock(cfg, scalarAnalysis, aggressivePromotion = false)
         println("After transformation\n$cfg")
-        Assertions.assertEquals(false, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 0)
     }
 
     /**
@@ -549,7 +552,7 @@ fun test09() {
         println("Before transformation\n$cfg")
         promoteMemcpyIntraBlock(cfg, scalarAnalysis)
         println("After transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -624,7 +627,7 @@ fun test09() {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After removing useless definitions\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
         Assertions.assertEquals(true, getNumOfLoads(cfg) == 0)
     }
 
@@ -667,7 +670,7 @@ fun test09() {
             promoteMemcpyIntraBlock(cfg, scalarAnalysis)
         }
         println("After transformation\n$cfg")
-        Assertions.assertEquals(false, checkMemcpy(cfg)) // we expect no promotion
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 0) // we expect no promotion
     }
     @Test
     fun test15() {
@@ -735,7 +738,7 @@ fun test09() {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
         Assertions.assertEquals(true, getNumOfLoads(cfg) == 0)
     }
 
@@ -765,7 +768,7 @@ fun test09() {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
         Assertions.assertEquals(true, getNumOfLoads(cfg) == 0)
     }
 
@@ -796,7 +799,7 @@ fun test09() {
             promoteMemcpyIntraBlock(cfg, scalarAnalysis)
         }
         println("After transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     private fun <TNum: INumValue<TNum>, TOffset: IOffset<TOffset>> checkRegIsEqualAtAssert(
@@ -840,7 +843,7 @@ fun test09() {
             promoteMemcpyIntraBlock(cfg, scalarAnalysisOld)
         }
         println("After transformation\n$cfg")
-        Assertions.assertEquals(false, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 0)
     }
 
     @Test
@@ -875,7 +878,7 @@ fun test09() {
         val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
         val regTypes = AnalysisRegisterTypes(scalarAnalysis)
         checkRegIsEqualAtAssert(cfg, regTypes, SbfRegister.R4, 0L)
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -903,7 +906,7 @@ fun test09() {
             promoteMemcpyIntraBlock(cfg, scalarAnalysisOld)
         }
         println("After transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -928,7 +931,7 @@ fun test09() {
             promoteMemcpyIntraBlock(cfg, scalarAnalysisOld)
         }
         println("After transformation\n$cfg")
-        Assertions.assertEquals(false, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 0)
     }
 
     @Test
@@ -953,7 +956,7 @@ fun test09() {
             promoteMemcpyIntraBlock(cfg, scalarAnalysisOld)
         }
         println("After transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -1007,7 +1010,7 @@ fun test09() {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
         Assertions.assertEquals(true, getNumOfLoads(cfg) == 0)
     }
 
@@ -1028,8 +1031,8 @@ fun test09() {
                 r1[16] = r2
                 r2 = r3[24]
                 r1[24] = r2
-                r1 = r10[-1168]
-                r10[-1568] = r1
+                r1 = r10[-1168]  // this pair is too far from the other pairs so it cannot be part of the same memcpy.
+                r10[-1568] = r1  // This pair is not converted to a single memcpy in this run. it would need another run.
                 exit()
             }
         }
@@ -1040,8 +1043,7 @@ fun test09() {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
-        Assertions.assertEquals(true, getNumOfLoads(cfg) == 1)
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     /**
@@ -1082,7 +1084,7 @@ fun test09() {
         println("After transformation\n$cfg")
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
-        Assertions.assertEquals(true, checkMemcpy(cfg))
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
     }
 
     @Test
@@ -1118,6 +1120,114 @@ fun test09() {
         removeUselessDefinitions(cfg)
         println("After remove useless loads transformation\n$cfg")
 
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 1)
+        Assertions.assertEquals(true, countMemcpyTruncCalls(cfg) == 1)
         Assertions.assertEquals(true, getNumOfLoads(cfg) == 0)
+    }
+
+    /**
+     * Without recent fix in [isSafeToCommuteLoadStorePair] only rejects intermediate
+     * stores that overwrite the new load's source bytes.  It does not check for
+     * intermediate accesses to the new pair's store destination.  So pair_2 below
+     * is folded into the pattern and a single 16-byte memcpy is emitted at pair_1's
+     * load position -- but the intermediate `(r10 - 88) := 0` then runs *after*
+     * the lifted memcpy and clobbers a destination byte that pair_2's store would
+     * have re-written in the original program.
+     *
+     * With the fix the rewriter sees the intermediate write overlaps pair_2's store
+     * destination, refuses to fold pair_2 into the pattern, emits an 8-byte memcpy
+     * for pair_1 alone, then emits a separate 8-byte memcpy for pair_2.  The
+     * intermediate clobber stays between the two memcpys, so the second memcpy
+     * correctly overwrites it as in the original program.
+     * ```
+     *   r1 := *(u64 *) (r10 + -56)     ; pair_1 load
+     *   *(u64 *) (r10 + -96) := r1     ; pair_1 store
+     *   *(u64 *) (r10 + -88) := 0      ; intermediate clobber of pair_2's destination
+     *   r2 := *(u64 *) (r10 + -48)     ; pair_2 load
+     *   *(u64 *) (r10 + -88) := r2     ; pair_2 store
+     * ```
+     **/
+    @Test
+    fun `intermediate clobber of new store destination blocks merge`() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                BinOp.ADD(r10, 4096)
+                r1 = r10[-56]
+                r10[-96] = r1
+                r10[-88] = 0
+                r2 = r10[-48]
+                r10[-88] = r2
+                exit()
+            }
+        }
+
+        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
+        println("Before transformation\n$cfg")
+        promoteMemcpyIntraBlock(cfg, scalarAnalysis)
+        println("After transformation\n$cfg")
+        Assertions.assertEquals(2, countMemcpyCalls(cfg))
+    }
+
+    /**
+     * `r1` is loaded once and stored to two distinct stack slots, with a non-mem in
+     * between so each store ends up in its own (1-pair) pattern.
+     * ```
+     *   r1 := *(u64 *) (r10 + -56)
+     *   *(u64 *) (r10 + -96)  := r1
+     *   r5 := 0
+     *   *(u64 *) (r10 + -104) := r1
+     *   r6 := 0
+     * ```
+     **/
+    @Test
+    fun `Same load being reused`() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                BinOp.ADD(r10, 4096)
+                r1 = r10[-56]
+                r10[-96] = r1
+                r5 = 0
+                r10[-104] = r1
+                r6 = 0
+                exit()
+            }
+        }
+
+        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
+        println("Before transformation\n$cfg")
+        promoteMemcpyIntraBlock(cfg, scalarAnalysis)
+        println("After transformation\n$cfg")
+        Assertions.assertEquals(2, countMemcpyCalls(cfg))
+    }
+
+    @Test
+    fun `bug in spl revoke`() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                BinOp.ADD(r10, 4096)
+                r1 = r10[-168]
+                r10[-272] = r1
+                r1 = r10[-160]
+                r10[-264] = r1
+                r1 = r10[-152]
+                r10[-256] = r1
+                r1 = r10[-144, 4]
+                r10[-248,4] = r1
+                r10[-176,4] = 0 // zero out first u32 of struct at -176
+                r1 = r10[-176]  // read back the now-zeroed u64
+                r10[-280] = r1  // and move it
+                exit()
+            }
+        }
+
+        val scalarAnalysis = ScalarAnalysis(cfg, globals, memSummaries, sbfTypesFac)
+        println("Before transformation\n$cfg")
+        ConfigScope(SolanaConfig.OptimisticMemcpyPromotion, true).use {
+            promoteMemcpyIntraBlock(cfg, scalarAnalysis)
+        }
+        println("After transformation\n$cfg")
+        removeUselessDefinitions(cfg)
+        println("After remove useless loads transformation\n$cfg")
+        Assertions.assertEquals(true, countMemcpyCalls(cfg) == 2)
     }
 }
