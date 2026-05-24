@@ -336,6 +336,8 @@ sealed class CounterexampleModel: AmbiSerializable {
                 .evalExprByRhs(hookValue.expr)
                 .filterSuccess()
                 ?.let(TACValue.PrimitiveValue::Integer)
+
+            is HookValue.EncodedEventParam -> null
         }
     }
 

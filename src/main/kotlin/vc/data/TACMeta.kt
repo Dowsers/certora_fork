@@ -368,6 +368,8 @@ object TACMeta {
      */
     val IGNORE_IN_CALLTRACE = MetaKey.Nothing("ignore.in.calltrace")
 
+    val RESOLVED_LOG_TOPIC = MetaKey<BigInteger>("evm.log.topic")
+
     /**
      * Annotations for the loops entering/exit labels
      */

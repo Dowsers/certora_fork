@@ -152,6 +152,8 @@ private val tokenName: List<String> = sym
             sym.RP -> ")"
             sym.QUESTION -> "?"
             sym.DOT -> "."
+            sym.INDEXED -> "indexed"
+            sym.EVENT -> "event"
 
             // not literals, just input classes. the actual matched string is not known from the constant name
             sym.RELOP -> "(relop)"
