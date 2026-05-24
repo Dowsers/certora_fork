@@ -149,8 +149,6 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
     // To instrument Solana account accesses.
     val accounts: TACSolanaAccountAccess
 
-    val isPointerAnalysis: IsPointerAnalysis<TNum, TOffset, TFlags>
-
     init {
         val scalarAnalysis = GenericScalarAnalysis(
             cfg,
@@ -180,8 +178,6 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
         } else {
             DummyMemSplitter(vFac, types)
         }
-
-        isPointerAnalysis = IsPointerAnalysis(memoryAnalysis)
 
         accounts = TACSolanaAccountAccess(cfg) { prefix ->
             vFac.mkFreshBoolVar(prefix = prefix)
@@ -373,9 +369,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
         return inRange(ptr, lb ..< ub)
     }
 
-    private fun translateBin(locInst: LocatedSbfInstruction): List<TACCmd.Simple> {
-        val inst = locInst.inst
-        check(inst is SbfInstruction.Bin)
+    private fun translateBin(inst: SbfInstruction.Bin, useMathInt: Boolean = false): List<TACCmd.Simple> {
         val lhs = inst.dst
         val rhs = inst.v
         return if (inst.op == BinOp.MOV) {
@@ -385,9 +379,8 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                 throw TACTranslationError("TAC encoding of 32-bit $inst not supported")
             }
             val op1 = sbfTacB.mkVar(inst.dst)
-            if (!SolanaConfig.TACSoundSignedMath.get() && // TODO CERT-10061 revisit this
-                SolanaConfig.UseTACMathInt.get() &&
-                inst.metaData.getVal(SbfMeta.SAFE_MATH) != null) {
+            if (SolanaConfig.UseTACMathInt.get() &&
+                (useMathInt || inst.metaData.getVal(SbfMeta.SAFE_MATH) != null)) {
                 // Currently, `SAFE_MATH` annotations are only used for addition/subtraction before checking for overflow.
                 // These operations must be done on MathInt.
 
@@ -412,13 +405,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                 )
             } else {
                 val op2 = sbfTacB.mkExprSym(rhs)
-                // We assume pointer addition never overflows
-                val expr = if (inst.op == BinOp.ADD && isPointerAnalysis.isPointerOp(locInst)) {
-                    sbfTacB { op1.asSym().addNoOvf(op2, "pointer addition at $locInst") }
-                } else {
-                    inst.op(op1.asSym(), op2, useMathInt = false, sbfTacB)
-                }
-                listOf(assign(op1, expr))
+                listOf(assign(op1, inst.op(op1.asSym(), op2, useMathInt = false, sbfTacB)))
             }
         }
     }
@@ -1152,7 +1139,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
         sbfLogger.debug {"\tTAC translation of $inst"}
         val cmds = when (inst) {
             is SbfInstruction.Mem -> translateMem(locInst)
-            is SbfInstruction.Bin -> translateBin(locInst)
+            is SbfInstruction.Bin -> translateBin(inst)
             is SbfInstruction.Un -> translateUn(inst)
             is SbfInstruction.Jump -> translateJump(locInst)
             is SbfInstruction.Havoc -> translateHavoc(inst)

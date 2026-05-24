@@ -151,7 +151,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
     splitU128(
     e: TACExpr, low: TACSymbol.Var, high: TACSymbol.Var): List<TACCmd.Simple> {
 
-    val (x, y) = sbfTacB.splitU128(e)
+    val (x, y) = natIntTacB.splitU128(e)
     return listOf(
         assign(low, x),
         assign(high, y)

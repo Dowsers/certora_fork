@@ -81,6 +81,10 @@ class StaticMemoryAnalysis private constructor(val graph: TACCommandGraph) {
             return null
         }
 
+        if (size == 0) {
+            return emptyList()
+        }
+
         return data.content.subList(idx, idx + size)
     }
 

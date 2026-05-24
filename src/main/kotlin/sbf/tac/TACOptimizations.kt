@@ -36,8 +36,6 @@ import optimizer.Pruner
 import sbf.SolanaConfig
 import sbf.dwarf.DWARFEdgeLabelAnnotator
 import sbf.support.timeIt
-import sbf.tac.TACModSimplifier.simplifyModMathPreUnroll
-import sbf.tac.TACModSimplifier.simplifyModMathPostUnroll
 import spec.rules.EcosystemAgnosticRule
 import tac.DumpTime
 import utils.*
@@ -89,7 +87,7 @@ fun optimize(coreTAC: CoreTACProgram): CoreTACProgram {
         // We remove unused map writes. It might also help the map scalarizer if a dead write does not have a constant index
         .mapIf(optLevel >= 1, CoreToCoreTransformer(ReportTypes.REMOVE_UNUSED_WRITES, SimpleMemoryOptimizer::removeUnusedWrites))
         .mapIf(optLevel >= 3, CoreToCoreTransformer(ReportTypes.INTERVALS_OPTIMIZE) {
-            IntervalsRewriter.rewrite(it, handleLeinoVars = false, removeRemovableAsserts = true).let {
+            IntervalsRewriter.rewrite(it, handleLeinoVars = false).let {
                 optimizeAssignments(it, FilteringFunctions.default(it, keepRevertManagment = true))
             }.let(BlockMerger::mergeBlocks)
         })
@@ -115,7 +113,7 @@ fun optimize(coreTAC: CoreTACProgram): CoreTACProgram {
             OverflowPatternRewriter(it).go()
         })
         .mapIf(optLevel >= 1, CoreToCoreTransformer(ReportTypes.INTERVALS_OPTIMIZE) {
-            IntervalsRewriter.rewrite(it, handleLeinoVars = false, removeRemovableAsserts = true)
+            IntervalsRewriter.rewrite(it, handleLeinoVars = false)
         })
         // Simplify diamonds after interval rewriter. This time we fold assumes
         .mapIf(optLevel >= 1, CoreToCoreTransformer(ReportTypes.OPTIMIZE_DIAMONDS) { DiamondSimplifier.simplifyDiamonds(it, iterative = true) })
@@ -130,7 +128,7 @@ fun optimize(coreTAC: CoreTACProgram): CoreTACProgram {
         })
         // interval rewriter could benefit from assume introduced by previous optimization
         .mapIf(optLevel >= 4, CoreToCoreTransformer(ReportTypes.INTERVALS_OPTIMIZE) {
-            IntervalsRewriter.rewrite(it, handleLeinoVars = false, removeRemovableAsserts = true)
+            IntervalsRewriter.rewrite(it, handleLeinoVars = false)
         })
         // after pruning infeasible paths, there are more constants to propagate
         .mapIf(optLevel >= 4, CoreToCoreTransformer(ReportTypes.PROPAGATOR_SIMPLIFIER) {
@@ -150,11 +148,8 @@ fun runDSAandUnrollLoops(coreTAC: CoreTACProgram): CoreTACProgram {
         .map(CoreToCoreTransformer(ReportTypes.DSA, TACDSA::simplify))
         .map(CoreToCoreTransformer(ReportTypes.COLLAPSE_EMPTY_DSA, TACDSA::collapseEmptyAssignmentBlocks))
         .mapIfAllowed(CoreToCoreTransformer(ReportTypes.REMOVE_SIMPLE_CONSTANT_VARIABLES, SimpleConstantVariableRemover::transform))
-        .simplifyModMathPreUnroll()
         .map(CoreToCoreTransformer(ReportTypes.HOIST_LOOPS, LoopHoistingOptimization::hoistLoopComputations))
-        .map(CoreToCoreTransformer(ReportTypes.UNROLL, CoreTACProgram::convertToLoopFreeCode))
-        .simplifyModMathPostUnroll()
-        .ref
+        .map(CoreToCoreTransformer(ReportTypes.UNROLL, CoreTACProgram::convertToLoopFreeCode)).ref
 }
 
 fun legacyOptimize(coreTAC: CoreTACProgram): CoreTACProgram {
@@ -198,8 +193,7 @@ fun legacyOptimize(coreTAC: CoreTACProgram): CoreTACProgram {
             .mapIfAllowed(CoreToCoreTransformer(ReportTypes.INTERVALS_OPTIMIZE) {
                 IntervalsRewriter.rewrite(
                     it,
-                    handleLeinoVars = false,
-                    removeRemovableAsserts = true
+                    handleLeinoVars = false
                 )
             })
             .mapIfAllowed(CoreToCoreTransformer(ReportTypes.PATH_OPTIMIZE1) { Pruner(it).prune() })
@@ -224,8 +218,7 @@ fun legacyOptimize(coreTAC: CoreTACProgram): CoreTACProgram {
             .mapIfAllowed(CoreToCoreTransformer(ReportTypes.INTERVALS_OPTIMIZE) {
                 IntervalsRewriter.rewrite(
                     it,
-                    handleLeinoVars = false,
-                    removeRemovableAsserts = true
+                    handleLeinoVars = false
                 )
             })
             .mapIfAllowed(CoreToCoreTransformer(ReportTypes.BYTEMAP_OPTIMIZER1) {
@@ -247,7 +240,7 @@ fun legacyOptimize(coreTAC: CoreTACProgram): CoreTACProgram {
                         PatternRewriter.rewrite(c, PatternRewriter::solanaPatternsList)
                     }
                 }).mapIfAllowed(CoreToCoreTransformer(ReportTypes.INTERVALS_OPTIMIZE) {
-                    IntervalsRewriter.rewrite(it, handleLeinoVars = false, removeRemovableAsserts = true)
+                    IntervalsRewriter.rewrite(it, handleLeinoVars = false)
                 }).map(CoreToCoreTransformer(ReportTypes.PATTERN_REWRITER) {
                     PatternRewriter.rewrite(it, PatternRewriter::solanaPatternsList)
                 })

@@ -1,6 +1,0 @@
-{
-	"rules": {
-		"test_complex_payload": "SUCCESS",
-		"test_event_emission": "SUCCESS"
-	}
-}

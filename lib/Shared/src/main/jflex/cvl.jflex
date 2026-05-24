@@ -562,18 +562,6 @@ MultiLineComment = \/\*[^*]*\*+([^/*][^*]*\*+)*\/
     tableBuilder.registerTokenEmit(currentSymbol);
     return currentSymbol;
 }
-<YYINITIAL> "event" {
-   debug(" event");
-   ComplexSymbolFactory.ComplexSymbol currentSymbol = symbol(sym.EVENT, yytext());
-   tableBuilder.registerTokenEmit(currentSymbol);
-   return currentSymbol;
-}
-<YYINITIAL> "indexed" {
-   debug(" indexed");
-   ComplexSymbolFactory.ComplexSymbol currentSymbol = symbol(sym.INDEXED, yytext());
-   tableBuilder.registerTokenEmit(currentSymbol);
-   return currentSymbol;
-}
 <YYINITIAL> "<"|">"|"<="|">="|"=="|"!=" {
     debug(" Relop %s\n",yytext());
     ComplexSymbolFactory.ComplexSymbol currentSymbol = symbol(sym.RELOP, "RELOP", yytext());

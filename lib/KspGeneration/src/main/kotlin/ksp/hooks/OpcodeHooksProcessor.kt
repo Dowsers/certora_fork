@@ -319,12 +319,10 @@ class OpcodeHooksProcessor(private val environment: SymbolProcessorEnvironment) 
                     "val $fieldName: VMParam.Named"
                 }
 
-                val theCommand = "lc.cmd"
-
                 val matchBinding = summaryFields.mapNotNull { fld ->
                     if(fld.valueSource is ValueSource.CommandField || fld.valueSource is ValueSource.CustomBinding) {
                         val fieldName = fld.fieldName
-                        "$fieldName to $theCommand.summ.${fieldName}.asSym().inject()"
+                        "$fieldName to cmd.summ.${fieldName}.asSym().inject()"
                     } else {
                         null
                     }
@@ -335,7 +333,7 @@ class OpcodeHooksProcessor(private val environment: SymbolProcessorEnvironment) 
                     ""
                 } else {
                     ", " + contextParam.joinToString(", ") {
-                        "${it.contextMatchName!!} = $theCommand.summ.${it.fieldName}"
+                        "${it.contextMatchName!!} = cmd.summ.${it.fieldName}"
                     }
                 }
 
@@ -343,13 +341,13 @@ class OpcodeHooksProcessor(private val environment: SymbolProcessorEnvironment) 
                 |data class $declarationName(
                 |    ${hookParameters.joinToString(",\n|${tabs(1)}")},
                 |): TACHookPattern.OpcodeHook() {
-                |    override fun matches(lc: analysis.LTACCmd, context: CoreTACProgram): HookMatch.OpcodeMatch? =
-                |        if($theCommand is TACCmd.Simple.SummaryCmd && $theCommand.summ is $summaryName) {
+                |    override fun matches(cmd: TACCmd): HookMatch =
+                |        if(cmd is TACCmd.Simple.SummaryCmd && cmd.summ is $summaryName) {
                 |            $matchName(substitutions = mapOf(
                 |                ${matchBinding.joinToString(",\n|${tabs(4)}")}
                 |            )$contextMatching)
                 |        } else {
-                |            null
+                |            HookMatch.None
                 |        }
                 |}
                 """.trimMargin()
@@ -364,7 +362,10 @@ class OpcodeHooksProcessor(private val environment: SymbolProcessorEnvironment) 
                     |data class $matchName(
                     |    $contextPrefix
                     |    override val substitutions: Map<VMParam.Named, HookValue> = emptyMap()
-                    |): HookMatch.OpcodeMatch()
+                    |): HookMatch.OpcodeMatch() {
+                    |    override fun withSubstitution(v: VMParam.Named, subst: TACExpr): HookMatch =
+                    |    this.copy(substitutions = substitutions.plus(v to subst.inject()))
+                    |}
                 """.trimMargin()
             }
 

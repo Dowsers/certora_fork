@@ -47,11 +47,11 @@ const val NUM_OF_SBF_REGISTERS = 11
 // -- Actual SVM parameters
 // In SVM, each memory region must be 1 << 32 bytes apart, where 32 is the number of bits of a virtual address.
 // The code region includes the bytecode and the .rodata section
-const val SBF_CODE_START = 0x1_0000_0000
+const val SBF_CODE_START = 0x100_000_000
 val SBF_STACK_FRAME_SIZE = SolanaConfig.StackFrameSize.get().toLong()
-const val SBF_STACK_START = 0x2_0000_0000
-const val SBF_INPUT_START = 0x4_0000_0000
-const val SBF_HEAP_START = 0x3_0000_0000
+const val SBF_STACK_START = 0x200_000_000
+const val SBF_INPUT_START = 0x400_000_000
+const val SBF_HEAP_START = 0x300_000_000
 /* Maximum heap size in bytes */
 const val MAX_HEAP_SIZE = (SBF_INPUT_START - SBF_HEAP_START)
 val SBF_HEAP_SIZE = SolanaConfig.HeapSize.get().toLong().also {
@@ -66,10 +66,7 @@ const val SBF_INPUT_END = SBF_INPUT_START + (2 * MAX_SOLANA_ACCOUNTS * SOLANA_AC
 // We have split the input memory region into two parts: the first half for solana accounts and the second half for external allocations.
 const val SBF_EXTERNAL_START = SBF_INPUT_START + (MAX_SOLANA_ACCOUNTS * SOLANA_ACCOUNT_SIZE)
 
-// An implausibly high address that we can assume no real program will be allowed to access - but still low enough that
-// pointer math on this value won't overflow.  We use this to constrain pointer values so that math on nondet pointers
-// won't overflow.
-val SBF_IMPLAUSIBLE_MEM_ADDRESS = 0x5_0000_0000.also { check(it >= SBF_INPUT_END) }
+
 
 sealed class SbfRegisterType {
     data class NumType(val value: ConstantSet) : SbfRegisterType() {

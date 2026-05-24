@@ -2379,7 +2379,7 @@ object Config {
         option = Option(
             "patternRewriter",
             true,
-            "The maximal number of times to run PatternRewriter in sequence [default : 10]"
+            "The maximal number of times to run PatternRewriter in sequence [default : 4]"
         )
     ) {}
 

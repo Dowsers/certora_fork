@@ -88,21 +88,6 @@ open class CVLAstTransformer<E>(
         is CVLHookPattern.Create -> namedVMParam(pattern.value).bind { value ->
             pattern.copy(value = value).lift()
         }
-
-        is CVLHookPattern.Event -> pattern.eventParams.map { eParam ->
-            if(eParam.param is VMParam.Named) {
-                namedVMParam(eParam.param).map { mapped ->
-                    eParam.copy(param = mapped)
-                }
-            } else {
-                check(eParam.param is VMParam.Unnamed)
-                unnamedVMParam(eParam.param).map { mapped ->
-                    eParam.copy(param = mapped)
-                }
-            }
-        }.flatten().map {
-            pattern.copy(eventParams = it)
-        }
     }
 
     private fun slotPattern(pattern: CVLSlotPattern): CollectingResult<CVLSlotPattern, E> = when (pattern) {

@@ -58,7 +58,6 @@ object HeuristicalFolding {
                 is TACExpr.Vec.Add,
                 is TACExpr.BinOp.Sub,
                 is TACExpr.Vec.Mul,
-                is TACExpr.BinOp.Mod,
                 is TACExpr.Vec.IntMul,
                 is TACExpr.BinOp.BWAnd ->
                     allowAxiomatized

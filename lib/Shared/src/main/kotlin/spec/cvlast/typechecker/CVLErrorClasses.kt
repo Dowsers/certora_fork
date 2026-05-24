@@ -3410,28 +3410,3 @@ class IllegalRerouteSummary(
     exampleMessage = "Index 3 is out of bounds for static array of size 3",
 )
 class LinksBlockError(override val location: Range, override val message: String) : CVLError()
-
-@KSerializable
-@CVLErrorType(
-    category = CVLErrorCategory.TYPECHECKING,
-    description = "An error in the declaration of an event hook"
-)
-@CVLErrorExample(
-    exampleCVLWithRange = """
-#hook event TooMany(uint indexed a, uint indexed b, address indexed c, uint160 indexed d) {
-  assert true;
-}#
-""",
-    exampleMessage = "Too many indexed parameters: a, b, c, d; at most 3 are allowed"
-)
-@CVLErrorExample(
-    exampleCVLWithRange = """
-#hook event MyEvent(uint[] indexed b) {
-   assert true;
-}#
-    """,
-    exampleMessage = "Cannot use type uint256[] as an indexed event parameter: no correspondance type to convert to in hook context"
-)
-class EventHookError(
-    override val location: Range, override val message: String
-) : CVLError()

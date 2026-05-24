@@ -298,12 +298,7 @@ enum class ReportTypes(val loggerCategory: LoggerTypes) : DumpType, CategoryName
     RETURN_COPY_LABELLING(LoggerTypes.EQUIVALENCE),
     TAC_PROGRAM_INTERPRETER(LoggerTypes.TAC_PROGRAM_INTERPRETER),
     REMOVE_SIMPLE_CONSTANT_VARIABLES(LoggerTypes.OPTIMIZE),
-    EXPR_UNFOLDING(LoggerTypes.NORMALIZER),
-    MOD_MATH_NORMALIZE(LoggerTypes.MOD_MATH),
-    MOD_MATH_FIND_MORE_POINTERS(LoggerTypes.MOD_MATH),
-    MOD_MATH_REMOVE_NO_OVERFLOW(LoggerTypes.MOD_MATH),
-    MOD_MATH_SIMPLIFY(LoggerTypes.MOD_MATH),
-    MOD_MATH_INTERVALS_SIMPLIFY(LoggerTypes.MOD_MATH),
+    EXPR_UNFOLDING(LoggerTypes.NORMALIZER)
     ;
 
     override fun isEnabled(): Boolean = this == NONE || Config.isEnabledLogger(this.loggerCategory) || Config.isEnabledReport(this)

@@ -87,7 +87,7 @@ internal fun <TNum : INumValue<TNum>, TOffset : IOffset<TOffset>, TFlags: IPTANo
 
             val res = getResFrom128(locInst)
             if (res != null) {
-                val (low, high) = sbfTacB.splitU128(natIntTacB.mask(r2, 128L))
+                val (low, high) = natIntTacB.splitU128(natIntTacB.mask(r2, 128L))
                 cmds += assign(res.low.tacVar, low)
                 cmds += assign(res.high.tacVar, high)
             } else {
