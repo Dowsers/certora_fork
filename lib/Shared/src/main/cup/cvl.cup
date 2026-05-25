@@ -266,7 +266,7 @@ terminal
     LSQB, RSQB, DOT, COMMA, COLON, QUESTION, FORALL, EXISTS, USING, AS, RETURN, IMPORT, USE, BUILTIN, OVERRIDE, SIG,
     SUM, USUM, AMPERSAT, OLD, NEW, NOREVERT, WITHREVERT, FALLBACK, WITH, VOID, RULE, FUNCTION, UNRESOLVED_LOWERCASE,
     ALWAYS, CONSTANT, PER_CALLEE_CONSTANT, NONDET, HAVOC_ECF, HAVOC_ALL, AUTO, UNRESOLVED, ALL, DISPATCHER,
-    DISPATCH, DEFAULT, DELETE, ASSERT_FALSE;
+    DISPATCH, DEFAULT, DELETE, ASSERT_FALSE, EVENT, INDEXED;
 
 /* for error reporting */
 terminal STORAGE;
@@ -334,7 +334,11 @@ non terminal VMParam vm_param;
 non terminal VMParam unnamed_vm_param;
 non terminal VMParam unnamed_vm_param_no_loc, unnamed_vm_param_with_loc;
 non terminal NamedVMParam named_vm_param_no_loc, named_vm_param_with_loc;
+non terminal EventVMParam event_param;
+non terminal List<EventVMParam> event_param_list;
 non terminal CVLParam cvl_param;
+non terminal String event_param_name;
+non terminal kotlin.Pair<String, String> event_id;
 
 
 /* invariants */
@@ -1004,9 +1008,30 @@ hook_pattern ::=
 
   | HOOK:h OPCODE:o opt_named_vm_param_list:opl
       {: RESULT = new HookPattern(range(hxleft, oplxright), o, opl);                 :}
+  | HOOK:h EVENT event_id:eName LP event_param_list:ep RP:rp
+      {: RESULT = new HookPattern(range(hxleft, rpxright), new EventHookData(
+         eName.getSecond(), eName.getFirst(), ep
+      )); :}
 ;
 
+event_id ::=
+   id_or_keyword:ename {: RESULT = new kotlin.Pair<String, String>(null, ename); :}
+  | id_or_keyword:contractName DOT id_or_keyword:ename {: RESULT = new kotlin.Pair<String, String>(contractName, ename); :};
 
+event_param ::=
+  type:t INDEXED:i {: RESULT = new EventVMParam(new UnnamedVMParam(t, null, range(txleft, txright)), true, range(txleft, ixright)); :}
+  | type:t INDEXED event_param_name:id {: RESULT = new EventVMParam(new NamedVMParam(t, null, id, range(txleft, idxright)), true, range(txleft, idxright)); :}
+  | type:t event_param_name:id {: RESULT = new EventVMParam(new NamedVMParam(t, null, id, range(txleft, idxright)), false, range(txleft, idxright)); :}
+  | type:t {: RESULT = new EventVMParam(new UnnamedVMParam(t, null, range(txleft, txright)), false, range(txleft, txright)); :};
+
+event_param_list ::=
+  event_param:ep COMMA event_param_list:l {: List<EventVMParam> toRet = new ArrayList<EventVMParam>(); toRet.add(ep); toRet.addAll(l); RESULT = toRet; :}
+  | event_param:ep {: RESULT = singletonList(ep); :}
+  | {: RESULT = emptyList(); :};
+
+event_param_name ::=
+  usable_keywords:u {: RESULT = u; :}
+  | ID:i {: RESULT = i; :};
 /**
    (slot 2) -> 3rd storage slot
    (slot 0, offset 8) -> 1st storage slot, variable packed at 8 bytes
@@ -1282,8 +1307,7 @@ usable_keywords ::=
   | ON_TRANSACTION_BOUNDARY:k   {: RESULT = (String) k; :}
   | OLD:k         {: RESULT = (String) k; :}
   | HOOK:k        {: RESULT = (String) k; :}
-  | UNRESOLVED_LOWERCASE:k {: RESULT = (String) k; :}
-;
+  | UNRESOLVED_LOWERCASE:k {: RESULT = (String) k; :};
 
 id_or_keyword ::=
     ID:id              {: RESULT = id; :}

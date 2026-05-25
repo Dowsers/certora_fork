@@ -21,6 +21,7 @@ package wasm.analysis.memory
 import analysis.*
 import analysis.CommandWithRequiredDecls.Companion.withDecls
 import com.certora.collect.*
+import datastructures.stdcollections.*
 import tac.*
 import utils.*
 import vc.data.*
@@ -79,6 +80,10 @@ class StaticMemoryAnalysis private constructor(val graph: TACCommandGraph) {
 
         if (idx + size - 1 >= data.content.size) {
             return null
+        }
+
+        if (size == 0) {
+            return emptyList()
         }
 
         return data.content.subList(idx, idx + size)

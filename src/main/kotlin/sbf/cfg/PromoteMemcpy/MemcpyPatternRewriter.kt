@@ -29,7 +29,7 @@ private val logger = Logger(LoggerTypes.SBF_MEMCPY_PROMOTION)
 private fun info(msg: () -> Any) { logger.info(msg)}
 
 /**
- * Find at most [maxNumOfPairs] load/store pairs within [bb] that can be promoted to `memcpy`, and
+ * Find at most [maxNumOfPairs] store-of-load pairs within [bb] that can be promoted to `memcpy`, and
  * returns the corresponding rewrites.
  *
  * Algorithm:
@@ -37,13 +37,13 @@ private fun info(msg: () -> Any) { logger.info(msg)}
  * We scan all instructions within [bb]
  * 1. If the instruction is a load then we remember it in `defLoads` map.
  * 2. If the instruction is a store then we try to pair it with a load from `defLoads`.
- *    This is done by [processLoadStorePair]. This function can return false for several reasons.
+ *    This is done by [promoteLoadStorePair]. This function can return false for several reasons.
  *    For instance, if the store is far from the load then we need to prove that there is no other stores that might modify
  *    the loaded memory location.
- *    Since we try to find the maximal number of load/store pairs (i.e., the longest memcpy), we require that the accessed memory has no gaps.
- *    If there are some gaps then [processLoadStorePair] will also return false.
- * 3. If at any time, [processLoadStorePair] returns false we check how many pairs of load-stores we have. If any then
- *    we replace them with a `memcpy` instruction. When replacing more than one load/store pair some extra conditions must also hold.
+ *    Since we try to find the maximal number of store-of-load pairs (i.e., the longest memcpy), we require that the accessed memory has no gaps.
+ *    If there are some gaps then [promoteLoadStorePair] will also return false.
+ * 3. If at any time, [promoteLoadStorePair] returns false we check how many pairs of load-stores we have. If any then
+ *    we replace them with a `memcpy` instruction. When replacing more than one store-of-load pair some extra conditions must also hold.
  *    This is checked by `canBePromoted`.
  *
  *  @param [bb] basic block whether promotion will take place
@@ -93,9 +93,9 @@ fun <D, TNum, TOffset> findMemcpyRewritesIntraBlock(
                         continue
                     }
 
-                    val canProcessPair = processLoadStorePair(bb, locInst, loadInst, types, useDynFrames, memcpyPattern)
-                    if (memcpyPattern.getLoads().size >= maxNumOfPairs || !canProcessPair) {
-                        // If we cannot insert the store-of-load pair, then we check if we can promote
+                    val isPromotable = promoteLoadStorePair(bb, memcpyPattern, locInst, loadInst, types, useDynFrames)
+                    if (memcpyPattern.getLoads().size >= maxNumOfPairs || !isPromotable) {
+                        // If we cannot insert the store-load pair, then we check if we can promote
                         // the pairs we have so far.
                         memcpyPattern.canBePromoted(minSizeToBePromoted)?.let { promoted ->
                             emitMemcpy(
@@ -118,7 +118,8 @@ fun <D, TNum, TOffset> findMemcpyRewritesIntraBlock(
 
                         // We start a fresh sequence of store-of-load pairs
                         memcpyPattern = MemcpyPattern()
-                        processLoadStorePair(bb, locInst, loadInst, types, useDynFrames, memcpyPattern)
+                        // Try again with empty pattern
+                        promoteLoadStorePair(bb, memcpyPattern, locInst, loadInst, types, useDynFrames)
                     }
                 }
             }
@@ -156,16 +157,15 @@ fun <D, TNum, TOffset> findMemcpyRewritesIntraBlock(
 }
 
 /**
- * Return true if [loadLocInst] is the loaded offset stored in [storeLocInst] and some conditions hold
- * (see [isSafeToCommuteStore] and method `add` from [MemcpyPattern])
- **/
-private fun <D, TNum, TOffset> processLoadStorePair(
+ * Return true if the store-of-load pair can be part of [memcpy]. In that case, [memcpy] is updated.
+ */
+fun <D, TNum, TOffset> promoteLoadStorePair(
     bb: SbfBasicBlock,
+    memcpy: MemcpyPattern,
     storeLocInst: LocatedSbfInstruction,
     loadLocInst: LocatedSbfInstruction,
     types: AnalysisRegisterTypes<D, TNum, TOffset>,
     useDynFrames: Boolean,
-    memcpy: MemcpyPattern
 ): Boolean
     where TNum: INumValue<TNum>,
           TOffset: IOffset<TOffset>,
@@ -173,35 +173,55 @@ private fun <D, TNum, TOffset> processLoadStorePair(
 
     val storeInst = storeLocInst.inst
     val loadInst = loadLocInst.inst
+
     check(storeInst is SbfInstruction.Mem && !storeInst.isLoad)
     check(loadInst is SbfInstruction.Mem && loadInst.isLoad)
+    check(storeLocInst.pos > loadLocInst.pos)
 
-    val width = loadInst.access.width
-    if (width != storeInst.access.width) {
+    if (loadInst.access.width != storeInst.access.width) {
         return false
     }
-    val loadedMemAccess = normalizeLoadOrStore(loadLocInst, types)
-    val storedMemAccess = normalizeLoadOrStore(storeLocInst, types)
 
-    // This restriction is needed when we emit the code because if both base registers in [load] and [store]
-    // are scratch registers then we cannot perform the transformation because we run out of registers
-    // where we can save values.
-    return when {
-        loadedMemAccess.region != MemAccessRegion.STACK &&
-            storedMemAccess.region != MemAccessRegion.STACK -> false
-        !isSafeToCommuteStore(
+    val loadMemAccess = normalizeLoadOrStore(loadLocInst, types)
+    val storeMemAccess = normalizeLoadOrStore(storeLocInst, types)
+
+    if (loadMemAccess.region != MemAccessRegion.STACK && storeMemAccess.region != MemAccessRegion.STACK) {
+        return false
+    }
+
+    // The store needs to be moved next to the load.
+    if (!isSafeToCommuteStore(
             bb,
-            loadedMemAccess,
+            loadMemAccess,
             loadLocInst,
-            storedMemAccess,
+            storeMemAccess,
             storeLocInst,
             types,
-            useDynFrames
-        ) ->  false
-        else -> memcpy.add(loadedMemAccess, loadLocInst, storedMemAccess, storeLocInst)
-    }
-}
+            useDynFrames)) { return false }
 
+    // The promoted memcpy will be inserted before the first load in the pattern.  Any new load
+    // being folded in is therefore effectively moved to that earlier position, and so is
+    // the new store (its bytes are written by the memcpy at the earlier insertion point).
+    // [isSafeToCommuteLoadStorePair] rejects the pair if any instruction between the
+    // pattern's first load and this load either invalidates the new load's source or
+    // observes/clobbers the new store's destination.
+    if (!isSafeToCommuteLoadStorePair(
+            bb,
+            memcpy,
+            loadMemAccess,
+            loadLocInst,
+            storeMemAccess,
+            storeLocInst,
+            types)) { return false }
+
+
+    return memcpy.add(
+        loadMemAccess,
+        loadLocInst,
+        storeMemAccess,
+        storeLocInst,
+    )
+}
 
 /**
  * We are interested in these two related patterns:

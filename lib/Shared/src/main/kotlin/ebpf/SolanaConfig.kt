@@ -385,6 +385,24 @@ object SolanaConfig {
         )
     ) {}
 
+    val TACOptimisticOverflowOptimization = object : ConfigType.BooleanCmdLine(
+        false,
+        Option(
+            "solanaTACOptimisticOverflowOptimization",
+            true,
+            "Enable optimistic overflow optimization in TAC. [default: false]"
+        )
+    ) {}
+
+    val TACModSimplificationSteps = object : ConfigType.IntCmdLine(
+        default = 10,
+        option = Option(
+            "modSimplificationSteps",
+            true,
+            "The maximal number of times to run the mod math simplication rewriter [default : 10]"
+        )
+    ) {}
+
     val TACRentDeterministicReturn = object : ConfigType.BooleanCmdLine(
         true,
         Option(
