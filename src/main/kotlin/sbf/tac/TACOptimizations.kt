@@ -50,6 +50,7 @@ import verifier.BlockMerger
 import verifier.CoreToCoreTransformer
 import verifier.SimpleMemoryOptimizer
 import wasm.WasmEntryPoint
+import datastructures.stdcollections.*
 
 fun solanaOptimize(coreTAC: CoreTACProgram, rule: EcosystemAgnosticRule): CoreTACProgram {
     val optCoreTAC = timeIt("[${rule.ruleIdentifier}]", "TAC optimizations") {
@@ -249,7 +250,9 @@ fun legacyOptimize(coreTAC: CoreTACProgram): CoreTACProgram {
                 }).mapIfAllowed(CoreToCoreTransformer(ReportTypes.INTERVALS_OPTIMIZE) {
                     IntervalsRewriter.rewrite(it, handleLeinoVars = false, removeRemovableAsserts = true)
                 }).map(CoreToCoreTransformer(ReportTypes.PATTERN_REWRITER) {
-                    PatternRewriter.rewrite(it, PatternRewriter::solanaPatternsList)
+                    PatternRewriter.rewrite(
+                        prog = it,
+                        patternList = { solanaPatternsList() + postIntervalsRewriterPatternList() })
                 })
             }
 

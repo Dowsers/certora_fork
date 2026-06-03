@@ -260,6 +260,8 @@ object PatternHelpers {
     infix fun PI.anyAdd(p2: PI) = (this + p2) OR (this intAdd p2)
     infix fun PI.intDiv(p2: PI) = commutativeCombiner(TACExpr.BinOp.IntDiv::class.java, this, p2)
 
+    infix fun PI.bothDivs(p2: PI) = (this / p2) OR (this intDiv p2)
+
     infix fun PI.eq(p2: PI) = commutativeCombiner(TACExpr.BinRel.Eq::class.java, this, p2)
     infix fun PI.lt(p2: PI) = combiner(TACExpr.BinRel.Lt::class.java, this, p2)
     infix fun PI.gt(p2: PI) = combiner(TACExpr.BinRel.Gt::class.java, this, p2)

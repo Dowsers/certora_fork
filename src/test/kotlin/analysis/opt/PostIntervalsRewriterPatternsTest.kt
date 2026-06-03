@@ -18,6 +18,8 @@
 package analysis.opt
 
 import analysis.opt.PatternRewriter.PatternHandler
+import config.Config
+import config.ConfigScope
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import vc.data.TACBuilderAuxiliaries
@@ -89,11 +91,13 @@ class PostIntervalsRewriterPatternsTest : TACBuilderAuxiliaries() {
      */
     @Test
     fun testDivEq() {
-        val prog = TACProgramBuilder {
-            d assign Div(aS, 5.asTACExpr)
-            x assign Eq(dS, cS)
+        ConfigScope(Config.PurifyConstDivisions, true).use {
+            val prog = TACProgramBuilder {
+                d assign Div(aS, 5.asTACExpr)
+                x assign Eq(dS, cS)
+            }
+            checkStat(prog, "divEq")
         }
-        checkStat(prog, "divEq")
     }
 
     /**
