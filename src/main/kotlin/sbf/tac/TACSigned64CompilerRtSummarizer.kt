@@ -29,15 +29,18 @@ open class SummarizeSignedInteger64CompilerRt<TNum : INumValue<TNum>, TOffset : 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     internal fun summarizeDivdi3(
         res: TACSymbol.Var,
-        @Suppress("UNUSED_PARAMETER")
         arg1: TACSymbol,
-        @Suppress("UNUSED_PARAMETER")
         arg2: TACSymbol
     ): List<TACCmd.Simple> {
-        return  listOf(
-            Debug.unsupported("Warning: __divdi3 is not modeled precisely in TAC", listOf(res)),
-            havoc(res)
-        )
+        return when (sbfTacB) {
+            is LazyMaskSbfTACBuilder -> listOf(
+                Debug.unsupported("Warning: __divdi3 is not modeled precisely in TAC", listOf(res)),
+                havoc(res)
+            )
+            else -> listOf(
+                assign(res, sbfTacB { arg1.asSym() sDiv arg2.asSym() })
+            )
+        }
     }
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)

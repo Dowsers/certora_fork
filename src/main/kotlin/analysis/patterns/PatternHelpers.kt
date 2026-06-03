@@ -278,6 +278,11 @@ object PatternHelpers {
     infix fun PI.symmGe(p2: PI) = (this ge p2) OR (p2 le this)
     infix fun PI.symmGt(p2: PI) = (this gt p2) OR (p2 lt this)
 
+    infix fun PI.symmSLe(p2: PI) = (this sLe p2) OR (p2 sGe this)
+    infix fun PI.symmSLt(p2: PI) = (this sLt p2) OR (p2 sGt this)
+    infix fun PI.symmSGe(p2: PI) = (this sGe p2) OR (p2 sLe this)
+    infix fun PI.symmSGt(p2: PI) = (this sGt p2) OR (p2 sLt this)
+
     infix fun PI.lOr(p2: PI) = commutativeCombiner(TACExpr.BinBoolOp.LOr::class.java, this, p2)
     infix fun PI.lAnd(p2: PI) = commutativeCombiner(TACExpr.BinBoolOp.LAnd::class.java, this, p2)
 

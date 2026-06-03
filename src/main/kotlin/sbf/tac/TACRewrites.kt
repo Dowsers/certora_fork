@@ -100,7 +100,7 @@ fun PatternRewriter.solanaPatternsList() = listOf(
                     sym(A)
                 }
             },
-            TACExpr.Vec.IntAdd.Binary::class.java, TACExpr.Vec.Add::class.java
+            TACExpr.Vec.IntAdd.Binary::class.java, TACExpr.Vec.Add.Binary::class.java
         ),
 
         /**

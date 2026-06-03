@@ -50,7 +50,7 @@ private typealias PatternHandlerContext = PatternRewriter.PatternHandler.Context
     subtraction of a constant that is a 2's complement representation of a negative number, which we accomodate by
     flipping the operation to subtraction or addition of the negation of that constant.
  */
-val CANNOT_OVERFLOW_REASON = tac.MetaKey<String>("sbf.tac.cannot.overflow")
+val CANNOT_OVERFLOW_64_REASON = tac.MetaKey<String>("sbf.tac.cannot.overflow")
 
 /**
     Attempts to minimize the use of the Mod operator in TAC expressions that implement 64-bit math using Bit256
@@ -81,32 +81,33 @@ object TACModSimplifier {
 
     private val bvMode = Config.Smt.UseBV.get()
 
-    private val modulus get() = modz64.modulus
-    private val maxSigned get() = modz64.maxSigned
-    private val BigInteger.inBounds get() = with(modz64) { inBounds }
-    private fun Int.to2s() = with(modz64) { to2s() }
-    private fun BigInteger.from2s() = with(modz64) { from2s() }
-
-    private fun TACExpr.cannotOverflow(): Pair<String, TACExpr>? =
+    private fun TACExpr.cannotOverflow64(): Pair<String, TACExpr>? =
         (this as? TACExpr.AnnotationExp<*>)
-            ?.takeIf { it.annot.k == CANNOT_OVERFLOW_REASON }
+            ?.takeIf { it.annot.k == CANNOT_OVERFLOW_64_REASON }
             ?.let { it.annot.v as String to it.o }
 
+    /** Matches a SignExtend expression, with the EVM-style size argument [n] */
     context(PatternHelpers)
-    private fun PI.mod() = this.rem(c(modulus))
+    private fun PI.sextEVM(n: PI) = n.signExtend(this)
 
+    /** Produces a SignExtend expression with the EVM-style size argument [n] */
     context(PatternHandlerContext)
-    private fun TACExpr.mod() = this.mod(modulus.asTACExpr)
+    private fun ToTACExpr.sextEVM(n: ToTACExpr) = SignExtend(n.toTACExpr(), this.toTACExpr())
 
-    context(PatternHelpers)
-    private fun PI.signExtend() = c(7).signExtend(this)
-
+    /** Produces a SignExtend expression with the bit width [n] (which must be a multiple of 8 and less than 256) */
     context(PatternHandlerContext)
+    private fun ToTACExpr.sextBits(n: Int): TACExpr {
+        require(n in 0..<256 && n % 8 == 0)
+        return SignExtend(((n / 8) - 1).asTACExpr, this.toTACExpr())
+    }
+
+    context(PatternHandlerContext, ModZm)
     private fun ToTACExpr.isNeg() = this gt maxSigned.asTACExpr
-    context(PatternHandlerContext)
+    context(PatternHandlerContext, ModZm)
     private fun ToTACExpr.isNonNeg() = this le maxSigned.asTACExpr
-    context(PatternHandlerContext)
+    context(PatternHandlerContext, ModZm)
     private fun sameSign(o1: ToTACExpr, o2: ToTACExpr) = o1.isNonNeg() eq o2.isNonNeg()
+
 
     private fun CoreTACProgram.cleanup() = removeUnusedAssignments(this, expensive = false)
 
@@ -122,7 +123,7 @@ object TACModSimplifier {
             constant that is a 2's complement representation of a negative number, and flip the operation to subtract
             (or add) the negation of that constant.
         */
-        fun maybeFlipSign(encoded: BigInteger) =
+        fun ModZm.maybeFlipSign(encoded: BigInteger) =
             encoded.takeIf { it.inBounds }?.from2s()?.takeIf { it < BigInteger.ZERO }?.let { -it }
 
         return PatternRewriter.rewrite(
@@ -130,51 +131,68 @@ object TACModSimplifier {
                 e.rhs.contains {
                     it is TACExpr.BinOp.Mod ||
                     it is TACExpr.BinOp.BWAnd ||
+                    it is TACExpr.BinOp.BWXOr ||
+                    it is TACExpr.BinOp.ShiftLeft ||
                     it is TACExpr.BinOp.ShiftRightLogical ||
+                    it is TACExpr.BinOp.ShiftRightArithmetical ||
                     it is TACExpr.BinOp.SignExtend ||
                     it is TACExpr.BinRel.Gt ||
                     it is TACExpr.BinRel.Ge ||
                     it is TACExpr.BinRel.Lt ||
                     it is TACExpr.BinRel.Le ||
+                    it is TACExpr.BinRel.Sgt ||
+                    it is TACExpr.BinRel.Sge ||
+                    it is TACExpr.BinRel.Slt ||
+                    it is TACExpr.BinRel.Sle ||
                     it is TACExpr.BinRel.Eq ||
-                    it.cannotOverflow() != null
+                    it.cannotOverflow64() != null
                 }
             },
             repeat = 1,
             patternList = { listOf(
                 /*
-                    (x + c).mod() ~~> (x - abs(c)).mod()
-                    where c is a 2's complement representation of a negative number
+                    (x + c).mod(2^n) ~~> (x - abs(c)).mod(2^n)
+                    where c is a 2's complement representation of a negative number, of width n
                 */
                 PatternHandler(
                     name = "add-flip-sign",
                     pattern = {
-                        (lSym(A) + c(C1)).mod()
+                        (lSym(A) + c(C1)).rem(c(C2))
                     },
                     handle = {
-                        maybeFlipSign(C1.n)?.let { (sym(A) sub it.asTACExpr).mod() }
+                        ModZm.fromMod(C2.n)?.run {
+                            maybeFlipSign(C1.n)?.let { flipped ->
+                                (sym(A) sub flipped.asTACExpr).mod(modulus.asTACExpr)
+                            }
+                        }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x - c).mod() ~~> (x + (-c)).mod()
-                    where c is a 2's complement representation of a negative number
+                    (x - c).mod(2^n) ~~> (x + (-c)).mod(2^n)
+                    where c is a 2's complement representation of a negative number, of width n
                 */
                 PatternHandler(
                     name = "sub-flip-sign",
                     pattern = {
-                        (lSym(A) - c(C1)).mod()
+                        (lSym(A) - c(C1)).rem(c(C2))
                     },
                     handle = {
-                        maybeFlipSign(C1.n)?.let { (sym(A) add it.asTACExpr).mod() }
+                        ModZm.fromMod(C2.n)?.run {
+                            maybeFlipSign(C1.n)?.let { flipped ->
+                                (sym(A) add flipped.asTACExpr).mod(modulus.asTACExpr)
+                            }
+                        }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x + c).cannotOverflow().mod() ~~> (x - (-c)).cannotOverflow().mod()
-                    where c is a 2's complement representation of a negative number
+                    (x + c).cannotOverflow64().mod(2^64) ~~> (x - (-c)).cannotOverflow64().mod(2^64)
+                    where c is a 2's complement representation of a negative number, of width 64
 
                     Note that "cannot overflow" here really applies to the *normalized* expression; it's not saying that
                     (x + c) cannot overflow, but rather that (x - (-c)) cannot overflow.  We have to allow this because
@@ -182,34 +200,44 @@ object TACModSimplifier {
                     does not.
                 */
                 PatternHandler(
-                    name = "add-flip-sign-no-ovf",
+                    name = "add-flip-sign-no-ovf-64",
                     pattern = {
-                        (lSym(A) + c(C1)).annotated(CANNOT_OVERFLOW_REASON).mod()
+                        (lSym(A) + c(C1)).annotated(CANNOT_OVERFLOW_64_REASON).rem(c(modz64.modulus))
                     },
                     handle = {
-                        maybeFlipSign(C1.n)?.let {
-                            (sym(A) sub it.asTACExpr).annotated(CANNOT_OVERFLOW_REASON, "Flipped sign").mod()
+                        with(modz64) {
+                             maybeFlipSign(C1.n)?.let { flipped ->
+                                (sym(A) sub flipped.asTACExpr)
+                                    .annotated(CANNOT_OVERFLOW_64_REASON, "Flipped sign")
+                                    .mod(modulus.asTACExpr)
+                            }
                         }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (-1 * x).mod() ~~> (x.mod() == 0) ? 0 : (modulus - x.mod())
+                    (-1 * x).mod(2^n) ~~> (x.mod(2^n) == 0) ? 0 : (2^n - x.mod(2^n))
                 */
                 PatternHandler(
                     name = "neg-mod",
                     pattern = {
-                        (c((-1).to2s()) * lSym(A)).mod()
+                        (c(C1) * lSym(A)).rem(c(C2))
                     },
                     handle = {
-                        ite(
-                            sym(A).mod() eq 0.asTACExpr,
-                            0.asTACExpr,
-                            modulus.asTACExpr sub sym(A).mod()
-                        )
+                        ModZm.fromMod(C2.n)?.run {
+                            maybeFlipSign(C1.n)?.takeIf { it == BigInteger.ONE }?.let {
+                                ite(
+                                    sym(A).mod(modulus.asTACExpr) eq 0.asTACExpr,
+                                    0.asTACExpr,
+                                    modulus.asTACExpr sub sym(A).mod(modulus.asTACExpr)
+                                )
+                            }
+                        }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
             ) }
         ).cleanup()
@@ -217,7 +245,7 @@ object TACModSimplifier {
 
     /**
         When generating TAC, we used information from the pointer analysis to annotate pointer math with
-        [CANNOT_OVERFLOW_REASON], so that we can assert/assume those operations won't overflow.  Here we do an extra
+        [CANNOT_OVERFLOW_64_REASON], so that we can assert/assume those operations won't overflow.  Here we do an extra
         search for pointer math we might have missed, using a dataflow analysis to back-propagate pointer-ness inferred
         from uses as memory access locations.
      */
@@ -290,20 +318,20 @@ object TACModSimplifier {
             val locDefCmd = graph.toCommand(locDef) as? TACCmd.Simple.AssigningCmd.AssignExpCmd ?: return@mapNotNull null
             if (locDefCmd.rhs is TACExpr.AnnotationExp<*>) { return@mapNotNull null }
 
-            // `ptr.mod(2^64) ~~> ptr.cannotOverflow().mod(2^64)
+            // `ptr.mod(2^64) ~~> ptr.cannotOverflow64().mod(2^64)
             ptr to TXF {
                 cmd.rhs.o1
-                    .annotated(CANNOT_OVERFLOW_REASON, "inferred pointer")
+                    .annotated(CANNOT_OVERFLOW_64_REASON, "inferred pointer")
                     .mod(cmd.rhs.o2)
             }.let { ExprUnfolder.unfoldTo(it, cmd.lhs, cmd.meta) }
         }.patchForEach(code) { (ptr, cmds) -> replaceCommand(ptr, cmds) }
     }
 
     /**
-        For any expression annotated with [CANNOT_OVERFLOW_REASON], we add an assert/assume that the expression's result
-        is indeed within bounds.  We also add asserts/assumes that any memory access locations are in the range of
-        plausible memory addresses. Finally, we remove the mod operations on any expression annotated with
-        [CANNOT_OVERFLOW_REASON], since they are redundant.
+        For any expression annotated with [CANNOT_OVERFLOW_64_REASON], we add an assert/assume that the expression's
+        result is indeed within bounds.  We also add asserts/assumes that any memory access locations are in the range
+        of plausible memory addresses. Finally, we remove the mod operations on any expression annotated with
+        [CANNOT_OVERFLOW_64_REASON], since they are redundant.
      */
     private fun removeNoOverflow(code: CoreTACProgram): CoreTACProgram {
         @Suppress("NAME_SHADOWING")
@@ -312,7 +340,7 @@ object TACModSimplifier {
         // Add asserts/assumes for any annotated expressions
         code = code.parallelLtacStream().mapNotNull { (ptr, cmd) ->
             if (cmd !is TACCmd.Simple.AssigningCmd.AssignExpCmd) { return@mapNotNull null }
-            val (reason, exp) = cmd.rhs.cannotOverflow() ?: return@mapNotNull null
+            val (reason, exp) = cmd.rhs.cannotOverflow64() ?: return@mapNotNull null
 
             val cond = TXF { exp le modz64.maxUnsigned }
             val condVar = TACKeyword.TMP(Tag.Bool)
@@ -348,12 +376,12 @@ object TACModSimplifier {
             repeat = 1,
             patternList = { listOf(
                 /*
-                    x.cannotOverflow().mod() ~~> x
+                    x.cannotOverflow64().mod(2^64) ~~> x
                 */
                 PatternHandler(
                     name = "no-ovf",
                     pattern = {
-                        lSym(A).annotated(CANNOT_OVERFLOW_REASON).mod()
+                        lSym(A).annotated(CANNOT_OVERFLOW_64_REASON).rem(c(modz64.modulus))
                     },
                     handle = {
                         sym(A)
@@ -367,11 +395,11 @@ object TACModSimplifier {
     }
 
     /**
-        Simplifies expressions involving mod, using algebraic identities.  We apply these identities repeatedly (up
-        to a configurable number of steps) to simplify complex expressions.
+        Simplifies expressions involving mod, using algebraic identities.  We apply these identities repeatedly (up to a
+        configurable number of steps) to simplify complex expressions.
 
-        This transform assumes the input code has already been normalized, and any [CANNOT_OVERFLOW_REASON] annotations
-        have already been applied/eliminated.
+        This transform assumes the input code has already been normalized, and any [CANNOT_OVERFLOW_64_REASON]
+        annotations have already been applied/eliminated.
      */
     private fun simplify(code: CoreTACProgram): CoreTACProgram {
         @Suppress("NAME_SHADOWING")
@@ -381,255 +409,572 @@ object TACModSimplifier {
             repeat = SolanaConfig.TACModSimplificationSteps.get(),
             patternList = { listOf(
                 /*
-                    (x + y).mod() < x ~~> (x.mod() + y.mod()) >= modulus
+                    (x + y).mod() < x ~~> (x.mod(m) + y.mod(m)) >= m
                 */
                 PatternHandler(
                     name = "add-ovf-1",
                     pattern = {
-                        (lSym(A) + lSym(B)).mod() symmLt lSym(C)
+                        (lSym(A) + lSym(B)).rem(c(C1)) symmLt lSym(C)
                     },
                     handle = {
                         runIf(src(A) == src(C)) {
-                            (sym(A).mod() intAdd sym(B).mod()) ge modulus.asTACExpr
+                            val x = sym(A)
+                            val y = sym(B)
+                            val m = C1.n.asTACExpr
+                            (x.mod(m) intAdd y.mod(m)) ge m
                         }
                     },
                     TACExpr.BinRel.Gt::class.java, TACExpr.BinRel.Lt::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x + y).mod() >= x ~~> (x.mod() + y.mod()) < modulus
+                    (x + y).mod(m) >= x ~~> (x.mod(m) + y.mod(m)) < m
                 */
                 PatternHandler(
                     name = "add-ovf-2",
                     pattern = {
-                        (lSym(A) + lSym(B)).mod() symmGe lSym(C)
+                        (lSym(A) + lSym(B)).rem(c(C1)) symmGe lSym(C)
                     },
                     handle = {
                         runIf(src(A) == src(C)) {
-                            (sym(A).mod() intAdd sym(B).mod()) lt modulus.asTACExpr
+                            val x = sym(A)
+                            val y = sym(B)
+                            val m = C1.n.asTACExpr
+                            (x.mod(m) intAdd y.mod(m)) lt m
                         }
                     },
                     TACExpr.BinRel.Ge::class.java, TACExpr.BinRel.Le::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x - y).mod() > x ~~> x.mod() < y.mod()
+                    (x - y).mod(m) > x ~~> x.mod(m) < y.mod(m)
                 */
                 PatternHandler(
                     name = "sub-ovf-1",
                     pattern = {
-                        (lSym(A) - lSym(B)).mod() symmGt lSym(C)
+                        (lSym(A) - lSym(B)).rem(c(C1)) symmGt lSym(C)
                     },
                     handle = {
                         runIf(src(A) == src(C)) {
-                            sym(A).mod() lt sym(B).mod()
+                            val x = sym(A)
+                            val y = sym(B)
+                            val m = C1.n.asTACExpr
+                            x.mod(m) lt y.mod(m)
                         }
                     },
                     TACExpr.BinRel.Gt::class.java, TACExpr.BinRel.Lt::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x - y).mod() <= x ~~> x.mod() >= y.mod()
+                    (x - y).mod(m) <= x ~~> x.mod(m) >= y.mod(m)
                 */
                 PatternHandler(
                     name = "sub-ovf-2",
                     pattern = {
-                        (lSym(A) - lSym(B)).mod() symmLe lSym(C)
+                        (lSym(A) - lSym(B)).rem(c(C1)) symmLe lSym(C)
                     },
                     handle = {
                         runIf(src(A) == src(C)) {
-                            sym(A).mod() ge sym(B).mod()
+                            val x = sym(A)
+                            val y = sym(B)
+                            val m = C1.n.asTACExpr
+                            x.mod(m) ge y.mod(m)
                         }
                     },
                     TACExpr.BinRel.Ge::class.java, TACExpr.BinRel.Le::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    ((x << n).mod().signExtend(64) >> n).mod() ~~> x.signExtend(64-n).mod()
+                    c.sextEVM(n) ~~> (compute the sign-extension of c)
+                        (This allows matching other patterns on the next pass)
+                 */
+                PatternHandler(
+                    name = "const-sext",
+                    pattern = {
+                        c(C1).sextEVM(c(C2))
+                    },
+                    handle = {
+                        runIf(C1.n in 0.toBigInteger()..31.toBigInteger()) {
+                            ModZm.evmSignExtend(C2.n, C1.n).asTACExpr
+                        }
+                    },
+                    TACExpr.BinOp.SignExtend::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    (x & y).sextEVM(n) < 0 ~~> (x.sextEVM(n) < 0) && (y.sextEVM(n) < 0)
+                 */
+                PatternHandler(
+                    name = "and-sext-lt",
+                    pattern = {
+                        (lSym(A) bwAnd lSym(B)).sextEVM(c(C1)) symmSLt c(0)
+                    },
+                    handle = {
+                        val x = sym(A)
+                        val y = sym(B)
+                        val n = C1.n.asTACExpr
+                        (x.sextEVM(n) sLt 0.asTACExpr) and (y.sextEVM(n) sLt 0.asTACExpr)
+                    },
+                    TACExpr.BinRel.Slt::class.java, TACExpr.BinRel.Sgt::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    (x & y).sextEVM(n) >= 0 ~~> !(x.sextEVM(n) < 0) || !(y.sextEVM(n) < 0)
+                 */
+                PatternHandler(
+                    name = "and-sext-ge",
+                    pattern = {
+                        (lSym(A) bwAnd lSym(B)).sextEVM(c(C1)) symmSGe c(0)
+                    },
+                    handle = {
+                        val x = sym(A)
+                        val y = sym(B)
+                        val n = C1.n.asTACExpr
+                        not(x.sextEVM(n) sLt 0.asTACExpr) or not(y.sextEVM(n) sLt 0.asTACExpr)
+                    },
+                    TACExpr.BinRel.Sge::class.java, TACExpr.BinRel.Sle::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    (x xor y).sextEVM(n) < 0 ~~> (x.sextEVM(n) < 0) != (y.sextEVM(n) < 0)
+                 */
+                PatternHandler(
+                    name = "xor-sext-lt",
+                    pattern = {
+                        (lSym(A) xor lSym(B)).sextEVM(c(C1)) symmSLt c(0)
+                    },
+                    handle = {
+                        val x = sym(A)
+                        val y = sym(B)
+                        val n = C1.n.asTACExpr
+                        (x.sextEVM(n) sLt 0.asTACExpr) neq (y.sextEVM(n) sLt 0.asTACExpr)
+                    },
+                    TACExpr.BinRel.Slt::class.java, TACExpr.BinRel.Sgt::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    (x xor y).sextEVM(n) >= 0 ~~> (x.sextEVM(n) < 0) == (y.sextEVM(n) < 0)
+                 */
+                PatternHandler(
+                    name = "xor-sext-ge",
+                    pattern = {
+                        (lSym(A) xor lSym(B)).sextEVM(c(C1)) symmSGe c(0)
+                    },
+                    handle = {
+                        val x = sym(A)
+                        val y = sym(B)
+                        val n = C1.n.asTACExpr
+                        (x.sextEVM(n) sLt 0.asTACExpr) eq (y.sextEVM(n) sLt 0.asTACExpr)
+                    },
+                    TACExpr.BinRel.Sge::class.java, TACExpr.BinRel.Sle::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    x.sextBits(n) <=(unsigned) maxSigned ~~> !(x.sextBits(n) <(signed) 0)
+                 */
+                PatternHandler(
+                    name = "sext-unsigned-le-max",
+                    pattern = {
+                        lSym(A).sextEVM(c(C1)) symmLe c(C2)
+                    },
+                    handle = {
+                        ModZm.fromEvmSignExtend(C1.n)?.run {
+                            runIf(C2.n == maxSigned) {
+                                not(sym(A).sextEVM(C1.n.asTACExpr) sLt 0.asTACExpr)
+                            }
+                        }
+                    },
+                    TACExpr.BinRel.Le::class.java, TACExpr.BinRel.Gt::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    (x.sextBits(n) shra (n-1)).mod(2^n) xor minSigned2s(n)
+                        ~~> ite(x <= maxSigned(n), minSigned2s(n), maxSigned(n))
+                 */
+                PatternHandler(
+                    name = "sext-shr-xor-1",
+                    pattern = {
+                        ((lSym(A).sextEVM(c(C1)) shra c(C2)).rem(c(C3)) xor c(C4))
+                    },
+                    handle = {
+                        ModZm.fromEvmSignExtend(C1.n)?.run {
+                            runIf(
+                                C2.n == (bitwidth - 1).toBigInteger() &&
+                                C3.n == modulus &&
+                                C4.n == minSigned2s
+                            ) {
+                                ite(
+                                    sym(A) le maxSigned.asTACExpr,
+                                    minSigned2s.asTACExpr,
+                                    maxSigned.asTACExpr
+                                )
+                            }
+                        }
+                    },
+                    TACExpr.BinOp.BWXOr::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    (x.sextBits(n) shra (n-1)).mod(2^n) xor maxSigned(n)
+                        ~~> ite(x <= maxSigned(n), maxSigned(n), minSigned2s(n))
+                 */
+                PatternHandler(
+                    name = "sext-shr-xor-2",
+                    pattern = {
+                        ((lSym(A).sextEVM(c(C1)) shra c(C2)).rem(c(C3)) xor c(C4))
+                    },
+                    handle = {
+                        ModZm.fromEvmSignExtend(C1.n)?.run {
+                            runIf(
+                                C2.n == (bitwidth - 1).toBigInteger() &&
+                                C3.n == modulus &&
+                                C4.n == maxSigned
+                            ) {
+                                ite(
+                                    sym(A).sextEVM(C1.n.asTACExpr) le maxSigned.asTACExpr,
+                                    maxSigned.asTACExpr,
+                                    minSigned2s.asTACExpr
+                                )
+                            }
+                        }
+                    },
+                    TACExpr.BinOp.BWXOr::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    Bit-twiddling magic implementation of `unsigned_abs`:
+
+                    ((x xor (x.sextBits(n) shra (n-1)).mod(2^n)) - (x.sextBits(n) shra (n-1)).mod(2^n)).mod(2^n)
+                      ~~> ite(x.mod(2^n) <= maxSigned(n), x, 2^64 - x).mod(2^n)
+                 */
+                PatternHandler(
+                    name = "bit-twiddling-unsigned-abs",
+                    pattern = {
+                        (
+                            (lSym(A) xor (lSym(B).sextEVM(c(C1)) shra c(C2)).rem(c(C3))) -
+                                (lSym(C).sextEVM(c(C4)) shra c(C5)).rem(c(C6))
+                        ).rem(c(C7))
+                    },
+                    handle = {
+                        ModZm.fromEvmSignExtend(C1.n)?.run {
+                            runIf(
+                                listOf(src(A), src(B), src(C)).allSame() &&
+                                C1.n == C4.n &&
+                                C2.n == (bitwidth - 1).toBigInteger() &&
+                                C3.n == modulus &&
+                                C5.n == (bitwidth - 1).toBigInteger() &&
+                                C6.n == modulus &&
+                                C7.n == modulus
+                            ) {
+                                ite(
+                                    sym(A).mod(modulus.asTACExpr) le maxSigned.asTACExpr,
+                                    sym(A),
+                                    (modulus.asTACExpr sub sym(A))
+                                ).mod(modulus.asTACExpr)
+                            }
+                        }
+                    },
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    ((x << s).mod(2^n).sextBits(n) >> s).mod(2^n) ~~> x.sextBits(n-s).mod(2^n)
+
+                        where s < n and s is a multiple of 8
                 */
                 PatternHandler(
                     name = "shl-mod-signext",
                     pattern = {
-                        ((lSym(A) shl c(C1)).mod().signExtend() shra c(C2)).mod()
+                        ((lSym(A) shl c(C1)).rem(c(C2)).sextEVM(c(C3)) shra c(C4)).rem(c(C5))
                     },
                     handle = {
-                        runIf(C1.n == C2.n) {
-                            val n = C1.n.toIntOrNull()?.takeIf { it in 0..<64 && it % 8 == 0 } ?: return@runIf null
-                            SignExtend((((64 - n) / 8) - 1).asTACExpr, sym(A)).mod()
+                        ModZm.fromEvmSignExtend(C3.n)?.run {
+                            runIf(
+                                C1.n == C4.n &&
+                                C2.n == modulus &&
+                                C5.n == modulus &&
+                                C1.n < bitwidth.toBigInteger() &&
+                                C1.n.mod(8.toBigInteger()) == BigInteger.ZERO
+                            ) {
+                                sym(A).sextBits(bitwidth - C1.n.toInt()).mod(modulus.asTACExpr)
+                            }
                         }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    x.signExtend(n).mod(2^64) <= (2^63-1) ~~> x.mod(2^n) <= (2^(n-1)-1)
+                    x.sextBits(n).mod(2^m) <= maxSigned(m) ~~> x.mod(2^n) <= maxSigned(n)
+                       where m >= n
                 */
                 PatternHandler(
                     name = "signext-mod-sign",
                     pattern = {
-                        c(C1).signExtend(lSym(A)).mod() symmLe c(BigInteger.TWO.pow(63) - BigInteger.ONE)
+                        lSym(A).sextEVM(c(C1)).rem(c(C2)) symmLe c(C3)
                     },
                     handle = {
-                        runIf(C1.n <= 7.toBigInteger()) {
-                            val n = (C1.n.toInt() + 1) * 8
-                            sym(A).mod(BigInteger.TWO.pow(n).asTACExpr) le
-                                (BigInteger.TWO.pow(n - 1) - BigInteger.ONE).asTACExpr
+                        ModZm.fromEvmSignExtend(C1.n)?.let { modzN ->
+                            ModZm.fromMod(C2.n)?.let { modzM ->
+                                runIf(
+                                    modzM.bitwidth >= modzN.bitwidth &&
+                                    C3.n == modzM.maxSigned
+                                ) {
+                                    sym(A).mod(modzN.modulus.asTACExpr) le modzN.maxSigned.asTACExpr
+                                }
+                            }
                         }
                     },
-                    TACExpr.BinRel.Ge::class.java, TACExpr.BinRel.Le::class.java
+                    TACExpr.BinRel.Ge::class.java, TACExpr.BinRel.Le::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    x.signExtend(n).mod(2^64) > 0 ~~> x.mod(2^n) > 0
+                    x.sextBits(n).mod(2^m) > 0 ~~> x.mod(2^n) > 0
+                        where m >= n
                 */
                 PatternHandler(
                     name = "signext-mod-nonzero",
                     pattern = {
-                        c(C1).signExtend(lSym(A)).mod() symmGt c(0)
+                        lSym(A).sextEVM(c(C1)).rem(c(C2)) symmGt c(0)
                     },
                     handle = {
-                        runIf(C1.n <= 7.toBigInteger()) {
-                            val n = (C1.n.toInt() + 1) * 8
-                            sym(A).mod(BigInteger.TWO.pow(n).asTACExpr) gt 0.asTACExpr
+                        ModZm.fromEvmSignExtend(C1.n)?.let { modzN ->
+                            ModZm.fromMod(C2.n)?.let { modzM ->
+                                runIf(
+                                    modzM.bitwidth >= modzN.bitwidth
+                                ) {
+                                    sym(A).mod(modzN.modulus.asTACExpr) gt 0.asTACExpr
+                                }
+                            }
                         }
                     },
-                    TACExpr.BinRel.Gt::class.java, TACExpr.BinRel.Lt::class.java
+                    TACExpr.BinRel.Gt::class.java, TACExpr.BinRel.Lt::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
                     Signed > ~~> unsigned > :
-                    x.signExtend() s> y.signExtend() ~~> (x.isNonNeg() && y.isNeg()) || (sameSign(x, y) && x > y)
+                    x.sextBits(n) s> y.sextBits(n) ~~> (x.isNonNeg(n) && y.isNeg(n)) || (sameSign(n, x, y) && x > y)
                  */
                 PatternHandler(
                     name = "gt-signed-to-unsigned",
                     pattern = {
-                        lSym(A).signExtend() symmGt lSym(B).signExtend()
+                        lSym(A).sextEVM(c(C1)) symmGt lSym(B).sextEVM(c(C2))
                     },
                     handle = {
                         // This transformation won't help in BV mode!
-                        runIf(!bvMode) {
-                            (sym(A).isNonNeg() and sym(B).isNeg()) or (sameSign(sym(A), sym(B)) and (sym(A) gt sym(B)))
+                        runIf(!bvMode && C1.n == C2.n) {
+                            ModZm.fromEvmSignExtend(C1.n)?.run {
+                                (sym(A).isNonNeg() and sym(B).isNeg()) or
+                                    (sameSign(sym(A), sym(B)) and (sym(A) gt sym(B)))
+                            }
                         }
                     },
-                    TACExpr.BinRel.Gt::class.java, TACExpr.BinRel.Lt::class.java
+                    TACExpr.BinRel.Gt::class.java, TACExpr.BinRel.Lt::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
                     Signed >= ~~> unsigned >= :
-                    x.signExtend() s>= y.signExtend() ~~> (x.isNonNeg() && y.isNeg()) || (sameSign(x, y) && x >= y)
+                    x.sextBits(n) s>= y.sextBits(n) ~~> (x.isNonNeg(n) && y.isNeg(n)) || (sameSign(n, x, y) && x >= y)
                  */
                 PatternHandler(
                     name = "ge-signed-to-unsigned",
                     pattern = {
-                        lSym(A).signExtend() symmGe lSym(B).signExtend()
+                        lSym(A).sextEVM(c(C1)) symmGe lSym(B).sextEVM(c(C2))
                     },
                     handle = {
                         // This transformation won't help in BV mode!
-                        runIf(!bvMode) {
-                            (sym(A).isNonNeg() and sym(B).isNeg()) or (sameSign(sym(A), sym(B)) and (sym(A) ge sym(B)))
+                        runIf(!bvMode && C1.n == C2.n) {
+                            ModZm.fromEvmSignExtend(C1.n)?.run {
+                                (sym(A).isNonNeg() and sym(B).isNeg()) or
+                                    (sameSign(sym(A), sym(B)) and (sym(A) ge sym(B)))
+                            }
                         }
                     },
-                    TACExpr.BinRel.Ge::class.java, TACExpr.BinRel.Le::class.java
+                    TACExpr.BinRel.Ge::class.java, TACExpr.BinRel.Le::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    x.mod() & maxUnsigned ~~> x & maxUnsigned
+                    x.mod(2^n) & maxUnsigned(n) ~~> x & maxUnsigned(n)
                 */
                 PatternHandler(
                     name = "mod-and",
                     pattern = {
-                        lSym(A).mod() bwAnd c(modz64.maxUnsigned)
+                        lSym(A).rem(c(C1)) bwAnd c(C2)
                     },
                     handle = {
-                        sym(A) bwAnd modz64.maxUnsigned.asTACExpr
+                        ModZm.fromMod(C1.n)?.run {
+                            runIf(C2.n == maxUnsigned) {
+                                sym(A) bwAnd maxUnsigned.asTACExpr
+                            }
+                        }
                     },
-                    TACExpr.BinOp.BWAnd::class.java
+                    TACExpr.BinOp.BWAnd::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    x.mod().mod() ~~> x.mod()
+                    x.mod(m).mod(m) ~~> x.mod(m)
                 */
                 PatternHandler(
                     name = "mod-mod",
                     pattern = {
-                        lSym(A).mod().mod()
+                        lSym(A).rem(c(C1)).rem(c(C2))
                     },
                     handle = {
-                        sym(A).mod()
+                        runIf(C1.n == C2.n) {
+                            val x = sym(A)
+                            val m = C1.n.asTACExpr
+                            x.mod(m)
+                        }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x.mod() + y).mod() ~~> (x + y).mod()
-                    (x + y.mod()).mod() ~~> (x + y).mod()
+                    (x.mod(m) + y).mod(m) ~~> (x + y).mod(m)
+                    (x + y.mod(m)).mod(m) ~~> (x + y).mod(m)
                 */
                 PatternHandler(
                     name = "mod-add-simplify",
                     pattern = {
-                        (lSym(A).mod() + lSym(B)).mod()
+                        (lSym(A).rem(c(C1)) + lSym(B)).rem(c(C2))
                     },
                     handle = {
-                        (sym(A) add sym(B)).mod()
+                        runIf(C1.n == C2.n) {
+                            val x = sym(A)
+                            val y = sym(B)
+                            val m = C1.n.asTACExpr
+                            (x add y).mod(m)
+                        }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x.mod() - y).mod() ~~> (x - y).mod()
+                    (x.mod(m) - y).mod(m) ~~> (x - y).mod(m)
                 */
                 PatternHandler(
-                    name = "mod-sub-simplify-1",
+                    name = "mod-sub-simplify",
                     pattern = {
-                        (lSym(A).mod() - lSym(B)).mod()
+                        ((lSym(A).rem(c(C1)) - lSym(B)).rem(c(C2)))
                     },
                     handle = {
-                        (sym(A) sub sym(B)).mod()
+                        runIf(C1.n == C2.n) {
+                            val x = sym(A)
+                            val y = sym(B)
+                            val m = C1.n.asTACExpr
+                            (x sub y).mod(m)
+                        }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x - y.mod()).mod() ~~> (x - y).mod()
+                    (x - y.mod(m)).mod(m) ~~> (x - y).mod(m)
                 */
                 PatternHandler(
-                    name = "mod-sub-simplify-2",
+                    name = "mod-sub-simplify",
                     pattern = {
-                        (lSym(A) - lSym(B).mod()).mod()
+                        ((lSym(A) - lSym(B).rem(c(C1))).rem(c(C2)))
                     },
                     handle = {
-                        (sym(A) sub sym(B)).mod()
+                        runIf(C1.n == C2.n) {
+                            val x = sym(A)
+                            val y = sym(B)
+                            val m = C1.n.asTACExpr
+                            (x sub y).mod(m)
+                        }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x.mod() * y).mod() ~~> (x * y).mod()
-                    (x * y.mod()).mod() ~~> (x * y).mod()
+                    (x.mod(m) * y).mod(m) ~~> (x * y).mod(m)
+                    (x * y.mod(m)).mod(m) ~~> (x * y).mod(m)
                 */
                 PatternHandler(
                     name = "mod-mul-simplify",
                     pattern = {
-                        (lSym(A).mod() * lSym(B)).mod()
+                        (lSym(A).rem(c(C1)) * lSym(B)).rem(c(C2))
                     },
                     handle = {
-                        (sym(A) mul sym(B)).mod()
+                        runIf(C1.n == C2.n) {
+                            val x = sym(A)
+                            val y = sym(B)
+                            val m = C1.n.asTACExpr
+                            (x mul y).mod(m)
+                        }
                     },
-                    TACExpr.BinOp.Mod::class.java
+                    TACExpr.BinOp.Mod::class.java,
+                    regressionMessage = true
                 ),
 
                 /*
-                    (x.mod() - c).mod() == 0 ~~> x.mod() == c.mod()
+                    (x.mod(m) - c).mod(m) == 0 ~~> x.mod(m) == c.mod(m)
                 */
                 PatternHandler(
                     name = "mod-sub-eq-simplify",
                     pattern = {
-                        (lSym(A).mod() - c(C1)).mod() eq c(0)
+                        (lSym(A).rem(c(C1)) - c(C2)).rem(c(C3)) eq c(0)
                     },
                     handle = {
-                        sym(A).mod() eq C1.n.mod(modulus).asTACExpr
+                        runIf(C1.n == C3.n) {
+                            val x = sym(A)
+                            val m = C1.n.asTACExpr
+                            val c = C2.n.asTACExpr
+                            x.mod(m) eq c.mod(m)
+                        }
                     },
-                    TACExpr.BinRel.Eq::class.java
+                    TACExpr.BinRel.Eq::class.java,
+                    regressionMessage = true
+                ),
+
+                /*
+                    ((x.sextBits(n) >>a (n-1)).mod(2^n) << n) + x ~~> x.sextBits(n).mod(2^(n*2))
+
+                        (For n <= 64)
+                 */
+                PatternHandler(
+                    name = "sext-widen",
+                    pattern = {
+                        ((lSym(A).sextEVM(c(C1)) shra c(C2)).rem(c(C3)) shl c(C4)) + lSym(B)
+                    },
+                    handle = {
+                        ModZm.fromEvmSignExtend(C1.n)?.run {
+                            runIf(
+                                bitwidth <= 64 &&
+                                src(A) == src(B) &&
+                                C2.n == (bitwidth - 1).toBigInteger() &&
+                                C3.n == modulus &&
+                                C4.n == bitwidth.toBigInteger()
+                            ) {
+                                sym(A).sextEVM(C1.n.asTACExpr).mod(BigInteger.TWO.pow(bitwidth * 2).asTACExpr)
+                            }
+                        }
+                    },
+                    TACExpr.Vec.Add.Binary::class.java,
+                    regressionMessage = true
                 ),
             ) }
         )
@@ -652,16 +997,17 @@ object TACModSimplifier {
                     },
                     handle = {
                         ite(
-                            sym(A) ge modulus.asTACExpr,
+                            sym(A) ge modz64.modulus.asTACExpr,
                             sym(A) shiftRLog 63.asTACExpr,
                             ite(
-                                sym(A) ge (modulus / 2).asTACExpr,
+                                sym(A) ge (modz64.modulus / 2).asTACExpr,
                                 1.asTACExpr,
                                 0.asTACExpr
                             )
                         )
                     },
-                    TACExpr.BinOp.ShiftRightLogical::class.java
+                    TACExpr.BinOp.ShiftRightLogical::class.java,
+                    regressionMessage = true
                 ),
             ) }
         )

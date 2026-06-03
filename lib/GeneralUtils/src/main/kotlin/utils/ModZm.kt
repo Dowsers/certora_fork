@@ -272,6 +272,14 @@ interface ModZm {
                 ?.let { signExtendFromBit(b, (it + 1) * 8) }
                 ?: throw OutOfBoundsException("in evaluating signExtend($a, $b), $a is out of range")
 
+        /** Gets a ModZm representing the bitwidth of the result of a mod operation. */
+        fun fromMod(modulus: BigInteger) = modulus.log2Exact()?.let { ConcreteModZm(it) }
+
+        /** Gets a ModZm representing the source bitwidth of the EVM-style sign extension operation. */
+        fun fromEvmSignExtend(evmSextSize: BigInteger) =
+            runIf(evmSextSize < 31.toBigInteger()) {
+                ConcreteModZm(8 * (evmSextSize.toInt() + 1))
+            }
     }
 }
 
