@@ -32,6 +32,7 @@ import sbf.domains.ScalarRegisterStackEqualityDomainFactory
 import kotlin.toULong
 import datastructures.stdcollections.*
 import log.regression
+import sbf.analysis.LivenessAnalysis
 
 private val logger = Logger(LoggerTypes.SBF_MATH_PROMOTION)
 private fun dbg(msg: () -> Any) {
@@ -58,7 +59,8 @@ interface MathIntrinsicsTransform<Pattern : MathIntrinsicPattern> {
     /** Recognize the low-level instruction pattern in a block **/
     fun matchInBlock(
         bb: SbfBasicBlock,
-        equalAt: (locInst: LocatedSbfInstruction, value: Value, reg: Value.Reg) -> Boolean
+        equalAt: (locInst: LocatedSbfInstruction, value: Value, reg: Value.Reg) -> Boolean,
+        isMayLive: (SbfBasicBlock, Value.Reg, pos: Int) -> Boolean
     ): List<Pattern>
 
     /**
@@ -81,7 +83,9 @@ interface MathIntrinsicsTransform<Pattern : MathIntrinsicPattern> {
 
 data class PromoteMathIntrinsicsOptions(
     /** Whether to use scalar analysis or not during pattern matching **/
-    val runScalarAnalysis: Boolean
+    val runScalarAnalysis: Boolean,
+    /** Whether to run the liveness analysis **/
+    val runLivenessAnalysis: Boolean
 )
 
 /**
@@ -99,7 +103,7 @@ fun promoteMathIntrinsics(
     transformers: List<MathIntrinsicsTransform<out MathIntrinsicPattern>>,
     globals: GlobalVariables,
     memSummaries: MemorySummaries,
-    opts: PromoteMathIntrinsicsOptions = PromoteMathIntrinsicsOptions(true)
+    opts: PromoteMathIntrinsicsOptions = PromoteMathIntrinsicsOptions(true, true)
 ) {
 
     val types = if (opts.runScalarAnalysis) {
@@ -121,6 +125,18 @@ fun promoteMathIntrinsics(
     } else {
         null
     }
+
+    val liveness = if (opts.runLivenessAnalysis) { LivenessAnalysis(cfg) } else { null }
+
+    val isMayLive = { bb: SbfBasicBlock, reg: Value.Reg, pos: Int ->
+            val locInst = bb.getLocatedInstructions()[pos]
+            val liveRegsAfter = liveness?.getLiveRegistersAtInst(bb.getLabel(), before = false)?.get(locInst)
+            if (liveRegsAfter != null) {
+                reg in liveRegsAfter
+            } else {
+                isMayLiveAfter(bb, reg, pos)
+            }
+        }
 
     /**
      * Return true if `value` and `reg` hold the same value at `locInst`:
@@ -146,7 +162,7 @@ fun promoteMathIntrinsics(
         // the block, since matchInBlock uses equalAt which relies on instruction positions that
         // would be invalidated by earlier replacements.
         val allReplacements = transformers.flatMap { transformer ->
-            collectReplacements(transformer, bb, equalAt, useDynFrames)
+            collectReplacements(transformer, bb, equalAt, isMayLive, useDynFrames)
                 .also {
                     replacementCount.getOrPut(transformer.name) { 0 }.let { oldCount: Int ->
                         replacementCount[transformer.name] = oldCount + it.size
@@ -191,7 +207,9 @@ private fun <P : MathIntrinsicPattern> collectReplacements(
     transformer: MathIntrinsicsTransform<P>,
     bb: SbfBasicBlock,
     equalAt: (LocatedSbfInstruction, Value, Value.Reg) -> Boolean,
+    isMayLive: (SbfBasicBlock, Value.Reg, pos: Int) -> Boolean,
     useDynFrames: Boolean
 ): List<Pair<List<LocatedSbfInstruction>, List<SbfInstruction>>> =
-    transformer.matchInBlock(bb, equalAt)
+    transformer.matchInBlock(bb, equalAt, isMayLive)
         .map { pattern -> pattern.instructions to transformer.lower(pattern, useDynFrames) }
+

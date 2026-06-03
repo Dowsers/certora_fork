@@ -62,7 +62,8 @@ val U128BinRelTransform = object : MathIntrinsicsTransform<U128BinRelPattern> {
      */
     override fun matchInBlock(
         bb: SbfBasicBlock,
-        equalAt: (LocatedSbfInstruction, Value, Value.Reg) -> Boolean
+        equalAt: (LocatedSbfInstruction, Value, Value.Reg) -> Boolean,
+        isMayLive: (SbfBasicBlock, Value.Reg, pos: Int) -> Boolean
     ): List<U128BinRelPattern> {
         dbg { "=== Starting U128Gt pattern matching in block ${bb.getLabel()} ===" }
         dbg { "=== Block $bb ===" }
@@ -106,7 +107,22 @@ val U128BinRelTransform = object : MathIntrinsicsTransform<U128BinRelPattern> {
             val xHigh = p2Sel.x
             val yHigh = p2Sel.y
 
+            // Verify that instruction 3's equality condition compares xHigh and yHigh
+            // (either order, since EQ is symmetric). Without this check, a false positive
+            // match could occur when some unrelated register pair happens to produce tmpHigh.
+            val directMatch = equalAt(locInst3, cond3.left, xHigh) && equalAt(locInst3, cond3.right, yHigh)
+            val swappedMatch = equalAt(locInst3, cond3.left, yHigh) && equalAt(locInst3, cond3.right, xHigh)
+            if (!directMatch && !swappedMatch) {
+                continue
+            }
+
             val p2 = p2Sel.locIns.pos
+
+            // All three pattern instructions must be at distinct positions
+            if (setOf(p1, p2, p3).size != 3) {
+                continue
+            }
+
             val lastPos = maxOf(p1, p2, p3)
             val firstPos = minOf(p1, p2, p3)
 
@@ -117,6 +133,10 @@ val U128BinRelTransform = object : MathIntrinsicsTransform<U128BinRelPattern> {
             val yLowParam = resolveInputParam(yLow, p1, patternPositions, lastPos, insts) ?: continue
             val yHighParam = resolveInputParam(yHigh, p2, patternPositions, lastPos, insts) ?: continue
 
+            // Non-pattern instructions cannot read registers written by pattern instructions.
+            if (nonPatternReadsPatternWrites(bb, patternPositions, result, isMayLive)) {
+                continue
+            }
 
             dbg { "Detected compact u128 binary relation pattern: result=$result" }
 
@@ -170,7 +190,8 @@ val U128BinRelTransform = object : MathIntrinsicsTransform<U128BinRelPattern> {
         lowerImpl(pattern.intrinsicName, pattern.params, pattern.result, useDynFrames) + pattern.trailingStores
 
     override fun abstractStateFilter(locInst: LocatedSbfInstruction): Boolean {
-        return false
+        val inst = locInst.inst as? SbfInstruction.Select ?: return false
+        return inst.cond.op == CondOp.EQ && inst.trueVal is Value.Reg && inst.falseVal is Value.Reg
     }
 
     /**

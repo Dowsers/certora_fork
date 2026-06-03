@@ -34,12 +34,12 @@ class TACAllocatorsTest {
             bb(0) {
                 r1 = 32UL
                 "__rust_alloc"()
-                r2 = r0
-                assert(CondOp.EQ(r2, SBF_HEAP_START))
+                r3 = r0
                 r1 = 64UL
                 "__rust_alloc"()
                 r2 = r0
-                assert(CondOp.EQ(r2, SBF_HEAP_START + 32))
+                BinOp.SUB(r2, r3)
+                assert(CondOp.EQ(r2, 32))
                 exit()
             }
 
@@ -68,8 +68,7 @@ class TACAllocatorsTest {
         }
 
         println("$cfg")
-        val tacProg = toTAC(cfg,
-            kotlin.collections.listOf("#[type((*i64)(r1+0):ptr_external(1024))]",
+        val tacProg = toTAC(cfg, listOf("#[type((*i64)(r1+0):ptr_external(1024))]",
                                       "#[type((*i64)(r1+8):ptr_external(1024))]",
                                       "^foo$"))
         println(dumpTAC(tacProg))
@@ -91,8 +90,7 @@ class TACAllocatorsTest {
         }
 
         println("$cfg")
-        val tacProg = toTAC(cfg,
-            kotlin.collections.listOf("#[type((*i64)(r1+0):ptr_external(1024))]",
+        val tacProg = toTAC(cfg, listOf("#[type((*i64)(r1+0):ptr_external(1024))]",
                                       "#[type((*i64)(r1+8):ptr_external(1024))]",
                                       "^foo$"))
         println(dumpTAC(tacProg))

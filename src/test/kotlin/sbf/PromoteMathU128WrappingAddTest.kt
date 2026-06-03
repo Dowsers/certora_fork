@@ -40,14 +40,15 @@ class PromoteMathU128WrappingAddTest {
         cfg: MutableSbfCFG,
         globals: GlobalVariables,
         memSummaries: MemorySummaries,
-        useScalarAnalysis: Boolean = false
+        useScalarAnalysis: Boolean = false,
+        useLivenessAnalysis: Boolean = true
     ) {
         promoteMathIntrinsics(
             cfg,
             transformers = listOf(U128WrappingAddTransform),
             globals = globals,
             memSummaries,
-            PromoteMathIntrinsicsOptions(useScalarAnalysis)
+            PromoteMathIntrinsicsOptions(useScalarAnalysis, useLivenessAnalysis)
         )
     }
 
@@ -231,6 +232,37 @@ class PromoteMathU128WrappingAddTest {
         promoteU128WrappingAdd(cfg, globals, memSummaries, true)
         println("After:\n$cfg")
         Assertions.assertTrue(countWrappingAddCalls(cfg) > 0)
+    }
+
+    /**
+     * Between (4) and (5), a non-pattern instruction reads the carry register (r5).
+     * The matcher's `findFirstAfter` for (5) stops only on **writes** to the carry,
+     * so a non-pattern READ of the carry slips through.
+     *
+     * If the pattern were promoted, the matcher removes (1)..(5) and leaves the
+     * non-pattern `r6 = r5` in place. After removal, `r5` at the non-pattern position
+     * holds its pre-pattern value (not the low-add carry that `(4)` would have
+     * produced), so `r6` would differ between the original and lowered code. The
+     * matcher must not promote this pattern.
+     */
+    @Test
+    fun `non-pattern read of carry between (4) and (5) is not promoted`() {
+        val cfg = SbfTestDSL.makeCFG("entrypoint") {
+            bb(0) {
+                r1 = 0; r2 = 0; r3 = 3; r4 = 5
+                BinOp.ADD(r2, r1)                       // (1) resHigh += xHigh
+                r1 = r3                                  // (2) resLow = yLow
+                BinOp.ADD(r1, r4)                       // (3) resLow += xLow
+                select(r5, CondOp.GT(r3, r1), 1, 0)    // (4) carry
+                r6 = r5                                  // non-pattern: reads carry
+                BinOp.ADD(r2, r5)                       // (5) resHigh += carry
+                exit()
+            }
+        }
+        println("Before:\n$cfg")
+        promoteU128WrappingAdd(cfg, globals, memSummaries)
+        println("After:\n$cfg")
+        Assertions.assertEquals(0, countWrappingAddCalls(cfg))
     }
 
     /**

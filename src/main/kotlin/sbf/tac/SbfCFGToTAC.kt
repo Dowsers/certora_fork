@@ -148,6 +148,8 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
     val rent: Rent = Rent { prefix -> vFac.mkFreshIntVar(prefix = prefix) }
     // To instrument Solana account accesses.
     val accounts: TACSolanaAccountAccess
+    // To summarize u128 intrinsics
+    val u128Summarizer: U128Summarizer = U128Summarizer { prefix -> vFac.mkFreshIntVar(prefix = prefix) }
 
     val isPointerAnalysis: IsPointerAnalysis<TNum, TOffset, TFlags>
 
@@ -988,7 +990,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                     is CVTFunction.Calltrace ->
                         summarizeCalltrace(cvtFunction.value, locInst)
                     is CVTFunction.U128Intrinsics ->
-                        summarizeU128(locInst)
+                        u128Summarizer.summarizeU128(locInst)
                     is CVTFunction.I128Intrinsics ->
                         summarizeI128(locInst)
                     is CVTFunction.NativeInt ->
@@ -1237,6 +1239,7 @@ internal class SbfCFGToTAC<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, TFl
                 cmds += rent.init()
                 cmds += clock.init()
                 cmds += addInitialPreconditions()
+                cmds += u128Summarizer.init()
                 /** End TAC initializers **/
 
                 cmds += translate(block)

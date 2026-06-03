@@ -4823,8 +4823,51 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
                         }
                     }
                     is CVTFunction.Calltrace -> {}
+                    is CVTFunction.U128Intrinsics -> {
+                        when (cvtFunction.value) {
+                            CVTU128Intrinsics.U128_LEQ,
+                            CVTU128Intrinsics.U128_LT,
+                            CVTU128Intrinsics.U128_WRAPPING_ADDITION,
+                            CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION -> {
+                                /**
+                                 * The transfer function for this intrinsics must over-approximate this code:
+                                 * ```
+                                 * fun cvt_u128_wrapping_addition/wrapping_subtraction {
+                                 * (1)    r6 = heap_alloc(24); // 3 words of 8 bytes
+                                 * (2)    *(r6+0) = r0      // save r0
+                                 *        r0 = r6
+                                 * (3)    // The code for intrinsics
+                                 * (4)    *(r0+8)  = lowRes
+                                 * (5)    *(r0+16) = highRes
+                                 * }
+                                 * ```
+                                 * The pointer analysis does not model (3) precisely. The steps (1), (4), and (5) are
+                                 * done by `summarizeCall`. Here, we need to do step (2).
+                                 */
+                                val oldR0 = getRegCell(Value.Reg(SbfRegister.R0))
+                                // After summarizeCall, `r0` points to a heap-allocated object of either
+                                // - 16 bytes where `*(r0+0)` is any, `*(r0+8)` is num, and `*(r0+16)` is num
+                                // - 24 bytes where `*(r0+0)` is any, `*(r0+8)` is num
+                                summarizeCall(locInst, scalars)
+
+                                if (oldR0 != null) {
+                                    val r0 = Value.Reg(SbfRegister.R0)
+                                    val retSc = getRegCell(r0)
+                                    if (retSc != null) {
+                                        // Set `*(r0+0)`  points to old value of r0 before the intrinsics
+                                        val srcC = concretizeCell(retSc, "U128Intrinsics savedR0", locInst)
+                                        val dstC = concretizeCell(oldR0, "U128Intrinsics savedR0", locInst)
+                                        updateLink(locInst, srcC, 8, dstC, isStore = true, isStrongUpdate = true)
+                                    }
+                                }
+                            }
+                            CVTU128Intrinsics.U128_NONDET,
+                            CVTU128Intrinsics.U128_CEIL_DIV -> {
+                                summarizeCall(locInst, scalars)
+                            }
+                        }
+                    }
                     is CVTFunction.Nondet,
-                    is CVTFunction.U128Intrinsics,
                     is CVTFunction.I128Intrinsics,
                     is CVTFunction.NativeInt  ->
                         summarizeCall(locInst, scalars)
@@ -4921,6 +4964,21 @@ class PTAGraph<TNum: INumValue<TNum>, TOffset: IOffset<TOffset>, Flags: IPTANode
                         allocatedC.getNode().setWrite()
                         updateLink(locInst, c2, width.toShort(), allocatedC, isStore = false, isStrongUpdate = c2.getNode() == getStack())
 
+                    }
+                    MemSummaryArgumentType.ANY -> {
+                        when (CVTU128Intrinsics.from(call.name)) {
+                            CVTU128Intrinsics.U128_LEQ,
+                            CVTU128Intrinsics.U128_LT,
+                            CVTU128Intrinsics.U128_WRAPPING_ADDITION,
+                            CVTU128Intrinsics.U128_WRAPPING_SUBTRACTION -> {
+                                // Do not throw an exception
+                                return
+                            }
+                            CVTU128Intrinsics.U128_NONDET,
+                            CVTU128Intrinsics.U128_CEIL_DIV,
+                            null -> {}
+                        }
+                        throw PointerDomainError("Summary not supported for $call: argument $reg with type $type")
                     }
                     else -> {
                         throw PointerDomainError("Summary not supported for $call: argument $reg with type $type")
