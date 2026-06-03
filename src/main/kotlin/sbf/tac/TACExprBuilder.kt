@@ -196,11 +196,13 @@ abstract class SbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : TACExprBase(re
     abstract fun assumeUnsignedIntRange(v: TACSymbol.Var, bits: Int): List<TACCmd.Simple>
 
     protected abstract fun Mul(ls: List<TACExpr>): TACExpr
+    protected abstract fun Mul128(ls: List<TACExpr>): TACExpr
     protected abstract fun Add(ls: List<TACExpr>): TACExpr
     /** Addition, annotated with a hint that the addition will not overflow.  We use this in later optimizations. */
     protected abstract fun AddNoOvf(ls: List<TACExpr>, reason: String): TACExpr
     protected abstract fun Sub(o1: TACExpr, o2: TACExpr): TACExpr
     protected abstract fun Div(o1: TACExpr, o2: TACExpr): TACExpr
+    protected abstract fun Div128(o1: TACExpr, o2: TACExpr): TACExpr
     protected abstract fun SDiv(o1: TACExpr, o2: TACExpr): TACExpr
     protected abstract fun SDiv128(o1: TACExpr, o2: TACExpr): TACExpr
     protected abstract fun Mod(o1: TACExpr, o2: TACExpr): TACExpr
@@ -395,8 +397,10 @@ abstract class SbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : TACExprBase(re
     // math operator shorthands
 
     infix fun ToTACExpr.mul(other: ToTACExpr)    = this@SbfTACBuilder.Mul(listOf(this.toTACExpr(), other.toTACExpr()))
+    infix fun ToTACExpr.mul128(other: ToTACExpr) = this@SbfTACBuilder.Mul128(listOf(this.toTACExpr(), other.toTACExpr()))
     infix fun ToTACExpr.intMul(other: ToTACExpr) = this@SbfTACBuilder.IntMul(listOf(this.toTACExpr(), other.toTACExpr()))
     infix fun ToTACExpr.div(other: ToTACExpr)    = this@SbfTACBuilder.Div(this.toTACExpr(), other.toTACExpr())
+    infix fun ToTACExpr.div128(other: ToTACExpr) = this@SbfTACBuilder.Div128(this.toTACExpr(), other.toTACExpr())
     infix fun ToTACExpr.sDiv(other: ToTACExpr)   = this@SbfTACBuilder.SDiv(this.toTACExpr(), other.toTACExpr())
     infix fun ToTACExpr.sDiv128(other: ToTACExpr) = this@SbfTACBuilder.SDiv128(this.toTACExpr(), other.toTACExpr())
     infix fun ToTACExpr.intDiv(other: ToTACExpr) = this@SbfTACBuilder.IntDiv(this.toTACExpr(), other.toTACExpr())
@@ -505,6 +509,8 @@ class LazyMaskSbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : SbfTACBuilder(r
     override fun Mod(o1: TACExpr, o2: TACExpr): TACExpr  = TACExpr.BinOp.Mod(o1,o2)
     override fun AddNoOvf(ls: List<TACExpr>, reason: String) = Add(ls)
 
+    override fun Mul128(ls: List<TACExpr>): TACExpr = TACExpr.Vec.Mul(ls)
+    override fun Div128(o1: TACExpr, o2: TACExpr): TACExpr  = TACExpr.BinOp.Div(o1,o2)
     override fun SDiv128(o1: TACExpr, o2: TACExpr): TACExpr =
         error("SDiv128 is handled specially in ${SummarizeIntegerU128CompilerRt::class.simpleName}")
 
@@ -625,25 +631,28 @@ class EagerMaskSbfTACBuilder(regVars: ArrayList<TACSymbol.Var>) : SbfTACBuilder(
 
     override fun mkConst(value: BigInteger): TACSymbol.Const {
         with(modz64) {
-            check(value.inBounds || value.inSignedBounds) {
-                "Constant 0x${value.toString(16)} is out of range for 64-bit unsigned or signed value"
+            if (value < BigInteger.ZERO) {
+                check(value.inSignedBounds) {
+                    "Constant 0x${value.toString(16)} is out of range for 64-bit signed value"
+                }
+                return TACSymbol.Const(value.to2s(), Tag.Bit256)
+            } else {
+                return TACSymbol.Const(value, Tag.Bit256)
             }
-            return TACSymbol.Const(
-                value.letIf(value < BigInteger.ZERO) { value.to2s() },
-                Tag.Bit256
-            )
         }
     }
 
     override fun Add(ls: List<TACExpr>) = TXF { Add(ls).mod64() }
     override fun Sub(o1: TACExpr, o2: TACExpr) = TXF { (o1 sub o2).mod64() }
     override fun Mul(ls: List<TACExpr>) = TXF { Mul(ls).mod64() }
+    override fun Mul128(ls: List<TACExpr>) = TXF { Mul(ls).mod128() }
     override fun Div(o1: TACExpr, o2: TACExpr) = TXF { o1 div o2 }
+    override fun Div128(o1: TACExpr, o2: TACExpr) = TXF { o1 div o2 }
     override fun SDiv(o1: TACExpr, o2: TACExpr) = TXF { (o1.signExt64() sDiv o2.signExt64()).mod64() }
     override fun SDiv128(o1: TACExpr, o2: TACExpr) = TXF { (o1.signExt128() sDiv o2.signExt128()).mod128() }
     override fun Mod(o1: TACExpr, o2: TACExpr) = TXF { o1 mod o2 }
     override fun AddNoOvf(ls: List<TACExpr>, reason: String) = TXF {
-        Add(ls).annotated(CANNOT_OVERFLOW_REASON, reason).mod64()
+        Add(ls).annotated(CANNOT_OVERFLOW_64_REASON, reason).mod64()
     }
 
     override fun Gt(o1: TACExpr, o2: TACExpr) = TXF { o1 gt o2 }

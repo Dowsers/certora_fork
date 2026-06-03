@@ -72,6 +72,10 @@ class StaticMemoryAnalysis private constructor(val graph: TACCommandGraph) {
      * @return the bytes stored at [address, address+size) if this range is read only in [ctp]
      */
     fun readBytes(address: BigInteger, size: Int): List<UByte>? {
+        if (size == 0) {
+            return emptyList()
+        }
+
         if (permissions.permission(address, address+size.toBigInteger() - BigInteger.ONE) != Permission.ReadOnly) {
             return null
         }
@@ -80,10 +84,6 @@ class StaticMemoryAnalysis private constructor(val graph: TACCommandGraph) {
 
         if (idx + size - 1 >= data.content.size) {
             return null
-        }
-
-        if (size == 0) {
-            return emptyList()
         }
 
         return data.content.subList(idx, idx + size)

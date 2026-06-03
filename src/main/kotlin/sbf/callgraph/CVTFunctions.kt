@@ -225,26 +225,28 @@ data class CalltraceStr(val string: Value.Reg, val len: Value.Reg) {
 }
 
 enum class CVTU128Intrinsics(val function: ExternalFunction) {
-    U128_NONDET(ExternalFunction(CvlrFunctions.CVT_nondet_u128, setOf(), setOf(Value.Reg(SbfRegister.R1)))),
+    /// Follows standard SBF calling convention. Used by CVLR
+    U128_NONDET(ExternalFunction(CvlrFunctions.CVT_nondet_u128,
+        setOf(),
+        setOf(Value.Reg(SbfRegister.R1)))),
+    /// Follows Prover-Return-By-Heap calling convention. Call site must properly restore r0. Do not call directly from Rust.
+    /// They can only be inserted by the Solana front-end
     U128_LEQ(ExternalFunction(CvlrFunctions.CVT_u128_leq,
         setOf(Value.Reg(SbfRegister.R0)),
-        listOf(SbfRegister.R1, SbfRegister.R2,
-            SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())),
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())),
     U128_LT(ExternalFunction(CvlrFunctions.CVT_u128_lt,
         setOf(Value.Reg(SbfRegister.R0)),
         listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())),
-    U128_GT0(ExternalFunction(CvlrFunctions.CVT_u128_gt0,
-        setOf(Value.Reg(SbfRegister.R0)),
-        listOf(SbfRegister.R1, SbfRegister.R2).map{ Value.Reg(it)}.toSet())),
-    U128_CEIL_DIV(ExternalFunction(CvlrFunctions.CVT_u128_ceil_div,
-        setOf(),
-        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4, SbfRegister.R5).map{ Value.Reg(it)}.toSet())),
     U128_WRAPPING_SUBTRACTION(ExternalFunction(CvlrFunctions.CVT_u128_wrapping_sub,
         setOf(Value.Reg(SbfRegister.R0)),
         listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())),
     U128_WRAPPING_ADDITION(ExternalFunction(CvlrFunctions.CVT_u128_wrapping_add,
         setOf(Value.Reg(SbfRegister.R0)),
-        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet()));
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4).map{ Value.Reg(it)}.toSet())),
+    /// Unused intrinsics
+    U128_CEIL_DIV(ExternalFunction(CvlrFunctions.CVT_u128_ceil_div,
+        setOf(),
+        listOf(SbfRegister.R1, SbfRegister.R2, SbfRegister.R3, SbfRegister.R4, SbfRegister.R5).map{ Value.Reg(it)}.toSet()));
 
 
     companion object: ExternalLibrary<CVTU128Intrinsics>  {
@@ -255,8 +257,16 @@ enum class CVTU128Intrinsics(val function: ExternalFunction) {
         override fun addSummaries(memSummaries: MemorySummaries) {
             for (f in nameMap.values) {
                 when (f) {
-                    U128_LEQ, U128_GT0, U128_LT -> {
-                        val summaryArgs = listOf(MemSummaryArgument(r = SbfRegister.R0, type = MemSummaryArgumentType.NUM))
+                    U128_LEQ, U128_LT -> {
+                        val summaryArgs = listOf(
+                            MemSummaryArgument(r = SbfRegister.R0, allocatedSpace = 16UL, type = MemSummaryArgumentType.PTR_HEAP),
+                            // Used to restore r0: this type is dynamic since the value of *(r0+0) will be the value of r0
+                            // before the call to the intrinsics. Thus, we mark its type conservatively as ANY but some analyses
+                            // will need to be more precise.
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 0 , width = 8, type = MemSummaryArgumentType.ANY),
+                            // Result of the comparison
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM),
+                        )
                         memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
                     }
                     U128_CEIL_DIV, U128_NONDET  -> {
@@ -268,9 +278,15 @@ enum class CVTU128Intrinsics(val function: ExternalFunction) {
                     }
                     U128_WRAPPING_SUBTRACTION, U128_WRAPPING_ADDITION -> {
                         val summaryArgs = listOf(
-                            MemSummaryArgument(r = SbfRegister.R0, allocatedSpace = 16UL, type = MemSummaryArgumentType.PTR_HEAP),
-                            MemSummaryArgument(r = SbfRegister.R0, offset = 0 , width = 8, type = MemSummaryArgumentType.NUM),
-                            MemSummaryArgument(r = SbfRegister.R0, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM)
+                            MemSummaryArgument(r = SbfRegister.R0, allocatedSpace = 24UL, type = MemSummaryArgumentType.PTR_HEAP),
+                            // Used to restore r0: this type is dynamic since the value of *(r0+0) will be the value of r0
+                            // before the call to the intrinsics. Thus, we mark its type conservatively as ANY but some analyses
+                            // will need to be more precise.
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 0 , width = 8, type = MemSummaryArgumentType.ANY),
+                            // resLow of the u128 arithmetic operation
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 8 , width = 8, type = MemSummaryArgumentType.NUM),
+                            // resHigh of the u128 arithmetic operation
+                            MemSummaryArgument(r = SbfRegister.R0, offset = 16 , width = 8, type = MemSummaryArgumentType.NUM)
                         )
                         memSummaries.addSummary(f.function.name, MemorySummary(summaryArgs))
                     }

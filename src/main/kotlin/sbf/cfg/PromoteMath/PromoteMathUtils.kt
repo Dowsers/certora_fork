@@ -17,28 +17,44 @@
 
 package sbf.cfg
 
+import datastructures.stdcollections.*
 import sbf.disassembler.SbfRegister
 
 /**
- * Returns true if [reg] might be read before being written at any position strictly after [afterPos].
+ * Returns true if [reg] might be read before being written at any position strictly after [start].
  */
-internal fun isMayLiveAfter(bb: SbfBasicBlock, reg: Value.Reg, afterPos: Int): Boolean {
-    val insts = bb.getInstructions()
-    for (pos in afterPos + 1 until insts.size) {
-        val inst = insts[pos]
-        if (inst.writeRegister.contains(reg)) {
-            return false
+internal fun isMayLiveAfter(bb: SbfBasicBlock, reg: Value.Reg, start: Int,  maxNumLevelsDown: Int = 10): Boolean {
+    var curB = bb
+    var n = 0
+    while (n < maxNumLevelsDown) {
+        for (locInst in curB.getLocatedInstructions()) {
+            if (curB == bb && locInst.pos < start) { // skip instructions before start
+                continue
+            }
+
+            val inst = locInst.inst
+            if (inst !is SbfInstruction.Debug && inst.readRegisters.contains(reg)) {
+                return true
+            }
+            if (inst.writeRegister.contains(reg)) {
+                return false
+            }
         }
-        if (inst.readRegisters.contains(reg)) {
-            return true
+
+        val numSuccs = curB.getSuccs().size
+        when (numSuccs) {
+            0    -> return false // end of the program
+            1    -> curB = curB.getSuccs().first()
+            else -> return true
         }
+        n++
     }
-    return true // conservative because we don't check beyond bb. For that we need to ask a liveness analysis
+    return true
 }
 
 /**
  * Scan positions `[firstPos, lastPos]` and collects non-pattern store instructions whose
- * stored value is matches by the predicate [storedValueMatches].  Returns `null` if any
+ * stored value is matches by the predicate [mayWriteToI128Result].  Returns `null` if any
  * other non-pattern store is found, otherwise returns the list of store instructions.
  */
 internal fun collectTrailingStores(
@@ -112,6 +128,57 @@ internal fun resolveInputParam(
     }
     return null
 }
+
+/**
+ * Return true if a non-pattern instruction reads a register written by a pattern instruction.
+ *
+ * Note that we need to check for any non-pattern instruction, included those located after the last pattern instruction
+ * (except registers that contain the result of the pattern).
+ *
+ * This function is used to reject patterns where a non-pattern instruction reads a register that any pattern instruction writes.
+ * Those values disappear after the pattern is replaced by the intrinsic call, so any code that reads them would be
+ * unsound.
+ */
+internal fun nonPatternReadsPatternWrites(
+    bb: SbfBasicBlock,
+    patternPositions: Set<Int>,
+    results: Set<Value.Reg>,
+    isMayLive: (SbfBasicBlock, Value.Reg, pos: Int) -> Boolean
+): Boolean {
+    val insts = bb.getInstructions()
+    val patternWriteRegs = mutableSetOf<Value.Reg>()
+    val firstPos = patternPositions.min()
+    val lastPos  = patternPositions.max()
+    for (pos in firstPos..lastPos) {
+        val inst = insts[pos]
+        if (pos in patternPositions) {
+            patternWriteRegs.addAll(inst.writeRegister)
+            if (pos == lastPos) {
+                // from here, the result regs are not intermediate and may stay live
+                patternWriteRegs.removeAll(results)
+            }
+        } else if (inst.readRegisters.intersect(patternWriteRegs).isNotEmpty()) {
+            // this instruction is not part of the pattern but reads a register written by the pattern
+            return true
+        } else {
+            // this instruction is not part of the pattern, whatever it writes kills any intermediate in the same reg
+            patternWriteRegs.removeAll(inst.writeRegister)
+        }
+    }
+    return patternWriteRegs.any  { reg -> isMayLive(bb, reg, lastPos)}
+}
+
+
+internal fun nonPatternReadsPatternWrites(
+    bb: SbfBasicBlock, patternPositions: Set<Int>, res: Value.Reg,
+    isMayLive: (SbfBasicBlock, Value.Reg, pos: Int) -> Boolean
+): Boolean = nonPatternReadsPatternWrites(bb, patternPositions, setOf(res), isMayLive)
+
+internal fun nonPatternReadsPatternWrites(
+    bb: SbfBasicBlock, patternPositions: Set<Int>,
+    resLow: Value.Reg, resHigh: Value.Reg,
+    isMayLive: (SbfBasicBlock, Value.Reg, pos: Int) -> Boolean
+): Boolean = nonPatternReadsPatternWrites(bb, patternPositions, setOf(resLow, resHigh), isMayLive)
 
 /**
  * Find the last instruction that writes to [dst] strictly before position [before] in [bb],

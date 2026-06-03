@@ -60,7 +60,8 @@ val U128WrappingSubTransform = object : MathIntrinsicsTransform<U128WrappingSubP
      */
     override fun matchInBlock(
         bb: SbfBasicBlock,
-        equalAt: (LocatedSbfInstruction, Value, Value.Reg) -> Boolean
+        equalAt: (LocatedSbfInstruction, Value, Value.Reg) -> Boolean,
+        isMayLive: (SbfBasicBlock, Value.Reg, pos: Int) -> Boolean
     ): List<U128WrappingSubPattern> {
         val res = mutableListOf<U128WrappingSubPattern>()
         val insts = bb.getInstructions()
@@ -134,8 +135,13 @@ val U128WrappingSubTransform = object : MathIntrinsicsTransform<U128WrappingSubP
             val inputsToCheck = setOf(xLow, xHigh, yLow, yHigh) - setOf(resLow, resHigh)
             if (inputsToCheck.any {
                 writtenRegs.contains(it) &&
-                isMayLiveAfter(bb, it, lastPos)
+                isMayLive(bb, it, lastPos)
             }) {
+                continue
+            }
+
+            // Non-pattern instructions cannot read registers written by pattern instructions.
+            if (nonPatternReadsPatternWrites(bb, patternPositions, resLow, resHigh, isMayLive)) {
                 continue
             }
 

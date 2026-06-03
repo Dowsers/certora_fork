@@ -260,6 +260,8 @@ object PatternHelpers {
     infix fun PI.anyAdd(p2: PI) = (this + p2) OR (this intAdd p2)
     infix fun PI.intDiv(p2: PI) = commutativeCombiner(TACExpr.BinOp.IntDiv::class.java, this, p2)
 
+    infix fun PI.bothDivs(p2: PI) = (this / p2) OR (this intDiv p2)
+
     infix fun PI.eq(p2: PI) = commutativeCombiner(TACExpr.BinRel.Eq::class.java, this, p2)
     infix fun PI.lt(p2: PI) = combiner(TACExpr.BinRel.Lt::class.java, this, p2)
     infix fun PI.gt(p2: PI) = combiner(TACExpr.BinRel.Gt::class.java, this, p2)
@@ -275,6 +277,11 @@ object PatternHelpers {
     infix fun PI.symmLt(p2: PI) = (this lt p2) OR (p2 gt this)
     infix fun PI.symmGe(p2: PI) = (this ge p2) OR (p2 le this)
     infix fun PI.symmGt(p2: PI) = (this gt p2) OR (p2 lt this)
+
+    infix fun PI.symmSLe(p2: PI) = (this sLe p2) OR (p2 sGe this)
+    infix fun PI.symmSLt(p2: PI) = (this sLt p2) OR (p2 sGt this)
+    infix fun PI.symmSGe(p2: PI) = (this sGe p2) OR (p2 sLe this)
+    infix fun PI.symmSGt(p2: PI) = (this sGt p2) OR (p2 sLt this)
 
     infix fun PI.lOr(p2: PI) = commutativeCombiner(TACExpr.BinBoolOp.LOr::class.java, this, p2)
     infix fun PI.lAnd(p2: PI) = commutativeCombiner(TACExpr.BinBoolOp.LAnd::class.java, this, p2)

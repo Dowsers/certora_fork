@@ -44,7 +44,7 @@ sealed class RegOrStack {
  * Operands and result registers for a 128-bit binary intrinsic.
  *
  * The 128-bit operands x and y are each represented as a pair of 64-bit registers
- * (low and high halves). The result is written back into [resLow] and [resHigh].
+ * (low and high halves).
  *
  * Inputs ([xLow], [xHigh], [yLow], [yHigh]) are [RegOrStack] because a non-pattern instruction
  * may overwrite the register holding an input between its first use and the call site. In that
@@ -66,18 +66,56 @@ sealed interface Int128OperationResult{
         val resLow: Value.Reg,
         val resHigh: Value.Reg
     ) : Int128OperationResult {
-        override fun lower() = listOf (
-                SbfInstruction.Mem(Deref(8, Value.Reg(SbfRegister.R0), 0), resLow, true),
-                SbfInstruction.Mem(Deref(8, Value.Reg(SbfRegister.R0), 8), resHigh, true),
-            )
+        init {
+            check(resLow != resHigh)
+        }
+
+        override fun lower(): List<SbfInstruction> {
+            val r0 = Value.Reg(SbfRegister.R0)
+            return if (resLow == r0) {
+                // load first resHigh to avoid clobbering r0
+                // Since resLow is r0, we don't restore the old value of r0
+                listOf (
+                    SbfInstruction.Mem(Deref(8, r0, 16), resHigh, true),
+                    SbfInstruction.Mem(Deref(8, r0, 8), resLow, true)
+                )
+            } else if (resHigh == r0) {
+                // load first resLow to avoid clobbering r0
+                // Since resHigh is r0, we don't restore the old value of r0
+                listOf (
+                    SbfInstruction.Mem(Deref(8, r0, 8), resLow, true),
+                    SbfInstruction.Mem(Deref(8, r0, 16), resHigh, true)
+                )
+            } else {
+                // resLow and resHigh are different from r0 so we need to restore the old value of r0
+                listOf(
+                    SbfInstruction.Mem(Deref(8, r0, 8), resLow, true),
+                    SbfInstruction.Mem(Deref(8, r0, 16), resHigh, true),
+                    SbfInstruction.Mem(Deref(8, r0, 0), r0, true)
+                )
+            }
+        }
     }
 
     data class SingleResult(
         val res: Value.Reg,
     ) : Int128OperationResult {
-        override fun lower() = listOf (
-            SbfInstruction.Bin(BinOp.MOV, res, Value.Reg(SbfRegister.R0), is64 = true),
-        )
+        override fun lower(): List<SbfInstruction> {
+            val r0 = Value.Reg(SbfRegister.R0)
+            return if (res == r0) {
+                // We don't restore the old value of r0
+                listOf (
+                    SbfInstruction.Mem(Deref(8, r0, 8), res, true)
+                )
+
+            } else {
+                // We restore the old value of r0
+                listOf (
+                    SbfInstruction.Mem(Deref(8, r0, 8), res, true),
+                    SbfInstruction.Mem(Deref(8, r0, 0), r0, true)
+                )
+            }
+        }
     }
 }
 
@@ -89,7 +127,40 @@ sealed interface Int128OperationResult{
  * 2. Spills the operands (xLow, xHigh, yLow, yHigh) onto the stack.
  * 3. Loads the operands into the argument registers (r1–r4) and calls [intrinsicName].
  * 4. Restores the stack frame and scratch registers (epilogue).
- * 5. Reads the result from the pointer returned in r0 into [Int128BinaryParams.resLow] and [Int128BinaryParams.resHigh].
+ * 5. Reads the result from the pointer returned in r0 into [Int128OperationResult.TupleResult.resLow] and [Int128OperationResult.TupleResult.resHigh],
+ *    or [Int128OperationResult.SingleResult.res]
+ *
+ * For instance, given this code
+ * ```
+ * 	r1 = 0; r2 = 0; r3 = 3; r4 = 5
+ *  (*) r2 = r2 + r1
+ *  (*) r1 = r3
+ *  (*) r1 = r1 + r4
+ *  (*) r5 = select(r3 ugt r1, 1, 0)
+ *  (*) r2 = r2 + r5
+ * ```
+ * is transformed into
+ * ```
+ *  r1 = 0; r2 = 0; r3 = 3; r4 = 5
+ *  call CVT_save_scratch_registers
+ *  r10 = r10 + 4096
+ *  *(u64 *) (r10 + -8)  = r4
+ *  *(u64 *) (r10 + -16) = r1
+ *  *(u64 *) (r10 + -24) = r3
+ *  *(u64 *) (r10 + -32) = r2
+ *  r6 = r1; r7 = r2; r8 = r3; r9 = r4
+ *  r1 = *(u64 *) (r10 + -8)
+ *  r2 = *(u64 *) (r10 + -16)
+ *  r3 = *(u64 *) (r10 + -24)
+ *  r4 = *(u64 *) (r10 + -32)
+ *  call CVT_u128_wrapping_add
+ *  r1 = r6; r2 = r7; r3 = r8; r4 = r9
+ *  r10 = r10 - 4096
+ *  call CVT_restore_scratch_registers
+ *  r1 = *(u64 *) (r0 + 8)
+ *  r2 = *(u64 *) (r0 + 16)
+ *  r0 = *(u64 *) (r0 + 0)  <-- it must be the last
+ * ```
  **/
 fun lowerImpl(
     intrinsicName: String,

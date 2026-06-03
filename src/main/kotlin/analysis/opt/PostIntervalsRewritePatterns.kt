@@ -27,6 +27,8 @@ import utils.*
 import vc.data.TACExpr
 import vc.data.TACSymbol
 import vc.data.asTACExpr
+import vc.data.tacexprutil.isConst
+import vc.data.tacexprutil.isVar
 import java.math.BigInteger
 
 
@@ -54,7 +56,7 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOfNotNull(
         cond = !Config.Smt.UseBV.get(),
         name = "divLt",
         pattern = {
-            (lSym256(A) / lSym256(B)) lt lSym256(C)
+            maybeNarrow(lSym(A) bothDivs lSym(B)) lt lSym(C)
         },
         handle = {
             runIf(info.isNonZero(B)) {
@@ -71,7 +73,7 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOfNotNull(
         cond = !Config.Smt.UseBV.get(),
         name = "divLe",
         pattern = {
-            (lSym256(A) / lSym256(B)) le lSym256(C)
+            maybeNarrow(lSym(A) bothDivs lSym(B)) le lSym(C)
         },
         handle = {
             runIf(info.isNonZero(B)) {
@@ -88,7 +90,7 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOfNotNull(
         cond = !Config.Smt.UseBV.get(),
         name = "divGt",
         pattern = {
-            (lSym256(A) / lSym256(B)) gt lSym256(C)
+            maybeNarrow(lSym(A) bothDivs lSym(B)) gt lSym(C)
         },
         handle = {
             runIf(info.isNonZero(B)) {
@@ -105,7 +107,7 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOfNotNull(
         cond = !Config.Smt.UseBV.get(),
         name = "divGe",
         pattern = {
-            (lSym256(A) / lSym256(B)) ge lSym256(C)
+            maybeNarrow(lSym(A) bothDivs lSym(B)) ge lSym(C)
         },
         handle = {
             runIf(info.isNonZero(B)) {
@@ -119,13 +121,16 @@ fun PatternRewriter.postIntervalsRewriterPatternList() = listOfNotNull(
      * `A / B == C`  ~~>  `B·C <= A < B·(C+1)`     (when B != 0)
      */
     patternOnlyIf(
-        cond = !Config.Smt.UseBV.get(),
+        cond = !Config.Smt.UseBV.get() && (Config.PurifyDivisions.get() || Config.PurifyConstDivisions.get()),
         name = "divEq",
         pattern = {
-            (lSym256(A) / lSym256(B)) eq lSym256(C)
+            maybeNarrow(lSym(A) bothDivs lSym(B)) eq lSym(C)
         },
         handle = {
-            runIf(info.isNonZero(B)) {
+            runIf(info.isNonZero(B) &&
+                ((Config.PurifyDivisions.get() && sym(B).isVar) ||
+                (Config.PurifyConstDivisions.get() && sym(B).isConst))
+            ) {
                 LAnd(
                     Ge(sym(A), IntMul(sym(B), sym(C))),
                     Lt(sym(A), IntMul(sym(B), IntAdd(sym(C), 1.asTACExpr)))

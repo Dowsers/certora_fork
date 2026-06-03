@@ -846,6 +846,8 @@ infix fun BigInteger.divRoundUp(other: BigInteger) =
         this / other + BigInteger.ONE
     }
 
+fun BigInteger.log2Exact() = runIf(signum() > 0 && bitCount() == 1) { getLowestSetBit() }
+
 fun <T> Optional<T>.toNullable(): T? = orElse(null)
 
 /** generates a 32-character long pseudo-random hexadecimal string */

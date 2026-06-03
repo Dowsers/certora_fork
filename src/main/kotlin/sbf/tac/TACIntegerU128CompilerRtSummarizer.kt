@@ -37,7 +37,7 @@ open class SummarizeIntegerU128CompilerRt<TNum : INumValue<TNum>, TOffset : IOff
     internal open fun summarizeMulti3(args: U128BinaryOperands): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
         applyU128BinaryOperation(args, cmds) { res, _, x, y ->
-            cmds += assign(res, natIntTacB { x.asSym() mul y.asSym() })
+            cmds += assign(res, sbfTacB { x.asSym() mul128 y.asSym() })
         }
         return cmds
     }
@@ -46,7 +46,7 @@ open class SummarizeIntegerU128CompilerRt<TNum : INumValue<TNum>, TOffset : IOff
     internal open fun summarizeUDivti3(args: U128BinaryOperands): List<TACCmd.Simple> {
         val cmds = mutableListOf<TACCmd.Simple>()
         applyU128BinaryOperation(args, cmds) { res, _, x, y ->
-            cmds += assign(res, natIntTacB { x.asSym() div y.asSym() })
+            cmds += assign(res, sbfTacB { x.asSym() div128 y.asSym() })
         }
         return cmds
     }
@@ -114,6 +114,10 @@ class SummarizeIntegerU128CompilerRtWithMathInt<TNum : INumValue<TNum>, TOffset 
 
     context(SbfCFGToTAC<TNum, TOffset, TFlags>)
     override fun summarizeMulti3(args: U128BinaryOperands): List<TACCmd.Simple> {
+        // TODO CERT-10061 revisit the TACSoundSignedMath and UseTACMathInt logic
+        if (SolanaConfig.TACSoundSignedMath.get()) {
+            return super.summarizeMulti3(args)
+        }
         // We are using 256-bits so multiplication of 128-bits cannot overflow
         val xMath = vFac.mkFreshMathIntVar()
         val yMath = vFac.mkFreshMathIntVar()
